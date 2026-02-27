@@ -7,17 +7,20 @@
  * Provides dimension bookkeeping methods.
  *
  * Wave 1: Construction validation and dimension methods only.
- * Wave 2: Laplacian and coboundary operator assembly.
+ * Wave 2: Laplacian and coboundary operator assembly (delegates to SheafLaplacian).
  * Wave 3: SVD-based cohomology computation.
  */
 
+import * as math from 'mathjs';
 import type {
   VertexId,
   EdgeId,
   SheafVertex,
   SheafEdge,
   RestrictionMap,
+  SheafEigenspectrum,
 } from '../types/index.js';
+import { SheafLaplacian } from './SheafLaplacian.js';
 
 export class CellularSheaf {
   // Protected to allow Wave 2 to access without rewriting.
@@ -244,5 +247,49 @@ export class CellularSheaf {
    */
   getEdgeDim(edgeId: EdgeId): number {
     return this.getEdge(edgeId).stalkSpace.dim;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wave 2: Laplacian and coboundary operator (delegate to SheafLaplacian)
+  // ---------------------------------------------------------------------------
+
+  // Lazily initialized SheafLaplacian computer.
+  private laplacianComputer: SheafLaplacian | null = null;
+
+  private getLaplacianComputer(): SheafLaplacian {
+    if (!this.laplacianComputer) {
+      this.laplacianComputer = new SheafLaplacian(this);
+    }
+    return this.laplacianComputer;
+  }
+
+  /**
+   * getCoboundaryMatrix — assemble and return the coboundary operator B.
+   * Shape: [c1Dimension, c0Dimension] = [N_1, N_0].
+   *
+   * Delegates to SheafLaplacian.getCoboundaryMatrix() with lazy caching.
+   */
+  getCoboundaryMatrix(): math.Matrix {
+    return this.getLaplacianComputer().getCoboundaryMatrix();
+  }
+
+  /**
+   * getSheafLaplacian — compute and return L_sheaf = B^T B.
+   * Shape: [c0Dimension, c0Dimension] = [N_0, N_0].
+   *
+   * Delegates to SheafLaplacian.getSheafLaplacian() with lazy caching.
+   */
+  getSheafLaplacian(): math.Matrix {
+    return this.getLaplacianComputer().getSheafLaplacian();
+  }
+
+  /**
+   * getEigenspectrum — compute eigenvalues of L_sheaf, sorted ascending.
+   * Returns a SheafEigenspectrum with a Float64Array of length N_0.
+   *
+   * Delegates to SheafLaplacian.getEigenspectrum().
+   */
+  getEigenspectrum(): SheafEigenspectrum {
+    return this.getLaplacianComputer().getEigenspectrum();
   }
 }
