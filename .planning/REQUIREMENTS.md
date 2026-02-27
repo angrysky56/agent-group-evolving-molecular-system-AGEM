@@ -93,43 +93,53 @@ Deferred to future release. Not in current roadmap.
 
 ## Traceability
 
-Requirements mapped to phases (to be filled during roadmap creation).
+Requirements mapped to phases. Phase assignments finalized in ROADMAP.md (2026-02-27).
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| LCM-01 | Phase 2 | Pending |
-| LCM-02 | Phase 2 | Pending |
-| LCM-03 | Phase 2 | Pending |
-| LCM-04 | Phase 2 | Pending |
-| LCM-05 | Phase 2 | Pending |
-| SHEAF-01 | Phase 1 | Pending |
-| SHEAF-02 | Phase 1 | Pending |
-| SHEAF-03 | Phase 1 | Pending |
-| SHEAF-04 | Phase 1 | Pending |
-| SHEAF-05 | Phase 1 | Pending |
-| SHEAF-06 | Phase 1 | Pending |
-| TNA-01 | Phase 3 | Pending |
-| TNA-02 | Phase 3 | Pending |
-| TNA-03 | Phase 3 | Pending |
-| TNA-04 | Phase 3 | Pending |
-| TNA-05 | Phase 3 | Pending |
-| TNA-06 | Phase 3 | Pending |
-| SOC-01 | Phase 4 | Pending |
-| SOC-02 | Phase 4 | Pending |
-| SOC-03 | Phase 4 | Pending |
-| SOC-04 | Phase 4 | Pending |
-| SOC-05 | Phase 4 | Pending |
-| ORCH-01 | Phase 5 | Pending |
-| ORCH-02 | Phase 5 | Pending |
-| ORCH-03 | Phase 3 | Pending |
-| ORCH-04 | Phase 5 | Pending |
-| ORCH-05 | Phase 5 | Pending |
+| Requirement | Phase | Phase Name | Status |
+|-------------|-------|------------|--------|
+| SHEAF-01 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| SHEAF-02 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| SHEAF-03 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| SHEAF-04 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| SHEAF-05 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| SHEAF-06 | Phase 1 | Sheaf-Theoretic Coordination | Pending |
+| LCM-01 | Phase 2 | LCM Dual-Memory Architecture | Pending |
+| LCM-02 | Phase 2 | LCM Dual-Memory Architecture | Pending |
+| LCM-03 | Phase 2 | LCM Dual-Memory Architecture | Pending |
+| LCM-04 | Phase 2 | LCM Dual-Memory Architecture | Pending |
+| LCM-05 | Phase 2 | LCM Dual-Memory Architecture | Pending |
+| TNA-01 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| TNA-02 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| TNA-03 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| TNA-04 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| TNA-05 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| TNA-06 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| ORCH-03 | Phase 3 | Text Network Analysis + Molecular-CoT | Pending |
+| SOC-01 | Phase 4 | Self-Organized Criticality Tracking | Pending |
+| SOC-02 | Phase 4 | Self-Organized Criticality Tracking | Pending |
+| SOC-03 | Phase 4 | Self-Organized Criticality Tracking | Pending |
+| SOC-04 | Phase 4 | Self-Organized Criticality Tracking | Pending |
+| SOC-05 | Phase 4 | Self-Organized Criticality Tracking | Pending |
+| ORCH-01 | Phase 5 | Orchestrator Integration | Pending |
+| ORCH-02 | Phase 5 | Orchestrator Integration | Pending |
+| ORCH-04 | Phase 5 | Orchestrator Integration | Pending |
+| ORCH-05 | Phase 5 | Orchestrator Integration | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 25 (pending roadmap finalization)
+- Mapped to phases: 25
 - Unmapped: 0 ✓
+- Phase assignments finalized: 2026-02-27
+
+**Phase summary:**
+- Phase 1 (Sheaf): 6 requirements (SHEAF-01 through SHEAF-06)
+- Phase 2 (LCM): 5 requirements (LCM-01 through LCM-05)
+- Phase 3 (TNA + Molecular-CoT): 7 requirements (TNA-01 through TNA-06, ORCH-03)
+- Phase 4 (SOC): 5 requirements (SOC-01 through SOC-05)
+- Phase 5 (Orchestrator): 4 requirements (ORCH-01, ORCH-02, ORCH-04, ORCH-05)
+
+**Note on ORCH-03 placement in Phase 3:** Molecular-CoT bond type behavioral constraints must be defined as enforced interfaces in the type system before any reasoning loop code is written (Phase 5). Placing ORCH-03 in Phase 3 ensures bond type invariants exist before TNA gap detection and Orchestrator integration depend on them.
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-02-27 after initial definition*
+*Last updated: 2026-02-27 — phase assignments finalized in ROADMAP.md*
