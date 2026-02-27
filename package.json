@@ -1,0 +1,21 @@
+{
+  "name": "agent-group-evolving-molecular-system",
+  "version": "0.1.0",
+  "description": "RLM-LCM Molecular-CoT Group Evolving Agents (AGEM) - Sheaf-theoretic multi-agent coordination",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mathjs": "15.1.1",
+    "ml-matrix": "6.12.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.0.18",
+    "tsx": "4.21.0"
+  }
+}
