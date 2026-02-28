@@ -169,3 +169,20 @@ export interface PreprocessResult {
   /** TF-IDF score per lemma for this document within the current corpus. */
   readonly tfidfScores: ReadonlyMap<string, number>;
 }
+
+/**
+ * DetailedPreprocessResult — PreprocessResult extended with surface form tracking.
+ *
+ * Used by CooccurrenceGraph to populate TextNode.surfaceForms — the full record
+ * of which morphological variants (surface forms) were observed for each lemma.
+ *
+ * `surfaceToLemma` maps each original (post-stopword-removal) surface token to
+ * its canonical lemma. For example: "running" → "run", "runs" → "run".
+ */
+export interface DetailedPreprocessResult extends PreprocessResult {
+  /**
+   * Maps each pre-lemmatization surface form to its canonical lemma.
+   * Used to populate TextNode.surfaceForms for morphological variant tracking.
+   */
+  readonly surfaceToLemma: ReadonlyMap<string, string>;
+}
