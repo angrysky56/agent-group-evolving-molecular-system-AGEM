@@ -305,6 +305,43 @@ export class CooccurrenceGraph {
     return (this.#graph.getEdgeAttribute(edge, 'weight') as number) ?? 0;
   }
 
+  // --------------------------------------------------------------------------
+  // Public: node attribute updates (used by CentralityAnalyzer and LouvainDetector)
+  // --------------------------------------------------------------------------
+
+  /**
+   * updateNodeCentrality — sets the betweenness centrality for a node in the metadata.
+   *
+   * Called by CentralityAnalyzer after computing betweenness centrality to populate
+   * TextNode.betweennessCentrality. This is required for T15 (centrality results
+   * assigned back to TextNode metadata).
+   *
+   * @param nodeId - The node's identifier (canonical lemma string).
+   * @param score - Betweenness centrality score in [0, 1].
+   */
+  updateNodeCentrality(nodeId: string, score: number): void {
+    const meta = this.#nodeMetadata.get(nodeId);
+    if (meta) {
+      meta.betweennessCentrality = score;
+    }
+  }
+
+  /**
+   * updateNodeCommunity — sets the community ID for a node in the metadata.
+   *
+   * Called by LouvainDetector after community detection to populate
+   * TextNode.communityId.
+   *
+   * @param nodeId - The node's identifier (canonical lemma string).
+   * @param communityId - Community label assigned by Louvain.
+   */
+  updateNodeCommunity(nodeId: string, communityId: number): void {
+    const meta = this.#nodeMetadata.get(nodeId);
+    if (meta) {
+      meta.communityId = communityId;
+    }
+  }
+
   /**
    * order — total number of nodes (unique lemma concepts) in the graph.
    */
