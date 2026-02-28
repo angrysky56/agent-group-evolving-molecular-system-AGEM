@@ -89,7 +89,7 @@ This is not a standalone phase with a timeline; types are defined as the first t
 |----|-------------|
 | LCM-01 | Implement append-only immutable store with time-sequenced entry IDs |
 | LCM-02 | Implement Context DAG data structure with pointer-based SummaryNode references |
-| LCM-03 | Implement three-level escalation protocol (nuanced → compressed → truncated) |
+| LCM-03 | Implement three-level escalation protocol (nuanced -> compressed -> truncated) |
 | LCM-04 | Implement lcm_grep primitive for queried context retrieval |
 | LCM-05 | Implement lcm_expand primitive for context unrolling from summary pointers |
 
@@ -146,6 +146,14 @@ This is not a standalone phase with a timeline; types are defined as the first t
 4. **Molecular-CoT bond type invariants:** The type system enforces all three behavioral constraints at definition time, not as runtime checks on metadata: covalent bond removal triggers `cascade_invalidate` on all transitively dependent steps; hydrogen bond creation rejects semantic distances above threshold; Van der Waals bonds are rejected when trajectory length is below 5.0. Tests for each constraint pass.
 
 5. **Component isolation:** The `src/tna/` module has zero imports from `src/lcm/`, `src/sheaf/`, or `src/soc/`. All TNA unit tests pass in isolation with synthetic text input.
+
+### Plans
+
+**Plans:** 3 plans in 3 waves
+
+- [ ] 03-01-PLAN.md — Types + Preprocessor + CooccurrenceGraph + Molecular-CoT bond types (TNA-01, TNA-02, ORCH-03)
+- [ ] 03-02-PLAN.md — LouvainDetector (deterministic seeding) + CentralityAnalyzer (betweenness) (TNA-03, TNA-04)
+- [ ] 03-03-PLAN.md — GapDetector (structural gaps + topological metrics) + isolation test + barrel export (TNA-05, TNA-06)
 
 ---
 
@@ -288,12 +296,12 @@ All 25 v1 requirements are mapped to exactly one phase:
 | Lemmatization missing from graph (costly rebuild) | Phase 3 | Lemmatization enforced before first graph insertion; morphological-variant test |
 | Bond types as metadata (no behavioral constraints) | Phase 3 | Interfaces with enforced invariants defined in type system before reasoning loop |
 | Von Neumann entropy from wrong matrix | Phase 4 | Cross-validate `S(K_n) = ln(n)` using normalized Laplacian density matrix |
-| Embedding entropy confused with Shannon entropy | Phase 4 | Edge case tests: identical embeddings → ~0, d orthogonal → ~ln(d) |
+| Embedding entropy confused with Shannon entropy | Phase 4 | Edge case tests: identical embeddings -> ~0, d orthogonal -> ~ln(d) |
 | Phase transition hard-coded to iteration 400 | Phase 4 | Dynamic rolling cross-correlation; no literal `400` in source |
-| Surprising edge ratio computed cumulatively | Phase 4 | Per-iteration computation; test with all-intra edges → ratio = 0 that iteration |
+| Surprising edge ratio computed cumulatively | Phase 4 | Per-iteration computation; test with all-intra edges -> ratio = 0 that iteration |
 
 ---
 
 *Roadmap created: 2026-02-27*
 *Requirements version: v1 (25 requirements)*
-*Last updated: 2026-02-27 — Phase 2 plans added*
+*Last updated: 2026-02-28 — Phase 3 plans added*
