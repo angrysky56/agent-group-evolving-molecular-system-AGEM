@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-02-28
-**Current phase:** Phase 2 (LCM) — COMPLETE (all 5 plans done)
+**Current phase:** Phase 3 (TNA + Molecular-CoT) — In progress (Plan 01 of 3 done)
 
 ## Status Snapshot
 
@@ -10,12 +10,12 @@
 |-------|------|--------|--------------|----------------------|
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
-| 3 | Text Network Analysis + Molecular-CoT | Unblocked (types ready, LCM barrel export available) | TNA-01 through TNA-06, ORCH-03 | 0 / 5 |
+| 3 | Text Network Analysis + Molecular-CoT | **In progress** (Plan 01/03 done: TNA foundation + MolecularCoT types) | TNA-01 through TNA-06, ORCH-03 | 2 / 5 (TNA-01, TNA-02, ORCH-03 satisfied) |
 | 4 | Self-Organized Criticality Tracking | Unblocked (Phase 1 complete, eigenspectrum ready) | SOC-01 through SOC-05 | 0 / 5 |
 | 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 11 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete)
+**Overall v1 requirements:** 14 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete; TNA-01, TNA-02, ORCH-03 satisfied)
 
 ## What Has Been Done
 
@@ -37,14 +37,16 @@
   - See `.planning/phases/02-lcm/02-04-SUMMARY.md` for full details.
 - **Phase 2, Wave 3 complete (2026-02-28):** EscalationProtocol with three-level compression and deterministic L3 convergence (encode+slice+decode, zero ICompressor in L3). lcm_expand async generator with lazy streaming traversal. Module isolation test (T14+T14b). LCM barrel export. 22 new tests (159 total passing). All 5 ROADMAP Phase 2 success criteria RESOLVED.
   - See `.planning/phases/02-lcm/02-05-SUMMARY.md` for full details.
+- **Phase 3, Wave 1, Plan 01 complete (2026-02-28):** TNA foundation types (TextNodeId, TextNode, TextEdge, GapMetrics, TNAConfig, PreprocessResult, DetailedPreprocessResult), MolecularCoT bond types (BondGraph with behavioral invariants for covalent/hydrogen/VdW). Preprocessor (TF-IDF + wink-lemmatizer POS-aware, no Porter stemmer fallback). CooccurrenceGraph (4-gram sliding window, surface form tracking via preprocessDetailed()). 22 new tests (181 total passing). PRIMARY PITFALL GUARD: T6b confirmed — 80 analyze-variant tokens → ≤2 nodes. Pitfalls RESOLVED: "4-gram without lemmatization" (T6b) + "bond types as metadata only" (BondGraph class).
+  - See `.planning/phases/03-tna-molecular-cot/03-01-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 3 (TNA) and Phase 4 (SOC)** are both unblocked and can proceed in parallel:
+**Phase 3 (TNA) Wave 1 Plan 01 done.** Next:
 
-1. Phase 3 (TNA): text network analysis, Molecular-CoT, bond type invariants (ORCH-03)
-2. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (depends on eigenspectrum from Phase 1)
-3. Phase 5 (Orchestrator): three-mode state machine, EventBus, event subscriptions (depends on 1, 3, 4)
+1. Phase 3 Plan 02 (Wave 2): LouvainDetector (community detection via graphology-communities-louvain) + CentralityAnalyzer (betweenness centrality via graphology-metrics)
+2. Phase 3 Plan 03 (Wave 3): GapDetector (inter-community gap metrics) + TNA barrel export
+3. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (unblocked — eigenspectrum ready from Phase 1)
 
 **Resolve before Phase 4:** embedding model selection (all-MiniLM-L6-v2 vs text-embedding-3-small)
 
@@ -79,6 +81,10 @@
 | L3 uses 50% per-chunk token slicing — no ICompressor calls | 2026-02-28 | Hard convergence guarantee; L3 path uses encode+slice+decode only; CONTEXT.md locked decision: chunk first, hard-truncate as fallback |
 | EscalationResult.level: 0 for no escalation | 2026-02-28 | Distinguishes no-escalation from levels 1-3; 0 means input was under threshold, no action taken |
 | Test token helper uses "cat" (1 BPE token each) | 2026-02-28 | gpt-tokenizer BPE for "cat" is exactly 1 token — gives predictable counts for threshold-sensitive tests |
+| No Porter stemmer fallback in lemmatize() | 2026-02-28 | Porter("analyze")="analyz" vs wink.verb("analyzing")="analyze" — two nodes for one concept; wink result or identity used instead |
+| DetailedPreprocessResult with surfaceToLemma | 2026-02-28 | Synchronous surface form tracking in Preprocessor pipeline; avoids async re-tokenization in CooccurrenceGraph |
+| GraphConstructor cast for graphology NodeNext ESM | 2026-02-28 | cast via AbstractGraph as type annotation — avoids "Cannot use namespace as a type" in strict NodeNext mode |
+| BondGraph class (not interface) for behavioral invariants | 2026-02-28 | Covalent cascade invalidate + hydrogen distance threshold + VdW trajectory minimum enforced at creation time, not as runtime metadata |
 
 ## Resolved Questions
 
@@ -110,8 +116,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | LCM store is mutable | 2 | Test isolation requires clearing store between tests | **RESOLVED: T1b (TypeError on mutation) + T6 (frozen getAll snapshot) guard permanently** |
 | Embedding cold start in tests | 2 | ONNX model loading occurs during test suite | **RESOLVED: MockEmbedder injected everywhere; T11c source-level guard in LCMGrep.ts** |
 | Escalation L3 missing | 2 | Context management has no hard truncation path | **RESOLVED: T9 (L3 activation) + T9b (zero LLM) + T9c (chunking) + T9d (kToken bound) + T9f (hard fallback) guard permanently** |
-| 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | Not started |
-| Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | Not started |
+| 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | **RESOLVED: T6b (80 tokens → ≤2 nodes) guards permanently** |
+| Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | **RESOLVED: BondGraph class enforces invariants at creation time; creation throws on violation** |
 | Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | Not started |
 | Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | Not started |
 | Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | Not started |
@@ -127,6 +133,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 02 | 03 | ~6 min | 2/2 | 6 created, 1 modified | 2026-02-28 |
 | 02 | 04 | ~5 min | 2/2 | 5 created, 1 modified | 2026-02-28 |
 | 02 | 05 | ~6 min | 3/3 | 6 created | 2026-02-28 |
+| 03 | 01 | ~20 min | 2/2 | 7 created, 2 modified | 2026-02-28 |
 
 ## File Map
 
@@ -153,21 +160,28 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
     │   ├── 04-PLAN.md      — Wave 3: Cohomology and CohomologyAnalyzer (DONE)
     │   ├── 04-SUMMARY.md   — Wave 3 execution summary
     │   └── VERIFICATION.md — Phase 1 complete verification record
-    └── 02-lcm/
-        ├── 02-RESEARCH.md    — LCM dual-memory architecture research
-        ├── 02-03-PLAN.md     — Wave 1: ImmutableStore + LCM interfaces (DONE)
-        ├── 02-03-SUMMARY.md  — Wave 1 execution summary
-        ├── 02-04-PLAN.md     — Wave 2: ContextDAG + EmbeddingCache + LCMGrep (DONE)
-        ├── 02-04-SUMMARY.md  — Wave 2 execution summary
-        ├── 02-05-PLAN.md     — Wave 3: EscalationProtocol + lcm_expand + barrel (DONE)
-        └── 02-05-SUMMARY.md  — Wave 3 execution summary
+    ├── 02-lcm/
+    │   ├── 02-RESEARCH.md    — LCM dual-memory architecture research
+    │   ├── 02-03-PLAN.md     — Wave 1: ImmutableStore + LCM interfaces (DONE)
+    │   ├── 02-03-SUMMARY.md  — Wave 1 execution summary
+    │   ├── 02-04-PLAN.md     — Wave 2: ContextDAG + EmbeddingCache + LCMGrep (DONE)
+    │   ├── 02-04-SUMMARY.md  — Wave 2 execution summary
+    │   ├── 02-05-PLAN.md     — Wave 3: EscalationProtocol + lcm_expand + barrel (DONE)
+    │   └── 02-05-SUMMARY.md  — Wave 3 execution summary
+    └── 03-tna-molecular-cot/
+        ├── 03-01-PLAN.md     — Wave 1: TNA types + MolecularCoT + Preprocessor + CooccurrenceGraph (DONE)
+        ├── 03-01-SUMMARY.md  — Wave 1 execution summary
+        ├── 03-02-PLAN.md     — Wave 2: LouvainDetector + CentralityAnalyzer
+        └── 03-03-PLAN.md     — Wave 3: GapDetector + TNA barrel export
 
 src/
 ├── index.ts            — Placeholder entry point
+├── vendor-types.d.ts   — TypeScript declarations for wink-lemmatizer and stopword (no @types/* available)
 ├── types/
 │   ├── GraphTypes.ts   — VertexId, EdgeId, StalkSpace, RestrictionMap, SheafVertex, SheafEdge, CohomologyResult, SheafEigenspectrum
 │   ├── Events.ts       — SheafEventType, SheafConsensusReachedEvent, SheafH1ObstructionEvent, SheafEvent
-│   └── index.ts        — Barrel export
+│   ├── MolecularCoT.ts — StepId, BondType, CovalentBond, HydrogenBond, VanDerWaalsBond, MolecularBond; BondGraph class with behavioral invariants
+│   └── index.ts        — Barrel export (includes MolecularCoT)
 ├── sheaf/
 │   ├── CellularSheaf.ts           — Core sheaf data structure + Laplacian delegate methods
 │   ├── CellularSheaf.test.ts      — 24 unit tests (T1, T2, T10-partial, factory smoke tests)
@@ -204,9 +218,15 @@ src/
     ├── index.ts                   — Public barrel export for entire LCM module
     └── helpers/
         └── testStoreFactory.ts    — createPopulatedStore(entries[]), createDefaultPopulatedStore() with 10 varied entries
+└── tna/
+    ├── interfaces.ts              — TextNodeId, TextNode, TextEdge, GapMetrics, CommunityAssignment, TNAConfig, PreprocessResult, DetailedPreprocessResult
+    ├── Preprocessor.ts            — Preprocessor class: lemmatize() (wink POS-aware), preprocess(), preprocessDetailed(), addDocument(), preprocessWithCorpus()
+    ├── Preprocessor.test.ts       — 11 tests: T1-T4 lemmatization/stopwords/TF-IDF/case, lemmatize() direct
+    ├── CooccurrenceGraph.ts       — CooccurrenceGraph class: ingest(), ingestTokens(), getGraph(), getNode(), getNodes(), getEdgeWeight(), order, size
+    └── CooccurrenceGraph.test.ts  — 11 tests: T5-T8b including T6b PRIMARY pitfall guard
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-02-28 — Stopped at: Completed Phase 2, Plan 02-05-PLAN.md (Wave 3: EscalationProtocol + lcm_expand + barrel export — Phase 2 COMPLETE)*
+*Last session: 2026-02-28 — Stopped at: Completed Phase 3, Plan 03-01-PLAN.md (Wave 1: TNA types + MolecularCoT bond types + Preprocessor + CooccurrenceGraph — TNA-01, TNA-02, ORCH-03 satisfied)*
 *Update this file at the start and end of each work session*
