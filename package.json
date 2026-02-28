@@ -10,12 +10,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "gpt-tokenizer": "^3.4.0",
     "mathjs": "15.1.1",
-    "ml-matrix": "6.12.1"
+    "ml-matrix": "6.12.1",
+    "uuidv7": "^1.1.0"
   },
   "devDependencies": {
+    "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vitest": "4.0.18",
-    "tsx": "4.21.0"
+    "vitest": "4.0.18"
   }
 }
