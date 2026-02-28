@@ -12,9 +12,15 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "gpt-tokenizer": "^3.4.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "graphology-metrics": "^2.4.0",
     "mathjs": "15.1.1",
     "ml-matrix": "6.12.1",
-    "uuidv7": "^1.1.0"
+    "natural": "^8.1.0",
+    "stopword": "^3.1.5",
+    "uuidv7": "^1.1.0",
+    "wink-lemmatizer": "^3.0.4"
   },
   "devDependencies": {
     "tsx": "4.21.0",
