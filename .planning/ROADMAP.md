@@ -99,7 +99,7 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 2. **Level 3 activation:** A test that feeds the EscalationProtocol an input that is too long to compress (Level 1 output longer than input, Level 2 output longer than input) activates Level 3 (deterministic truncation to K tokens) without any LLM inference. The test confirms no LLM call occurs during L3 truncation.
 
-3. **lcm_grep retrieval correctness:** Given 100 appended records with varied content, `lcm_grep` returns exactly the records matching the query pattern — no false positives, no false negatives. Order matches insertion sequence.
+3. **lcm_grep retrieval correctness:** Given appended records with varied content, `lcm_grep` returns entries ranked by semantic similarity (embedding-based cosine similarity) in descending order. The top-ranked result for a given query is the most semantically similar entry. Results respect `maxResults` and `minSimilarity` parameters. No keyword or regex matching is used — retrieval is purely embedding-based per CONTEXT.md decisions.
 
 4. **lcm_expand pointer fidelity:** `lcm_expand` called on a SummaryNode pointer returns the original raw records from the ImmutableStore that the node was built from. The content is identical to what was appended — no inference has modified it.
 
