@@ -85,7 +85,7 @@ describe('T5b: SummaryNode content is immutable', () => {
     const retrieved = index.get('summary-2')!;
     // Content must be frozen — assigning to it must throw in strict mode.
     expect(() => {
-      (retrieved as Record<string, unknown>)['content'] = 'mutated';
+      (retrieved as unknown as Record<string, unknown>)['content'] = 'mutated';
     }).toThrow();
   });
 });
