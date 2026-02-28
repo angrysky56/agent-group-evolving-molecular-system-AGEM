@@ -2,20 +2,20 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-02-28
-**Current phase:** Phase 2 (LCM) — Wave 2 complete (Plan 04 done), Wave 3 next
+**Current phase:** Phase 2 (LCM) — COMPLETE (all 5 plans done)
 
 ## Status Snapshot
 
 | Phase | Name | Status | Requirements | Success Criteria Met |
 |-------|------|--------|--------------|----------------------|
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
-| 2 | LCM Dual-Memory Architecture | **IN PROGRESS** (Plan 04/3 Wave 2 done) | LCM-01 through LCM-05 | 3 / 5 (LCM-01, LCM-02, LCM-04 done) |
-| 3 | Text Network Analysis + Molecular-CoT | Unblocked (types ready) | TNA-01 through TNA-06, ORCH-03 | 0 / 5 |
+| 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
+| 3 | Text Network Analysis + Molecular-CoT | Unblocked (types ready, LCM barrel export available) | TNA-01 through TNA-06, ORCH-03 | 0 / 5 |
 | 4 | Self-Organized Criticality Tracking | Unblocked (Phase 1 complete, eigenspectrum ready) | SOC-01 through SOC-05 | 0 / 5 |
 | 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 8 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01, LCM-02, LCM-04 done)
+**Overall v1 requirements:** 11 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete)
 
 ## What Has Been Done
 
@@ -35,15 +35,18 @@
   - See `.planning/phases/02-lcm/02-03-SUMMARY.md` for full details.
 - **Phase 2, Wave 2 complete (2026-02-28):** ContextDAG with DFS acyclicity enforcement and lineage tracking. SummaryIndex with Object.defineProperties content freeze and full MetricUpdate audit trail. EmbeddingCache full implementation (replacing Wave 1 stub). LCMGrep cosine-similarity semantic search with IEmbedder injection and hybrid caching strategy. 17 new tests (137 total passing). LCM-02 and LCM-04 RESOLVED.
   - See `.planning/phases/02-lcm/02-04-SUMMARY.md` for full details.
+- **Phase 2, Wave 3 complete (2026-02-28):** EscalationProtocol with three-level compression and deterministic L3 convergence (encode+slice+decode, zero ICompressor in L3). lcm_expand async generator with lazy streaming traversal. Module isolation test (T14+T14b). LCM barrel export. 22 new tests (159 total passing). All 5 ROADMAP Phase 2 success criteria RESOLVED.
+  - See `.planning/phases/02-lcm/02-05-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 2, Wave 3** — EscalationProtocol + lcm_expand (plans 02-05, 02-06)
+**Phase 3 (TNA) and Phase 4 (SOC)** are both unblocked and can proceed in parallel:
 
-After Phase 2 is complete:
 1. Phase 3 (TNA): text network analysis, Molecular-CoT, bond type invariants (ORCH-03)
 2. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (depends on eigenspectrum from Phase 1)
 3. Phase 5 (Orchestrator): three-mode state machine, EventBus, event subscriptions (depends on 1, 3, 4)
+
+**Resolve before Phase 4:** embedding model selection (all-MiniLM-L6-v2 vs text-embedding-3-small)
 
 ## Active Decisions
 
@@ -73,6 +76,9 @@ After Phase 2 is complete:
 | ContextDAG cycle detection via DFS over intermediateCompressions.childIds | 2026-02-28 | Simple visited-set DFS sufficient for Phase 2 linear summarization; self-references caught immediately |
 | cosineSimilarity() uses full dot/(normA*normB) formula | 2026-02-28 | Correct for any embedder (not simplified dot-only which assumes L2-normalized inputs) |
 | getParentSummary() is O(n) scan | 2026-02-28 | Acceptable for Phase 2 linear summarization; Wave 3 can optimize if needed |
+| L3 uses 50% per-chunk token slicing — no ICompressor calls | 2026-02-28 | Hard convergence guarantee; L3 path uses encode+slice+decode only; CONTEXT.md locked decision: chunk first, hard-truncate as fallback |
+| EscalationResult.level: 0 for no escalation | 2026-02-28 | Distinguishes no-escalation from levels 1-3; 0 means input was under threshold, no action taken |
+| Test token helper uses "cat" (1 BPE token each) | 2026-02-28 | gpt-tokenizer BPE for "cat" is exactly 1 token — gives predictable counts for threshold-sensitive tests |
 
 ## Resolved Questions
 
@@ -103,7 +109,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | H^1 wrong numerical tolerance | 1 | Tolerance set to 1e-6+ without documented justification | **RESOLVED: MATLAB formula + NumericalTolerance.test.ts validates calibration** |
 | LCM store is mutable | 2 | Test isolation requires clearing store between tests | **RESOLVED: T1b (TypeError on mutation) + T6 (frozen getAll snapshot) guard permanently** |
 | Embedding cold start in tests | 2 | ONNX model loading occurs during test suite | **RESOLVED: MockEmbedder injected everywhere; T11c source-level guard in LCMGrep.ts** |
-| Escalation L3 missing | 2 | Context management has no hard truncation path | Not started (plan 02-05) |
+| Escalation L3 missing | 2 | Context management has no hard truncation path | **RESOLVED: T9 (L3 activation) + T9b (zero LLM) + T9c (chunking) + T9d (kToken bound) + T9f (hard fallback) guard permanently** |
 | 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | Not started |
 | Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | Not started |
 | Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | Not started |
@@ -120,6 +126,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 01 | 04 | ~15 min | 7/7 | 5 created | 2026-02-27 |
 | 02 | 03 | ~6 min | 2/2 | 6 created, 1 modified | 2026-02-28 |
 | 02 | 04 | ~5 min | 2/2 | 5 created, 1 modified | 2026-02-28 |
+| 02 | 05 | ~6 min | 3/3 | 6 created | 2026-02-28 |
 
 ## File Map
 
@@ -147,11 +154,13 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
     │   ├── 04-SUMMARY.md   — Wave 3 execution summary
     │   └── VERIFICATION.md — Phase 1 complete verification record
     └── 02-lcm/
-        ├── 02-RESEARCH.md  — LCM dual-memory architecture research
-        ├── 02-03-PLAN.md   — Wave 1: ImmutableStore + LCM interfaces (DONE)
-        ├── 02-03-SUMMARY.md — Wave 1 execution summary
-        ├── 02-04-PLAN.md   — Wave 2: ContextDAG + EmbeddingCache + LCMGrep (DONE)
-        └── 02-04-SUMMARY.md — Wave 2 execution summary
+        ├── 02-RESEARCH.md    — LCM dual-memory architecture research
+        ├── 02-03-PLAN.md     — Wave 1: ImmutableStore + LCM interfaces (DONE)
+        ├── 02-03-SUMMARY.md  — Wave 1 execution summary
+        ├── 02-04-PLAN.md     — Wave 2: ContextDAG + EmbeddingCache + LCMGrep (DONE)
+        ├── 02-04-SUMMARY.md  — Wave 2 execution summary
+        ├── 02-05-PLAN.md     — Wave 3: EscalationProtocol + lcm_expand + barrel (DONE)
+        └── 02-05-SUMMARY.md  — Wave 3 execution summary
 
 src/
 ├── index.ts            — Placeholder entry point
@@ -187,11 +196,17 @@ src/
     ├── ContextDAG.test.ts         — 10 tests: T5-T5e (SummaryIndex) + T6-T6e (ContextDAG)
     ├── LCMGrep.ts                 — Semantic search: grep() cosine similarity, GrepResult/GrepOptions, cosineSimilarity() pure fn, cacheAllEntries()
     ├── LCMGrep.test.ts            — 7 tests: T10-T10d (grep results) + T11-T11c (caching + no-transformers guard)
+    ├── EscalationProtocol.ts      — Three-level escalation: L1 (compressor), L2 (multi-chunk), L3 (deterministic only); EventEmitter; setThresholds()
+    ├── EscalationProtocol.test.ts — 13 tests: T7-T9h including L3 pitfall guards and EventEmitter events
+    ├── LCMExpand.ts               — async function* lcm_expand(summaryNodeId, dag) → ExpandLevel items (lazy)
+    ├── LCMExpand.test.ts          — 7 tests: T12-T13c including T12d pointer fidelity and T13 laziness
+    ├── isolation.test.ts          — 2 tests: T14 (zero cross-module imports) + T14b (no @huggingface/transformers)
+    ├── index.ts                   — Public barrel export for entire LCM module
     └── helpers/
         └── testStoreFactory.ts    — createPopulatedStore(entries[]), createDefaultPopulatedStore() with 10 varied entries
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-02-28 — Stopped at: Completed Phase 2, Plan 02-04-PLAN.md (Wave 2: ContextDAG + EmbeddingCache + LCMGrep)*
+*Last session: 2026-02-28 — Stopped at: Completed Phase 2, Plan 02-05-PLAN.md (Wave 3: EscalationProtocol + lcm_expand + barrel export — Phase 2 COMPLETE)*
 *Update this file at the start and end of each work session*
