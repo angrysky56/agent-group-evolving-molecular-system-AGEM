@@ -105,6 +105,14 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 5. **Component isolation:** The `src/lcm/` module has zero imports from `src/sheaf/`, `src/tna/`, `src/soc/`, or `src/orchestrator/`. No LLM inference occurs in any LCM primitive (`lcm_grep`, `lcm_expand`). All LCM unit tests pass in isolation.
 
+### Plans
+
+**Plans:** 3 plans in 3 waves
+
+- [ ] 02-03-PLAN.md — Foundation: interfaces + ImmutableStore with defense-in-depth immutability (LCM-01)
+- [ ] 02-04-PLAN.md — ContextDAG + SummaryIndex + EmbeddingCache + LCMGrep semantic search (LCM-02, LCM-04)
+- [ ] 02-05-PLAN.md — EscalationProtocol (L3 truncation) + lcm_expand (async generator) + isolation test (LCM-03, LCM-05)
+
 ---
 
 ## Phase 3: Text Network Analysis and Molecular-CoT
@@ -288,4 +296,4 @@ All 25 v1 requirements are mapped to exactly one phase:
 
 *Roadmap created: 2026-02-27*
 *Requirements version: v1 (25 requirements)*
-*Last updated: 2026-02-27*
+*Last updated: 2026-02-27 — Phase 2 plans added*
