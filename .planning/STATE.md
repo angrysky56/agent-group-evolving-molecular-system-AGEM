@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-02-28
-**Current phase:** Phase 3 (TNA + Molecular-CoT) — In progress (Plan 01 of 3 done)
+**Current phase:** Phase 3 (TNA + Molecular-CoT) — In progress (Plan 02 of 3 done)
 
 ## Status Snapshot
 
@@ -10,12 +10,12 @@
 |-------|------|--------|--------------|----------------------|
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
-| 3 | Text Network Analysis + Molecular-CoT | **In progress** (Plan 01/03 done: TNA foundation + MolecularCoT types) | TNA-01 through TNA-06, ORCH-03 | 2 / 5 (TNA-01, TNA-02, ORCH-03 satisfied) |
+| 3 | Text Network Analysis + Molecular-CoT | **In progress** (Plan 02/03 done: TNA foundation + LouvainDetector + CentralityAnalyzer) | TNA-01 through TNA-06, ORCH-03 | 4 / 5 (TNA-01, TNA-02, TNA-03, TNA-04, ORCH-03 satisfied) |
 | 4 | Self-Organized Criticality Tracking | Unblocked (Phase 1 complete, eigenspectrum ready) | SOC-01 through SOC-05 | 0 / 5 |
 | 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 14 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete; TNA-01, TNA-02, ORCH-03 satisfied)
+**Overall v1 requirements:** 16 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete; TNA-01, TNA-02, TNA-03, TNA-04, ORCH-03 satisfied)
 
 ## What Has Been Done
 
@@ -39,14 +39,15 @@
   - See `.planning/phases/02-lcm/02-05-SUMMARY.md` for full details.
 - **Phase 3, Wave 1, Plan 01 complete (2026-02-28):** TNA foundation types (TextNodeId, TextNode, TextEdge, GapMetrics, TNAConfig, PreprocessResult, DetailedPreprocessResult), MolecularCoT bond types (BondGraph with behavioral invariants for covalent/hydrogen/VdW). Preprocessor (TF-IDF + wink-lemmatizer POS-aware, no Porter stemmer fallback). CooccurrenceGraph (4-gram sliding window, surface form tracking via preprocessDetailed()). 22 new tests (181 total passing). PRIMARY PITFALL GUARD: T6b confirmed — 80 analyze-variant tokens → ≤2 nodes. Pitfalls RESOLVED: "4-gram without lemmatization" (T6b) + "bond types as metadata only" (BondGraph class).
   - See `.planning/phases/03-tna-molecular-cot/03-01-SUMMARY.md` for full details.
+- **Phase 3, Wave 2, Plan 02 complete (2026-02-28):** LouvainDetector (deterministic Louvain via Mulberry32 PRNG rng option) + CentralityAnalyzer (normalized betweenness centrality, bridge node identification). CooccurrenceGraph extended with updateNodeCentrality() + updateNodeCommunity(). 16 new tests (197 total passing, but 38 in TNA module). LOUVAIN DETERMINISM PITFALL RESOLVED: T9 (10 runs same seed = identical) is a permanent regression guard. TNA-03 (Louvain community detection with seeding) + TNA-04 (betweenness centrality for bridge nodes) SATISFIED.
+  - See `.planning/phases/03-tna-molecular-cot/03-02-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 3 (TNA) Wave 1 Plan 01 done.** Next:
+**Phase 3 (TNA) Wave 2 Plan 02 done.** Next:
 
-1. Phase 3 Plan 02 (Wave 2): LouvainDetector (community detection via graphology-communities-louvain) + CentralityAnalyzer (betweenness centrality via graphology-metrics)
-2. Phase 3 Plan 03 (Wave 3): GapDetector (inter-community gap metrics) + TNA barrel export
-3. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (unblocked — eigenspectrum ready from Phase 1)
+1. Phase 3 Plan 03 (Wave 3): GapDetector (inter-community gap metrics using LouvainDetector + CentralityAnalyzer) + TNA barrel export (satisfies TNA-05 + TNA-06)
+2. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (unblocked — eigenspectrum ready from Phase 1)
 
 **Resolve before Phase 4:** embedding model selection (all-MiniLM-L6-v2 vs text-embedding-3-small)
 
@@ -85,6 +86,8 @@
 | DetailedPreprocessResult with surfaceToLemma | 2026-02-28 | Synchronous surface form tracking in Preprocessor pipeline; avoids async re-tokenization in CooccurrenceGraph |
 | GraphConstructor cast for graphology NodeNext ESM | 2026-02-28 | cast via AbstractGraph as type annotation — avoids "Cannot use namespace as a type" in strict NodeNext mode |
 | BondGraph class (not interface) for behavioral invariants | 2026-02-28 | Covalent cascade invalidate + hydrogen distance threshold + VdW trajectory minimum enforced at creation time, not as runtime metadata |
+| Mulberry32 PRNG seeded via rng option (Louvain determinism) | 2026-02-28 | graphology-communities-louvain natively supports rng parameter; Mulberry32(seed) passed as rng — no Math.random patching needed |
+| createRequire CJS interop for graphology-metrics + louvain | 2026-02-28 | graphology-metrics has no package.json exports (NodeNext subpath fails); louvain.detailed() needs CJS require to expose attached methods; createRequire(import.meta.url) is the established pattern |
 
 ## Resolved Questions
 
@@ -118,6 +121,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | Escalation L3 missing | 2 | Context management has no hard truncation path | **RESOLVED: T9 (L3 activation) + T9b (zero LLM) + T9c (chunking) + T9d (kToken bound) + T9f (hard fallback) guard permanently** |
 | 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | **RESOLVED: T6b (80 tokens → ≤2 nodes) guards permanently** |
 | Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | **RESOLVED: BondGraph class enforces invariants at creation time; creation throws on violation** |
+| Non-deterministic Louvain (Pitfall 5) | 3 | Different runs produce different community assignments for same graph | **RESOLVED: T9 (10 runs same seed = identical) guards permanently; Mulberry32 PRNG via rng option** |
 | Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | Not started |
 | Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | Not started |
 | Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | Not started |
@@ -134,6 +138,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 02 | 04 | ~5 min | 2/2 | 5 created, 1 modified | 2026-02-28 |
 | 02 | 05 | ~6 min | 3/3 | 6 created | 2026-02-28 |
 | 03 | 01 | ~20 min | 2/2 | 7 created, 2 modified | 2026-02-28 |
+| 03 | 02 | ~8 min | 2/2 | 4 created, 1 modified | 2026-02-28 |
 
 ## File Map
 
@@ -171,7 +176,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
     └── 03-tna-molecular-cot/
         ├── 03-01-PLAN.md     — Wave 1: TNA types + MolecularCoT + Preprocessor + CooccurrenceGraph (DONE)
         ├── 03-01-SUMMARY.md  — Wave 1 execution summary
-        ├── 03-02-PLAN.md     — Wave 2: LouvainDetector + CentralityAnalyzer
+        ├── 03-02-PLAN.md     — Wave 2: LouvainDetector + CentralityAnalyzer (DONE)
+        ├── 03-02-SUMMARY.md  — Wave 2 execution summary
         └── 03-03-PLAN.md     — Wave 3: GapDetector + TNA barrel export
 
 src/
@@ -222,11 +228,15 @@ src/
     ├── interfaces.ts              — TextNodeId, TextNode, TextEdge, GapMetrics, CommunityAssignment, TNAConfig, PreprocessResult, DetailedPreprocessResult
     ├── Preprocessor.ts            — Preprocessor class: lemmatize() (wink POS-aware), preprocess(), preprocessDetailed(), addDocument(), preprocessWithCorpus()
     ├── Preprocessor.test.ts       — 11 tests: T1-T4 lemmatization/stopwords/TF-IDF/case, lemmatize() direct
-    ├── CooccurrenceGraph.ts       — CooccurrenceGraph class: ingest(), ingestTokens(), getGraph(), getNode(), getNodes(), getEdgeWeight(), order, size
-    └── CooccurrenceGraph.test.ts  — 11 tests: T5-T8b including T6b PRIMARY pitfall guard
+    ├── CooccurrenceGraph.ts       — CooccurrenceGraph class: ingest(), ingestTokens(), getGraph(), getNode(), getNodes(), getEdgeWeight(), updateNodeCentrality(), updateNodeCommunity(), order, size
+    ├── CooccurrenceGraph.test.ts  — 11 tests: T5-T8b including T6b PRIMARY pitfall guard
+    ├── LouvainDetector.ts         — Louvain community detection: detect(seed?), getAssignment(), getCommunityMembers(), getCommunityCount(), getModularity()
+    ├── LouvainDetector.test.ts    — 8 tests: T9 (determinism 10-run), T9b, T10/T10b (two-clique 2 communities), T11/T11b (complete graph 1 community), T12/T12b
+    ├── CentralityAnalyzer.ts      — Betweenness centrality: compute(), getScore(), getTopNodes(n), getBridgeNodes(threshold)
+    └── CentralityAnalyzer.test.ts — 8 tests: T13 (bridge highest), T13b (peripheral low), T14/T14b (normalized [0,1]), T15/T15b (metadata writeback + top-N)
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-02-28 — Stopped at: Completed Phase 3, Plan 03-01-PLAN.md (Wave 1: TNA types + MolecularCoT bond types + Preprocessor + CooccurrenceGraph — TNA-01, TNA-02, ORCH-03 satisfied)*
+*Last session: 2026-02-28 — Stopped at: Completed Phase 3, Plan 03-02-PLAN.md (Wave 2: LouvainDetector + CentralityAnalyzer — TNA-03, TNA-04 satisfied)*
 *Update this file at the start and end of each work session*
