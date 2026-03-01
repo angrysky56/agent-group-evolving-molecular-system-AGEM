@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-03-01
-**Current phase:** Phase 5 (Orchestrator) — Unblocked (Phase 4 complete)
+**Current phase:** Phase 5 (Orchestrator) — Plan 01 complete (Wave 1: Foundation primitives)
 
 ## Status Snapshot
 
@@ -12,10 +12,10 @@
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
-| 5 | Orchestrator Integration | **Unblocked** (Phases 1, 3, 4 all complete) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
+| 5 | Orchestrator Integration | **In Progress** (Plan 01/03 done: EventBus + AgentPool + OrchestratorStateManager + interfaces) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 (foundation complete; integration next) |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 24 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01, ORCH-02, ORCH-04, ORCH-05 remaining)
+**Overall v1 requirements:** 24 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01 and ORCH-04 foundation primitives built — integration pending in Plans 02-03)
 
 ## What Has Been Done
 
@@ -47,16 +47,18 @@
   - See `.planning/phases/04-soc/04-01-SUMMARY.md` for full details.
 - **Phase 4, Wave 2, Plan 02 complete (2026-03-01):** SOCTracker class extending EventEmitter with CDP computation, per-iteration surprising edge ratio (both cross-community AND low-similarity required, Pitfall 3 guard), rolling Pearson correlation sign-change phase transition detection (configurable window, no hard-coded constants). pearsonCorrelation() and linearSlope() pure utilities. 19 new tests (239 total passing): T-CDP-01/02, T-SE-01..05, T-PT-01/02/04, T-EV-01..05 + T-ISO-01..04. SOC barrel export (src/soc/index.ts). PHASE 4 COMPLETE: SOC-01 through SOC-05 all permanently guarded. Pitfalls RESOLVED: "phase transition hard-coded to 400" (T-ISO-03 + T-PT-01) + "surprising edge ratio cumulative" (T-SE-05).
   - See `.planning/phases/04-soc/04-02-SUMMARY.md` for full details.
+- **Phase 5, Wave 1, Plan 01 complete (2026-03-01):** Orchestrator foundation: interfaces.ts (Agent, PoolConfig, Task<T>, TaskResult<T>, AnyEvent, EventSubscriber). EventBus standalone class (Promise.all parallel dispatch, case-sensitive routing, async/sync handler support). AgentPool (Promise.race per-agent heartbeat timeouts — Pitfall 4 guard, idempotent shutdown). OrchestratorStateManager (NORMAL/OBSTRUCTED/CRITICAL state machine driven by H^1 dimension, configurable thresholds, StateChangeEvent emission via EventBus). 36 new tests (275 total passing). Rule 1 auto-fix: EventBus changed from extends EventEmitter to standalone class (emit() signature incompatible with EventEmitter base — TS2416). ORCH-01 and ORCH-04 foundation primitives established.
+  - See `.planning/phases/05-orchestrator/05-01-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 4 (SOC) COMPLETE — all 5 SOC requirements satisfied and permanently guarded.** Phase 5 (Orchestrator) is next and now fully unblocked:
+**Phase 5 Plan 01 COMPLETE — orchestrator foundation primitives built.** Phase 5 Plan 02 is next:
 
-1. Phase 5 Plan 01: Orchestrator foundation — state machine (NORMAL/OBSTRUCTED/CRITICAL), multi-module imports, event bus wiring, SOCTracker integration
-2. Phase 5 Plan 02: Agent coordination loop — Sheaf consensus rounds, TNA pipeline, SOC metric emission per iteration
-3. Phase 5 Plan 03: Molecular-CoT reasoning integration and ORCH-01 through ORCH-05 satisfaction
+1. ~~Phase 5 Plan 01: Orchestrator foundation — EventBus, AgentPool, OrchestratorStateManager, interfaces~~ DONE
+2. Phase 5 Plan 02: Composition root — wire EventBus + AgentPool + OrchestratorStateManager + llm_map + module imports (SOCTracker, CohomologyAnalyzer, TNA pipeline)
+3. Phase 5 Plan 03: Molecular-CoT reasoning integration and full ORCH-01 through ORCH-05 satisfaction
 
-**Import point for Phase 5:** `import { SOCTracker } from '../soc/index.js'` — all other SOC internals are encapsulated.
+**Import point for Plan 02:** `import { EventBus } from './EventBus.js'`, `import { AgentPool } from './AgentPool.js'`, `import { OrchestratorStateManager } from './OrchestratorState.js'`
 
 ## Active Decisions
 
@@ -101,6 +103,9 @@
 | SOCTracker phase transition noise filter |r|>0.1 | 2026-03-01 | Sign change on near-zero correlations (e.g., 0.001→-0.001) is false positive; both |prevR| and |currR| must exceed 0.1 threshold |
 | previousCorrelation only updated when r !== 0 | 2026-03-01 | Avoids overwriting meaningful correlation with 0 (insufficient data) during window warmup period |
 | T-PT-01 uses blended embeddings for independent VNE/EE control | 2026-03-01 | v[0]=sqrt(1-t) (shared) + v[k]=sqrt(t) (unique), normalized; path-graph length controls VNE independently; verified sign change fires at iter 9 (r: +0.906 to -0.664) |
+| EventBus is standalone class (not extends EventEmitter) | 2026-03-01 | emit() signature incompatible with EventEmitter base (TS2416); composition used instead — private #emitter field held for future Node.js integration |
+| CRITICAL → NORMAL (not CRITICAL → OBSTRUCTED) | 2026-03-01 | When H^1 drops below obs threshold from CRITICAL, state returns to NORMAL directly; OBSTRUCTED is only entered from NORMAL going up |
+| AgentPool heartbeat skips terminated agents | 2026-03-01 | #runHeartbeat filters agents by status !== 'terminated' before issuing heartbeat; avoids calling heartbeat() on dead agents |
 
 ## Resolved Questions
 
@@ -157,6 +162,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | Phase 04 P01 | 7min | 2 tasks | 4 files |
 | 04 | 02 | 9 min | 2/2 | 5 created | 2026-03-01 |
 | Phase 04 P02 | 9 | 2 tasks | 5 files |
+| 05 | 01 | ~7 min | 4/4 | 7 created | 2026-03-01 |
 
 ## File Map
 
@@ -266,9 +272,17 @@ src/
     ├── SOCTracker.test.ts         — 15 tests: T-CDP-01/02, T-SE-01..05, T-PT-01/02/04, T-EV-01..05
     ├── isolation.test.ts          — 4 tests: T-ISO-01 (zero cross-module imports), T-ISO-02 (no test imports), T-ISO-03 (no literal 400), T-ISO-04 (synthetic only)
     └── index.ts                   — Public barrel export: SOCTracker, vonNeumannEntropy, embeddingEntropy, cosineSimilarity, pearsonCorrelation, linearSlope + all types
+└── orchestrator/
+    ├── interfaces.ts              — Agent (5-stage lifecycle), PoolConfig, Task<T>, TaskResult<T>, AnyEvent = SheafEvent | SOCEvent, EventSubscriber type alias
+    ├── EventBus.ts                — EventBus class: subscribe/emit/unsubscribe/getSubscriberCount; Promise.all parallel dispatch; #subscribers Map<string, EventSubscriber[]>
+    ├── EventBus.test.ts           — 12 tests: T1-T10 (routing, parallel, unsubscribe, async, case-sensitive) + 2 additional
+    ├── AgentPool.ts               — AgentPool class: initialize/shutdown (idempotent)/getAgents/getIdleAgents/getAgentCount; Promise.race per-agent heartbeat timeout
+    ├── AgentPool.test.ts          — 12 tests: T1-T10 (spawn, idle, heartbeat interval, timeout, shutdown, lifecycle) + 2 additional
+    ├── OrchestratorState.ts       — OrchestratorState enum (NORMAL/OBSTRUCTED/CRITICAL), StateChangeEvent, OrchestratorStateManager with updateMetrics(h1Dimension)
+    └── OrchestratorState.test.ts  — 12 tests: T1-T8 (state transitions, event payloads, thresholds, H1=0) + 4 additional
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-01 — Completed Phase 4, Plan 04-02-PLAN.md (Wave 2: SOCTracker + isolation + barrel — Phase 4 COMPLETE, SOC-01 through SOC-05 all permanently guarded by 30 tests, 239 total passing)*
+*Last session: 2026-03-01 — Completed Phase 5, Plan 05-01 (Wave 1: EventBus + AgentPool + OrchestratorStateManager + interfaces — 36 new tests, 275 total passing, tsc --noEmit clean)*
 *Update this file at the start and end of each work session*
