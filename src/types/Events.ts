@@ -1,18 +1,24 @@
 /**
  * Events.ts
  *
- * Event types emitted by CohomologyAnalyzer and consumed by the Phase 5 Orchestrator.
- * Only import: VertexId from ./GraphTypes.
+ * Event types emitted by CohomologyAnalyzer (sheaf events) and SOCTracker (SOC events),
+ * consumed by the Phase 5 Orchestrator.
+ *
+ * Imports: VertexId from ./GraphTypes only.
+ *
+ * Note: SOC events have their own discriminated union (SOCEvent, SOCEventType)
+ * separate from SheafEventType. They are NOT added to SheafEventType.
  */
 
 import type { VertexId } from './GraphTypes.js';
 
 // ---------------------------------------------------------------------------
-// Event type discriminant
+// Sheaf event type discriminant
 // ---------------------------------------------------------------------------
 
 /**
  * SheafEventType — string literal union of all sheaf event types.
+ * SOC events are NOT included here — see SOCEventType below.
  */
 export type SheafEventType =
   | 'sheaf:consensus-reached'
@@ -20,7 +26,7 @@ export type SheafEventType =
   | 'sheaf:iteration-complete';
 
 // ---------------------------------------------------------------------------
-// Concrete event types
+// Sheaf concrete event types
 // ---------------------------------------------------------------------------
 
 /**
@@ -51,7 +57,7 @@ export interface SheafH1ObstructionEvent {
 }
 
 // ---------------------------------------------------------------------------
-// Discriminated union
+// Sheaf discriminated union
 // ---------------------------------------------------------------------------
 
 /**
@@ -59,3 +65,77 @@ export interface SheafH1ObstructionEvent {
  * Use exhaustive switch/match patterns against the `type` field.
  */
 export type SheafEvent = SheafConsensusReachedEvent | SheafH1ObstructionEvent;
+
+// ---------------------------------------------------------------------------
+// SOC event type discriminant (separate from SheafEventType)
+// ---------------------------------------------------------------------------
+
+/**
+ * SOCEventType — string literal union of all SOC event types.
+ * These are emitted by SOCTracker (Phase 4), not by CohomologyAnalyzer.
+ */
+export type SOCEventType = 'soc:metrics' | 'phase:transition';
+
+// ---------------------------------------------------------------------------
+// SOC concrete event types
+// ---------------------------------------------------------------------------
+
+/**
+ * SOCMetricsEvent — emitted every iteration with all five SOC metrics.
+ *
+ * Fields:
+ *   - type: discriminant ('soc:metrics')
+ *   - iteration: which iteration produced these metrics
+ *   - timestamp: Date.now() at emission time (milliseconds since epoch)
+ *   - vonNeumannEntropy: S_VN = -Σ λ_i ln(λ_i) of normalized Laplacian density matrix
+ *   - embeddingEntropy: S_EE = -Σ λ_i ln(λ_i) of embedding covariance eigenspectrum
+ *   - cdp: Complexity Differential Probe = vonNeumannEntropy - embeddingEntropy
+ *   - surprisingEdgeRatio: fraction of new edges this iteration that cross community boundaries
+ *     with cosine similarity < δ_surprising (default 0.3)
+ *   - correlationCoefficient: Pearson r between rolling VN entropy and rolling embedding entropy
+ *   - isPhaseTransition: true if correlationCoefficient sign changed since previous iteration
+ */
+export interface SOCMetricsEvent {
+  readonly type: 'soc:metrics';
+  readonly iteration: number;
+  readonly timestamp: number;
+  readonly vonNeumannEntropy: number;
+  readonly embeddingEntropy: number;
+  readonly cdp: number;
+  readonly surprisingEdgeRatio: number;
+  readonly correlationCoefficient: number;
+  readonly isPhaseTransition: boolean;
+}
+
+/**
+ * SOCPhaseTransitionEvent — emitted when cross-correlation sign changes.
+ *
+ * A sign change in the Pearson correlation between Von Neumann entropy and
+ * embedding entropy signals a phase transition in the agent group's collective
+ * cognitive structure — the point at which structural complexity (graph topology)
+ * and semantic complexity (embedding covariance) decouple or re-couple.
+ *
+ * Fields:
+ *   - type: discriminant ('phase:transition')
+ *   - iteration: current iteration at detection time
+ *   - centeredAtIteration: iteration estimate of the transition midpoint (center of window)
+ *   - correlationCoefficient: current Pearson r (the new value, after sign change)
+ *   - previousCorrelation: Pearson r from the previous iteration (the old value, before sign change)
+ */
+export interface SOCPhaseTransitionEvent {
+  readonly type: 'phase:transition';
+  readonly iteration: number;
+  readonly centeredAtIteration: number;
+  readonly correlationCoefficient: number;
+  readonly previousCorrelation: number;
+}
+
+// ---------------------------------------------------------------------------
+// SOC discriminated union
+// ---------------------------------------------------------------------------
+
+/**
+ * SOCEvent — discriminated union of all SOC events, keyed on `type`.
+ * Use exhaustive switch/match patterns against the `type` field.
+ */
+export type SOCEvent = SOCMetricsEvent | SOCPhaseTransitionEvent;
