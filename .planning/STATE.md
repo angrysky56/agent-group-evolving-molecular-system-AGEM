@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-03-01
-**Current phase:** Phase 5 (Orchestrator) — Plan 02 complete (Wave 2: llm_map parallel task dispatch)
+**Current phase:** Phase 5 (Orchestrator) — COMPLETE (Plan 03/03 done: Composition root + ObstructionHandler + 131 tests)
 
 ## Status Snapshot
 
@@ -12,10 +12,10 @@
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
-| 5 | Orchestrator Integration | **In Progress** (Plan 02/03 done: llm_map + TaskWorker + 33 tests; foundation primitives complete) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 (ORCH-02 primitive built; composition root next in Plan 03) |
+| 5 | Orchestrator Integration | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied) |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 24 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01, ORCH-02, and ORCH-04 foundation primitives built — composition root in Plan 03 completes ORCH-05)
+**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing)
 
 ## What Has Been Done
 
@@ -51,16 +51,25 @@
   - See `.planning/phases/05-orchestrator/05-01-SUMMARY.md` for full details.
 - **Phase 5, Wave 2, Plan 02 complete (2026-03-01):** llm_map primitive (ORCH-02): round-robin dispatch to worker pool, AsyncLocalStorage contextStorage for context propagation (serialized as plain object via postMessage), ORDER PRESERVATION via sort-by-original-index (Pitfall 5 guard). TaskWorker.ts ESM worker entry point with worker-local contextStorage, stub executor (shouldFail/value/prompt), full error sandboxing. TaskWorker.mock.mjs pure JavaScript mock worker for vitest isolation (avoids tsx ESM cross-thread resolution). 33 new tests (308 total passing): T1-T15 covering dispatch, T2 ORDER PRESERVATION guard, T4 partial failures, T5 context propagation, T10 worker cleanup. Rule 1 auto-fixes: TaskWorker uses worker-local AsyncLocalStorage (not cross-thread import); mixed-payload test arrays typed as Task<unknown>[]. ORCH-02 primitive established.
   - See `.planning/phases/05-orchestrator/05-02-SUMMARY.md` for full details.
+- **Phase 5, Wave 3, Plan 03 complete (2026-03-01):** Orchestrator composition root (ORCH-05): ComposeRootModule.ts wires all four AGEM modules (Sheaf, LCM, TNA, SOC) with shared IEmbedder dependency. EventBus wired to receive events from CohomologyAnalyzer (via .on() forwarding) and SOCTracker (same pattern). runReasoning() executes full TNA→Sheaf→SOC pipeline per iteration with LCM append and Louvain detection. ObstructionHandler implements ROADMAP criteria #3: H^1 obstruction → FIFO queue → GapDetectorAgent spawn → findGaps() → ingestTokens() → orch:obstruction-filled event. Isolation test confirms zero cross-imports between sheaf/lcm/tna/soc (via from-clause regex extraction). Barrel export complete. 62 new tests (370 total passing): 37 ComposeRootModule integration, 18 ObstructionHandler, 7 isolation. Rule 1 auto-fixes: ImmutableStore requires ITokenCounter; CellularSheaf requires (vertices, edges); Preprocessor.process() → preprocess(); multiline import regex fix in isolation test. PHASE 5 COMPLETE: all 5 ROADMAP criteria + ORCH-01–05 satisfied.
+  - See `.planning/phases/05-orchestrator/05-03-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 5 Plan 02 COMPLETE — llm_map parallel dispatch primitive built.** Phase 5 Plan 03 is next:
+**Phase 5 COMPLETE — All 5 ROADMAP success criteria satisfied, 370 total tests passing.** Phase 6 can begin when ready:
 
 1. ~~Phase 5 Plan 01: Orchestrator foundation — EventBus, AgentPool, OrchestratorStateManager, interfaces~~ DONE
 2. ~~Phase 5 Plan 02: llm_map primitive — parallel task dispatch, context propagation, order preservation, TaskWorker~~ DONE
-3. Phase 5 Plan 03: Composition root — wire EventBus + AgentPool + OrchestratorStateManager + llm_map + module imports (SOCTracker, CohomologyAnalyzer, TNA pipeline); ORCH-05 completion
+3. ~~Phase 5 Plan 03: Composition root — Orchestrator (ComposeRootModule), ObstructionHandler, integration tests, isolation test, barrel export~~ DONE
 
-**Import point for Plan 02:** `import { EventBus } from './EventBus.js'`, `import { AgentPool } from './AgentPool.js'`, `import { OrchestratorStateManager } from './OrchestratorState.js'`
+**Phase 6 entry point:** `import { Orchestrator } from 'src/orchestrator/index.js'` → `new Orchestrator(embedder)` → `runReasoning(prompt)`
+
+Phase 6 opportunities:
+- Dynamic pool scaling for ObstructionHandler
+- Real LLM inference in GapDetectorAgent (replacing Phase 5 stubs)
+- GraphRAG catalyst generation for gap filling
+- Dynamic sheaf topology construction from TNA community structure
+- Topology healing via direct edge addition in CooccurrenceGraph
 
 ## Active Decisions
 
@@ -111,6 +120,10 @@
 | TaskWorker uses worker-local AsyncLocalStorage | 2026-03-01 | Worker threads have separate module graphs; cross-thread AsyncLocalStorage sharing is impossible; workers restore context from postMessage plain object using their own local AsyncLocalStorage instance |
 | TaskWorker.mock.mjs is pure JavaScript (.mjs) | 2026-03-01 | tsx/esm loader does not resolve .js→.ts for imports inside worker threads spawned from vitest; pure JS mock avoids compilation dependency in tests |
 | effectivePoolSize clamped to [1, tasks.length] | 2026-03-01 | No excess workers spawned for small task batches; prevents unnecessary thread overhead when poolSize > task count |
+| buildFlatSheaf(2, 1) as Phase 5 test sheaf | 2026-03-01 | 2-vertex path sheaf with 1-dim identity restrictions: H^0=1, H^1=0 (consensus fires every iteration); in Phase 6 sheaf topology would be dynamically constructed from TNA graph |
+| GptTokenCounter injected into ImmutableStore | 2026-03-01 | ImmutableStore(tokenCounter) requires ITokenCounter arg — plan pseudocode showed no-arg constructor; fixed by injecting GptTokenCounter in Orchestrator |
+| Isolation test uses from-clause regex extraction | 2026-03-01 | `\bfrom\s+['"]([^'"]+)['"]` handles TypeScript multiline import blocks; segment equality check (`path.split('/').some(seg => seg === module)`) correctly matches all relative path styles |
+| ObstructionHandler stores subscription callback as class field | 2026-03-01 | `#obstructionHandler` field stores the arrow function reference for EventBus.unsubscribe() in shutdown() — required since unsubscribe uses reference equality |
 
 ## Resolved Questions
 
@@ -170,6 +183,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 05 | 01 | ~7 min | 4/4 | 7 created | 2026-03-01 |
 | 05 | 02 | 6 min | 2/2 | 4 created | 2026-03-01 |
 | Phase 05 P02 | 6 | 2 tasks | 4 files |
+| 05 | 03 | ~25 min | 3/3 | 6 created | 2026-03-01 |
 
 ## File Map
 
@@ -289,6 +303,12 @@ src/
     ├── OrchestratorState.test.ts  — 12 tests: T1-T8 (state transitions, event payloads, thresholds, H1=0) + 4 additional
     ├── llm_map.ts                 — llm_map<T>() parallel dispatch, contextStorage AsyncLocalStorage, formatTaskForWorker(), WorkerInboundMessage/WorkerOutboundMessage types
     ├── llm_map.test.ts            — 33 tests: T1-T15 (dispatch, ORDER PRESERVATION guard, partial failures, context propagation, cleanup, round-robin, edge cases)
+    ├── ComposeRootModule.ts       — Orchestrator class: 11 readonly component properties, EventBus wiring, runReasoning() pipeline (TNA→LCM→Sheaf→SOC), shutdown()
+    ├── ComposeRootModule.test.ts  — 37 integration tests: instantiation, event wiring, state transitions, 10-iteration loop (T6), LCM/TNA/SOC integration, edge cases
+    ├── ObstructionHandler.ts      — H^1 → FIFO queue → GapDetectorAgent spawn → findGaps() → ingestTokens() feedback loop; GapFillResult; orch:obstruction-filled event
+    ├── ObstructionHandler.test.ts — 18 tests: subscription, async processing, agent spawning, graph integration, FIFO ordering, event emission, status accuracy
+    ├── isolation.test.ts          — 7 tests: T1-T4 per-module isolation (zero cross-imports sheaf/lcm/tna/soc), T5 only ComposeRootModule.ts has multi-module imports
+    ├── index.ts                   — Barrel export: Orchestrator, ObstructionHandler, OrchestratorState, EventBus, AgentPool, llm_map + all types
     └── workers/
         ├── TaskWorker.ts          — ESM worker entry point: worker-local AsyncLocalStorage, stub executor (shouldFail/value/prompt), error sandboxing, parentPort guard
         └── TaskWorker.mock.mjs    — Pure JavaScript mock worker for tests: delay support, shouldFail injection, _context echo, workerMessageCount tracking
@@ -296,5 +316,5 @@ src/
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-01 — Completed Phase 5, Plan 05-02 (Wave 2: llm_map + TaskWorker + TaskWorker.mock.mjs + 33 tests — 308 total passing, tsc --noEmit clean)*
+*Last session: 2026-03-01 — Completed Phase 5, Plan 05-03 (Wave 3: Orchestrator composition root + ObstructionHandler + 62 new tests — 370 total passing, tsc --noEmit clean, all 5 ROADMAP criteria satisfied)*
 *Update this file at the start and end of each work session*
