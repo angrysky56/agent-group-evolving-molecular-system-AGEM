@@ -1,24 +1,25 @@
-# Phase 5 Planning Summary — Orchestrator Integration
+# Phase 5 Planning Summary — Orchestrator Integration (REVISED)
 
 **Created:** 2026-02-28
-**Status:** PLANNING COMPLETE
+**Revised:** 2026-03-01
+**Status:** PLANNING COMPLETE — ALL 5 ROADMAP CRITERIA COVERED
 **Phase:** 05-orchestrator
 **Plans:** 3 sequential (Wave 1 → Wave 2 → Wave 3)
-**Total Tasks:** 8
-**Total Tests:** 40+
+**Total Tasks:** 9 (added 2 for missing criteria)
+**Total Tests:** 65+ (revised from 40+)
 **Dependencies:** Phases 1-4 (all complete and verified)
 
 ---
 
 ## Executive Summary
 
-Phase 5 is the integration phase that brings together all four independently-built modules (Sheaf, LCM, TNA, SOC) under a single orchestrator with event-driven coordination and parallel task dispatch. Three sequential plans decompose this integration into manageable, testable chunks:
+Phase 5 is the integration phase that brings together all four independently-built modules (Sheaf, LCM, TNA, SOC) under a single orchestrator with event-driven coordination, parallel task dispatch, obstruction-driven reconfiguration, and state machine tracking. Three sequential plans decompose this integration into manageable, testable chunks:
 
 | Plan | Wave | Objective | Requirements | Scope |
 |------|------|-----------|--------------|-------|
-| **05-01** | 1 | Foundation: EventBus + AgentPool | ORCH-01, ORCH-04 | Interfaces, event routing, agent lifecycle |
+| **05-01** | 1 | Foundation: EventBus + AgentPool + StateManager | ORCH-01, ORCH-03, ORCH-04 | Interfaces, event routing, agent lifecycle, state transitions |
 | **05-02** | 2 | Parallel dispatch: llm_map primitive | ORCH-02 | Order preservation, context propagation, worker threads |
-| **05-03** | 3 | Composition root: Full integration | ORCH-05 | Orchestrator, module wiring, 10-iteration test, isolation verification |
+| **05-03** | 3 | Composition root: Full integration + Obstruction handling | ORCH-05, Criteria #3 | Orchestrator, ObstructionHandler, module wiring, 10-iteration test, isolation verification |
 
 **No new npm dependencies.** All primitives use Node.js built-ins (events, worker_threads, async_hooks).
 
@@ -34,6 +35,7 @@ Phase 5 is the integration phase that brings together all four independently-bui
 - `src/orchestrator/interfaces.ts` — Type definitions: Agent, PoolConfig, Task, TaskResult, EventSubscriber, AnyEvent
 - `src/orchestrator/EventBus.ts` + test — Event-driven coordination (ORCH-04)
 - `src/orchestrator/AgentPool.ts` + test — Agent lifecycle management (ORCH-01)
+- `src/orchestrator/OrchestratorState.ts` + test — State machine (ORCH-03) **[NEW FOR REVISION]**
 
 **Key Architecture:**
 
@@ -51,13 +53,24 @@ AgentPool (ORCH-01):
 - `shutdown()` is idempotent; cleans up all agents gracefully
 - `getIdleAgents()` returns only agents with status='idle'
 
-**Tests:** 20+ (EventBus 10+, AgentPool 10+)
+OrchestratorStateManager (ORCH-03): **[NEW FOR REVISION]**
+- Enum: OrchestratorState { NORMAL, OBSTRUCTED, CRITICAL }
+- State transitions driven by H^1 metric:
+  - NORMAL → OBSTRUCTED when H^1 ≥ obstruction threshold
+  - OBSTRUCTED → CRITICAL when H^1 ≥ critical threshold
+  - CRITICAL → NORMAL when H^1 < obstruction threshold
+- Emits StateChangeEvent on transitions (old/new state, h1 metric, reason)
+- Deterministic and synchronous (no async operations)
+
+**Tests:** 35+ (EventBus 10+, AgentPool 10+, OrchestratorState 8+)
 - EventBus routing, multiple subscribers, unsubscribe, async handlers, error handling
 - AgentPool spawn/shutdown, idle tracking, per-agent timeouts, cascade prevention
+- OrchestratorState transitions (T1: NORMAL→OBSTRUCTED, T2: OBSTRUCTED→CRITICAL, T3: CRITICAL→NORMAL, T4-T8: edge cases)
 
 **Success Criteria:**
 - [x] EventBus routing verified (T1-T10)
 - [x] Per-agent heartbeat timeouts prevent cascading hangs (T4)
+- [x] State machine deterministic and testable (T1-T8)
 - [x] Module isolation: only imports from src/types/Events.js
 
 ---
@@ -108,10 +121,11 @@ TaskWorker:
 
 ### Plan 05-03: Composition Root & Integration (Wave 3)
 
-**Purpose:** Wire all four modules together and verify end-to-end integration with isolation enforcement.
+**Purpose:** Wire all four modules together, implement obstruction-driven reconfiguration, and verify end-to-end integration with isolation enforcement.
 
 **Files Created:**
 - `src/orchestrator/ComposeRootModule.ts` + test — Composition root (ORCH-05)
+- `src/orchestrator/ObstructionHandler.ts` + test — Obstruction handling (Criteria #3) **[NEW FOR REVISION]**
 - `src/orchestrator/isolation.test.ts` — Module independence verification (5 tests)
 - `src/orchestrator/index.ts` — Public barrel export
 
@@ -124,23 +138,33 @@ Orchestrator (ORCH-05):
   3. Sheaf: CellularSheaf, CohomologyAnalyzer
   4. TNA: Preprocessor, CooccurrenceGraph, LouvainDetector, GapDetector
   5. SOC: SOCTracker
+  6. OrchestratorStateManager (NEW)
+  7. ObstructionHandler (NEW)
 
 - Wires event emissions (explicit and visible):
   - CohomologyAnalyzer.on('sheaf:consensus-reached') → eventBus.emit(event)
-  - CohomologyAnalyzer.on('sheaf:h1-obstruction-detected') → eventBus.emit(event)
+  - CohomologyAnalyzer.on('sheaf:h1-obstruction-detected') → eventBus.emit(event) + stateManager.updateMetrics()
   - SOCTracker.on('soc:metrics') → eventBus.emit(event)
   - SOCTracker.on('phase:transition') → eventBus.emit(event)
-
-- Default subscribers log iteration progress (console.log)
+  - StateManager.on('orch:state-changed') → eventBus.emit(event)
 
 - `async runReasoning(prompt)` executes full pipeline:
   1. Preprocess text via TNA
   2. Build co-occurrence graph
   3. Run Louvain community detection
   4. Append prompt to LCM
-  5. Run Sheaf cohomology analysis
-  6. Compute SOC metrics
-  7. Events automatically emitted and routed
+  5. Run Sheaf cohomology analysis (triggers H^1 detection if applicable)
+  6. State machine updates on H^1 metric
+  7. Compute SOC metrics
+  8. Events automatically emitted and routed
+
+ObstructionHandler (Criteria #3): **[NEW FOR REVISION]**
+- Subscribes to 'sheaf:h1-obstruction-detected' events
+- Spawns gapDetector agents via AgentPool when obstruction detected
+- Feeds gap fill results back to TNA graph (new nodes/edges)
+- Emits 'orch:obstruction-filled' events for monitoring
+- Queues and serializes multiple obstructions (FIFO)
+- Integrates results into graph for next iteration
 
 Isolation Test:
 - T1-T4: Verify zero cross-imports between src/sheaf, src/lcm, src/tna, src/soc
@@ -148,27 +172,32 @@ Isolation Test:
 - Uses regex pattern matching on source files
 
 Barrel Export:
-- Exports: Orchestrator, EventBus, AgentPool, llm_map
-- Re-exports types: Agent, PoolConfig, Task, TaskResult, EventSubscriber, AnyEvent, IEmbedder
+- Exports: Orchestrator, ObstructionHandler, OrchestratorState, EventBus, AgentPool, llm_map, OrchestratorStateManager
+- Re-exports types: Agent, PoolConfig, Task, TaskResult, EventSubscriber, AnyEvent, StateChangeEvent, IEmbedder
 
-**Tests:** 20+ integration + isolation (ComposeRootModule 15+, isolation 5)
-- T1: Instantiation succeeds (all 9 properties non-null)
+**Tests:** 37+ integration + isolation (ComposeRootModule 15+, ObstructionHandler 7+, isolation 5+)
+- T1: Instantiation succeeds (all 11 properties non-null, stateManager and obstructionHandler included)
 - T2-T3: Event wiring verified (CohomologyAnalyzer, SOCTracker → EventBus)
-- T4: Single iteration executes
-- T5: **10-iteration loop** executes completely (core integration test)
-- T6: LCM appends text entries
-- T7: TNA graph accumulates nodes
-- T8: SOC metrics computed each iteration
-- T9: Sheaf cohomology computed each iteration
-- T10: Iteration counter accurate
-- T11: Public properties accessible
-- T12-T15: Edge cases (long prompt, empty, 20+ iterations, shutdown)
+- T4: State transitions on H^1 obstruction detection
+- T5: Single iteration executes
+- T6: **10-iteration loop** executes completely (core integration test)
+- T7: LCM appends text entries
+- T8: TNA graph accumulates nodes
+- T9: SOC metrics computed each iteration
+- T10: Sheaf cohomology computed each iteration
+- T11: getIterationCount() accurate
+- T12: getState() returns correct orchestrator state
+- T13: Obstruction triggers ObstructionHandler + agent spawn + gap fill integration
+- T14: Public properties accessible
+- T15: Edge cases (long prompt, empty, 20+ iterations, shutdown)
 
 **Success Criteria:**
-- [x] 10-iteration loop completes without exceptions (T5)
+- [x] 10-iteration loop completes without exceptions (T6)
 - [x] All four modules instantiate and work together
+- [x] State machine tracks modes (NORMAL/OBSTRUCTED/CRITICAL)
+- [x] Obstruction detection triggers gapDetector spawn and gap fill integration
 - [x] Zero cross-module imports verified (isolation.test.ts)
-- [x] LCM accumulates entries, TNA accumulates nodes, SOC emits metrics
+- [x] LCM accumulates entries, TNA accumulates nodes, SOC emits metrics, state transitions occur
 
 ---
 
@@ -178,14 +207,16 @@ Barrel Export:
 Plan 05-01 (Foundation)
     ├── interfaces.ts
     ├── EventBus.ts ────────┐
-    └── AgentPool.ts        │
+    ├── AgentPool.ts        │
+    └── OrchestratorState.ts [NEW]
                             ↓
                       Plan 05-02 (Parallel Dispatch)
                             ├── llm_map.ts (uses EventBus context)
                             └── TaskWorker.ts (receives context)
                                         ↓
                             Plan 05-03 (Integration)
-                                ├── ComposeRootModule.ts (imports all)
+                                ├── ComposeRootModule.ts (imports all, integrates state + obstruction)
+                                ├── ObstructionHandler.ts [NEW]
                                 ├── isolation.test.ts (verifies no cross-imports)
                                 └── index.ts (barrel export)
 ```
@@ -198,25 +229,42 @@ Each plan is executable independently AFTER its dependencies complete.
 
 | Requirement | Plan | Component | Status |
 |-------------|------|-----------|--------|
-| ORCH-01 | 05-01 | AgentPool (spawn/heartbeat/cleanup) | Fully specified |
-| ORCH-02 | 05-02 | llm_map (parallel dispatch, order preservation) | Fully specified |
-| ORCH-04 | 05-01 | EventBus (async event routing) | Fully specified |
-| ORCH-05 | 05-03 | Orchestrator composition root | Fully specified |
+| ORCH-01 | 05-01 | AgentPool (spawn/heartbeat/cleanup) | ✓ Fully specified |
+| ORCH-02 | 05-02 | llm_map (parallel dispatch, order preservation) | ✓ Fully specified |
+| ORCH-03 | 05-01 | OrchestratorStateManager (state machine) | ✓ Fully specified [NEW] |
+| ORCH-04 | 05-01 | EventBus (async event routing) | ✓ Fully specified |
+| ORCH-05 | 05-03 | Orchestrator composition root | ✓ Fully specified |
 
-**All four requirements satisfied by end of Phase 5.**
+**All five ORCH requirements satisfied by end of Phase 5.**
+
+---
+
+## ROADMAP Success Criteria Coverage
+
+| Criteria # | Description | Implementation | Plan | Tests |
+|-----------|-------------|-----------------|------|-------|
+| 1 | Single composition root | ComposeRootModule instantiates Sheaf, LCM, TNA, SOC | 05-03 | T1, T5 (10-iteration) |
+| 2 | llm_map context preservation | AsyncLocalStorage serialization + order preservation | 05-02 | T2-T15 (15 tests) |
+| 3 | Obstruction-driven reconfiguration | H1 → ObstructionHandler → gapDetector spawn | 05-03 Task 2 [NEW] | T13 + 7 dedicated tests |
+| 4 | Three-mode state machine | OrchestratorState enum + transitions (NORMAL/OBSTRUCTED/CRITICAL) | 05-01 Task 4 [NEW] | T1-T8 (8 tests) |
+| 5 | End-to-end 10-iteration run | Full AGEM loop with all modules + state transitions | 05-03 | T6 (10-iteration) |
+
+**All 5 criteria now explicitly covered in Phase 5 plans (was missing #3 and #4).**
 
 ---
 
 ## Testing Strategy
 
-**Total: 40+ tests across three plans**
+**Total: 65+ tests across three plans**
 
 | Component | Tests | Coverage |
 |-----------|-------|----------|
 | EventBus | 10+ | Routing, subscribers, async, unsubscribe, errors |
 | AgentPool | 10+ | Lifecycle, spawn, heartbeat, shutdown, timeouts |
+| OrchestratorState | 8+ | State transitions, events, thresholds [NEW] |
 | llm_map | 15+ | Ordering, context, partial failures, cleanup |
-| ComposeRootModule | 15+ | Instantiation, pipeline, 10-iteration, metrics |
+| ComposeRootModule | 15+ | Instantiation, pipeline, 10-iteration, state machine, obstruction |
+| ObstructionHandler | 7+ | Event subscription, agent spawn, gap fill integration [NEW] |
 | isolation.test.ts | 5 | Zero cross-imports per module |
 
 **Characteristics:**
@@ -274,6 +322,23 @@ await Promise.all(handlers.map((h) => Promise.resolve(h(event))));
 
 **Benefit:** Slow subscriber doesn't block others; all subscribers see events concurrently.
 
+### 6. State Machine Driven by Metrics (NEW) [ROADMAP Criteria #4]
+OrchestratorStateManager responds to H^1 obstruction metric:
+- NORMAL → OBSTRUCTED: H^1 crosses threshold (topological complexity increases)
+- OBSTRUCTED → CRITICAL: H^1 exceeds critical limit (severe obstruction)
+- CRITICAL → NORMAL: H^1 drops below threshold (obstruction resolved)
+
+**Benefit:** Operational mode reflects topological health; state transitions trigger adaptive behaviors.
+
+### 7. Obstruction-Driven Reconfiguration (NEW) [ROADMAP Criteria #3]
+ObstructionHandler subscribes to H^1 events and spawns gapDetector agents:
+- Event: 'sheaf:h1-obstruction-detected'
+- Action: Spawn gapDetector agent from AgentPool
+- Integration: Feed gap fill results back to TNA (new nodes/edges)
+- Monitoring: Emit 'orch:obstruction-filled' for tracking
+
+**Benefit:** System responds reactively to topological obstructions; semantic voids auto-filled.
+
 ---
 
 ## Integration with Phases 1-4
@@ -289,40 +354,6 @@ Orchestrator imports from public barrel exports (index.ts) of each module. Modul
 
 ---
 
-## Success Criteria from ROADMAP.md
-
-Phase 5 satisfies all five success criteria defined in `.planning/ROADMAP.md`:
-
-1. **Single composition root enforced** ✓
-   - Static analysis confirms zero cross-imports between sheaf, lcm, tna, soc
-   - Only Orchestrator imports from all four modules
-   - Verified by isolation.test.ts (5 tests)
-
-2. **llm_map context preservation** ✓
-   - N parallel tasks dispatch with context snapshots
-   - All N results appended before context update
-   - 5-task test confirms all results recorded, no loss
-   - Verified by llm_map.test.ts T5
-
-3. **Obstruction-driven reconfiguration** ⚠️ (Event routing only)
-   - H^1 obstruction detected → event fires on EventBus
-   - Note: Full reconfiguration (spawn agents, reset topology) deferred to Phase 6
-   - Event routing verified in ComposeRootModule.test.ts T2-T3
-
-4. **Three-mode state machine** ⚠️ (Events only)
-   - NORMAL → OBSTRUCTED on H^1 detection (event routed)
-   - Note: State machine implementation deferred to Phase 6
-   - Events properly typed and routed through EventBus
-
-5. **End-to-end multi-iteration run** ✓
-   - Full AGEM loop runs for 10+ iterations (T5)
-   - All agent outputs recorded in LCM (T6)
-   - TNA graph accumulated nodes (T7)
-   - SOC metrics non-null and valid (T8)
-   - No unhandled exceptions
-
----
-
 ## File Structure After Phase 5
 
 ```
@@ -333,12 +364,16 @@ src/
 │   ├── EventBus.test.ts             — 10+ tests
 │   ├── AgentPool.ts                 — Lifecycle management (ORCH-01)
 │   ├── AgentPool.test.ts            — 10+ tests
+│   ├── OrchestratorState.ts         — State machine (ORCH-03) [NEW]
+│   ├── OrchestratorState.test.ts    — 8+ tests [NEW]
 │   ├── llm_map.ts                   — Parallel dispatch (ORCH-02)
 │   ├── llm_map.test.ts              — 15+ tests
 │   ├── workers/
 │   │   └── TaskWorker.ts            — Worker entry point
 │   ├── ComposeRootModule.ts         — Composition root (ORCH-05)
 │   ├── ComposeRootModule.test.ts    — 15+ integration tests
+│   ├── ObstructionHandler.ts        — H^1 → gapDetector spawn (Criteria #3) [NEW]
+│   ├── ObstructionHandler.test.ts   — 7+ tests [NEW]
 │   ├── isolation.test.ts            — 5 module isolation tests
 │   └── index.ts                     — Public barrel export
 │
@@ -356,20 +391,21 @@ src/
 Run: `/gsd:execute-phase 05-orchestrator`
 
 This will execute all three plans sequentially:
-1. Wave 1: EventBus, AgentPool, interfaces
+1. Wave 1: EventBus, AgentPool, OrchestratorState, interfaces
 2. Wave 2: llm_map, TaskWorker
-3. Wave 3: Orchestrator, isolation.test.ts, barrel export
+3. Wave 3: Orchestrator, ObstructionHandler, isolation.test.ts, barrel export
 
 ### After Phase 5 Complete
 - Run full integration test suite: `npm test -- src/orchestrator/`
-- Verify 40+ tests passing
+- Verify 65+ tests passing (revised from 40+)
+- Verify all 5 ROADMAP criteria satisfied
 - Verify no unhandled rejections in 10-iteration loop
 
 ### Phase 6 (If Requirements Warrant)
 - Dynamic pool resizing (adjust poolSize based on queue depth)
-- State machine implementation (NORMAL/OBSTRUCTED/CRITICAL transitions)
-- Obstruction-driven topology reconfiguration (H^1 → Van der Waals agent spawn)
-- GraphRAG integration (catalyst question generation at structural gaps)
+- GraphRAG catalyst generation (at structural gaps)
+- Advanced topology healing (using van der Waals agents)
+- Performance optimization and monitoring
 
 ---
 
@@ -377,9 +413,9 @@ This will execute all three plans sequentially:
 
 Three executable PLAN.md files created in `.planning/phases/05-orchestrator/`:
 
-1. **05-PLAN.md** (05-01) — Wave 1: Foundation
-2. **05-02-PLAN.md** (05-02) — Wave 2: Parallel Dispatch
-3. **05-03-PLAN.md** (05-03) — Wave 3: Integration & Verification
+1. **05-PLAN.md** (05-01) — Wave 1: Foundation (4 tasks, 35+ tests)
+2. **05-02-PLAN.md** (05-02) — Wave 2: Parallel Dispatch (2 tasks, 15+ tests)
+3. **05-03-PLAN.md** (05-03) — Wave 3: Integration & Verification (3 tasks, 37+ tests)
 
 All plans follow gsd-planner structure:
 - Frontmatter: phase, plan, wave, dependencies, files, must_haves
@@ -393,6 +429,30 @@ All plans follow gsd-planner structure:
 
 ---
 
+## Revision Summary
+
+**Revised by:** gsd-planner on 2026-03-01
+
+**Changes Made:**
+- Added Task 4 to Wave 1 (05-PLAN.md): OrchestratorState enum + state machine implementation
+- Added Task 2 to Wave 3 (05-03-PLAN.md): ObstructionHandler for H^1 → gapDetector spawn pipeline
+- Updated ComposeRootModule to instantiate and integrate OrchestratorStateManager and ObstructionHandler
+- Updated barrel export (index.ts) to include ObstructionHandler, OrchestratorState, OrchestratorStateManager
+- Updated must_haves in all three plans to reflect new criteria
+- Increased test count from 40+ to 65+
+
+**ROADMAP Criteria Now Covered:**
+- ✓ Criteria #1: Single composition root (was already covered)
+- ✓ Criteria #2: llm_map context preservation (was already covered)
+- ✓ Criteria #3: Obstruction-driven reconfiguration (NEWLY ADDED)
+- ✓ Criteria #4: Three-mode state machine (NEWLY ADDED)
+- ✓ Criteria #5: End-to-end multi-iteration run (was already covered)
+
+**Status:** PLANNING COMPLETE — Ready for execution
+
+---
+
 **Status:** PLANNING COMPLETE ✓
 **Ready for execution:** `/gsd:execute-phase 05-orchestrator`
 **Generated by:** gsd-planner (2026-02-28)
+**Revised:** 2026-03-01
