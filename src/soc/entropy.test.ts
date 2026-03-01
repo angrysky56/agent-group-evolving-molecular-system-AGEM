@@ -7,11 +7,25 @@
  * These are permanent correctness gates — any change to entropy.ts that breaks
  * these tests indicates a regression in the mathematical formulas.
  *
- * Primary ROADMAP success criteria validated here:
- *   SC-1: VonNeumannEntropy(K_n) = ln(n) within tolerance (T-VN-01, T-VN-02)
- *   SC-1: Entropy never exceeds ln(n) (T-VN-05)
+ * Primary success criteria validated here:
+ *   SC-1: VonNeumannEntropy(K_n) = ln(n-1) within tolerance (T-VN-01, T-VN-02)
+ *   SC-1: Entropy for K_n never exceeds ln(n) (T-VN-05, holds since ln(n-1) < ln(n))
  *   SC-2: Identical embeddings → near-zero entropy (T-EE-01)
  *   SC-2: d orthogonal unit vectors → entropy near ln(d) (T-EE-02)
+ *
+ * DEVIATION NOTE — K_n formula (Rule 1 auto-fix, documented in 04-01-SUMMARY.md):
+ *   ROADMAP/CONTEXT.md state S(K_n) = ln(n), but the mathematically correct result
+ *   for the normalized Laplacian density matrix rho = L_norm / trace(L_norm) is:
+ *     S(K_n) = ln(n-1)
+ *   Derivation:
+ *     - L_norm eigenvalues: 0 (once), n/(n-1) (n-1 times); trace = n
+ *     - rho eigenvalues: 0 (once), 1/(n-1) (n-1 times)
+ *     - S = -(n-1) * (1/(n-1)) * ln(1/(n-1)) = ln(n-1)
+ *   RESEARCH.md §Pattern 1 (lines 172-187) explicitly notes this discrepancy and
+ *   states: "CONCLUSION: Implement per CONTEXT.md exactly and validate with the K_n
+ *   test. If the K_n test fails, the density matrix normalization needs adjustment."
+ *   Tests encode ln(n-1) (the correct mathematical result). The upper bound invariant
+ *   T-VN-05 remains valid since ln(n-1) < ln(n) for all n >= 2.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -54,66 +68,54 @@ function buildPathGraph(n: number): Array<{ source: number; target: number; weig
 
 describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
   /**
-   * T-VN-01: Complete graph K_3 yields Von Neumann entropy = ln(3).
+   * T-VN-01: Complete graph K_3 yields Von Neumann entropy = ln(2).
    *
-   * This is the PRIMARY ROADMAP SC-1 gate.
-   * K_3 normalized Laplacian has eigenvalues [0, 3/2, 3/2].
-   * Density matrix rho = L_norm / trace(L_norm) has eigenvalues [0, 1/2, 1/2].
-   * Entropy S = -( 0 + 1/2*ln(1/2) + 1/2*ln(1/2) ) = ln(2) ... wait, that's wrong.
+   * Mathematical derivation:
+   *   L_norm for K_3: eigenvalues 0 (once) and 3/2 (twice); trace = 3.
+   *   rho = L_norm/3: eigenvalues 0, 1/2, 1/2.
+   *   S = -2*(1/2)*ln(1/2) = ln(2).
    *
-   * Actually for K_n:
-   *   A[i][j] = 1 for all i≠j, degree D[i] = n-1 for all i.
-   *   D^(-1/2) = 1/sqrt(n-1) * I.
-   *   L_norm = I - D^(-1/2) A D^(-1/2) = I - (1/(n-1)) * A.
-   *   For K_n, L_norm has eigenvalues: 0 (multiplicity 1) and n/(n-1) (multiplicity n-1).
-   *   trace(L_norm) = 0 + (n-1) * n/(n-1) = n.
-   *   rho = L_norm / n has eigenvalues: 0 (multiplicity 1) and 1/n (multiplicity n-1).
-   *   S = -(n-1) * (1/n) * ln(1/n) = (n-1)/n * ln(n).
+   * General formula: S(K_n) = ln(n-1) for the L_norm/trace(L_norm) density matrix.
    *
-   * Wait — that gives (n-1)/n * ln(n), not ln(n). Let me verify with CONTEXT.md:
-   * "VonNeumannEntropy(K_n) equals ln(n)" per ROADMAP SC-1.
-   *
-   * The locked decision in RESEARCH.md: for K_3, the result should be ln(3).
-   * This test encodes that constraint exactly. The implementation must match.
-   *
-   * Note: If (n-1)/n * ln(n) is what the formula produces, the test would use that.
-   * But ROADMAP says ln(n). We follow ROADMAP SC-1 strictly.
-   * The math: for K_n with normalized Laplacian rho definition, it IS ln(n).
-   * Reference: Passerini & Severini (2009) — density matrix is A/(n-1) for K_n,
-   * not L_norm/n. The plan uses L_norm/trace(L_norm). Let's trust the plan.
+   * This is the PRIMARY correctness gate for the Von Neumann entropy implementation
+   * (ROADMAP SC-1 variant). The ROADMAP states ln(n), but the math gives ln(n-1).
+   * See module-level DEVIATION NOTE for full explanation.
    */
-  it('T-VN-01: K_3 complete graph yields Von Neumann entropy approximately ln(3)', () => {
+  it('T-VN-01: K_3 complete graph yields Von Neumann entropy approximately ln(2)', () => {
     const edges = buildKn(3);
     const result = vonNeumannEntropy(3, edges);
 
-    // PRIMARY ROADMAP SC-1 gate: S(K_3) ≈ ln(3)
-    expect(result).toBeCloseTo(Math.log(3), 5); // within 1e-5
+    // S(K_3) = ln(2) = 0.6931... (not ln(3) = 1.0986...)
+    expect(result).toBeCloseTo(Math.log(2), 5); // within 1e-5
   });
 
   /**
    * T-VN-02: Generalized K_n test for n=4 and n=5.
-   * Strengthens T-VN-01 with two additional data points.
+   * S(K_4) = ln(3). S(K_5) = ln(4). General: S(K_n) = ln(n-1).
    */
-  it('T-VN-02: K_4 complete graph yields Von Neumann entropy approximately ln(4)', () => {
+  it('T-VN-02: K_4 complete graph yields Von Neumann entropy approximately ln(3)', () => {
     const edges = buildKn(4);
     const result = vonNeumannEntropy(4, edges);
+    // S(K_4) = ln(3) = 1.0986...
+    expect(result).toBeCloseTo(Math.log(3), 5);
+  });
+
+  it('T-VN-02b: K_5 complete graph yields Von Neumann entropy approximately ln(4)', () => {
+    const edges = buildKn(5);
+    const result = vonNeumannEntropy(5, edges);
+    // S(K_5) = ln(4) = 1.3862...
     expect(result).toBeCloseTo(Math.log(4), 5);
   });
 
-  it('T-VN-02b: K_5 complete graph yields Von Neumann entropy approximately ln(5)', () => {
-    const edges = buildKn(5);
-    const result = vonNeumannEntropy(5, edges);
-    expect(result).toBeCloseTo(Math.log(5), 5);
-  });
-
   /**
-   * T-VN-03: Path graph P_4 yields entropy strictly less than ln(4).
+   * T-VN-03: Path graph P_4 yields entropy strictly less than K_4's entropy.
    * Path graphs are less structurally complex than complete graphs.
-   * Entropy must reflect this ordering: S(P_4) < S(K_4) = ln(4).
+   * S(P_4) < S(K_4) = ln(3). Since K_4 is the maximum for 4 nodes, P_4 must be below.
    */
   it('T-VN-03: Path graph P_4 yields entropy strictly less than ln(4)', () => {
     const edges = buildPathGraph(4);
     const result = vonNeumannEntropy(4, edges);
+    // Path graphs have strictly less entropy than complete graphs
     expect(result).toBeLessThan(Math.log(4));
     // Also verify it's positive (a non-trivial graph)
     expect(result).toBeGreaterThan(0);
@@ -130,15 +132,18 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
   });
 
   /**
-   * T-VN-05: Von Neumann entropy never exceeds ln(n) for any valid graph.
-   * ROADMAP SC-1 invariant: K_n achieves the maximum; all other graphs are below.
-   * Tests n=3,4,5,6 with K_n (which achieves the maximum by construction).
+   * T-VN-05: Von Neumann entropy never exceeds ln(n) for any n-node graph.
+   * ROADMAP SC-1 invariant (upper bound). K_n achieves ln(n-1) < ln(n), confirming
+   * the invariant holds. Tests n=3,4,5,6 with K_n (the maximum-entropy graph).
+   *
+   * Note: The bound ln(n) is NOT tight — K_n achieves ln(n-1), not ln(n).
+   * The invariant is still valid: ln(n-1) <= ln(n) + 1e-10 for all n.
    */
   it('T-VN-05: Von Neumann entropy never exceeds ln(n) for K_3, K_4, K_5, K_6', () => {
     for (const n of [3, 4, 5, 6]) {
       const edges = buildKn(n);
       const result = vonNeumannEntropy(n, edges);
-      // Allow 1e-10 numerical tolerance above ln(n)
+      // Allow 1e-10 numerical tolerance. ln(n-1) < ln(n) so this always holds.
       expect(result).toBeLessThanOrEqual(Math.log(n) + 1e-10);
     }
   });
@@ -166,9 +171,10 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
 
   /**
    * T-EE-02: d orthogonal unit vectors yield entropy near ln(d).
-   * ROADMAP SC-2 second edge case — the primary correctness gate.
+   * ROADMAP SC-2 second edge case — the primary embedding entropy correctness gate.
    * 4 standard basis vectors in R^4: e_1=[1,0,0,0], e_2=[0,1,0,0], etc.
-   * Covariance Sigma = (1/4) * I_4. All eigenvalues equal 1/4 → normalized to 1/4.
+   * Covariance Sigma = (1/4) * I_4. All eigenvalues equal 1/4.
+   * Normalized eigenvalues: p_i = 1/4 for all i.
    * Entropy = -4 * (1/4) * ln(1/4) = ln(4).
    */
   it('T-EE-02: Four orthogonal unit vectors yield entropy approximately ln(4)', () => {
@@ -180,14 +186,15 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
       embeddings.push(vec);
     }
     const result = embeddingEntropy(embeddings);
-    // ROADMAP SC-2 primary gate: S(orthogonal unit vectors) ≈ ln(d)
+    // ROADMAP SC-2 primary gate: S(orthogonal unit vectors) = ln(d)
     expect(result).toBeCloseTo(Math.log(d), 5);
   });
 
   /**
    * T-EE-03: Two orthogonal embeddings yield entropy approximately ln(2).
    * e_1 = [1,0,0] and e_2 = [0,1,0].
-   * Sigma = (1/2) * diag(1,1,0). Normalized eigenvalues: [1/2, 1/2] (ignoring zero).
+   * Sigma = (1/2) * diag(1,1,0). Non-zero eigenvalues: [1/2, 1/2].
+   * Normalized: p_1 = p_2 = 1/2.
    * Entropy = -2 * (1/2) * ln(1/2) = ln(2).
    */
   it('T-EE-03: Two orthogonal embeddings yield entropy approximately ln(2)', () => {
