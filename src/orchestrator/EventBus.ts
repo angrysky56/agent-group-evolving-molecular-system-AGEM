@@ -5,9 +5,10 @@
  *
  * Provides: EventBus class with subscribe/emit/unsubscribe/getSubscriberCount methods.
  *
- * Extends EventEmitter from 'node:events' for future integration with Node.js
- * event infrastructure, but implements its own internal subscriber map.
- * Do NOT use EventEmitter .on()/.off() — we manage subscribers explicitly.
+ * Implements its own internal subscriber map via a private #subscribers Map.
+ * Holds an EventEmitter instance as a private field for future Node.js integration
+ * (e.g., piping to process.EventEmitter infrastructure), but does NOT use
+ * EventEmitter.on/off directly — all routing is through #subscribers.
  *
  * Imports: AnyEvent, EventSubscriber from ./interfaces.js only.
  * No external npm dependencies.
@@ -40,12 +41,26 @@ export type { AnyEvent, EventSubscriber } from './interfaces.js';
  *   await bus.emit(metricsEvent);
  *   bus.unsubscribe('soc:metrics', handler);
  */
-export class EventBus extends EventEmitter {
+export class EventBus {
   /** Internal subscriber registry: eventType → ordered array of handlers. */
   #subscribers: Map<string, EventSubscriber[]> = new Map();
 
+  /**
+   * Native EventEmitter held for future Node.js infrastructure integration.
+   * Not used for routing — all dispatch goes through #subscribers.
+   */
+  readonly #emitter: EventEmitter = new EventEmitter();
+
   constructor() {
-    super();
+    // Expose EventEmitter for downstream Node.js integration points
+  }
+
+  /**
+   * Access the underlying EventEmitter for Node.js infrastructure integration.
+   * Internal use only; not part of the public EventBus API.
+   */
+  get emitter(): EventEmitter {
+    return this.#emitter;
   }
 
   /**

@@ -233,10 +233,10 @@ describe('EventBus', () => {
     expect(bus.getSubscriberCount('unknown:event')).toBe(0);
   });
 
-  // Additional: EventBus is an instance of EventEmitter
-  it('EventBus extends EventEmitter', () => {
+  // Additional: EventBus holds an internal EventEmitter for Node.js integration
+  it('EventBus has an accessible EventEmitter via .emitter property', () => {
     const { EventEmitter } = require('node:events');
-    expect(bus).toBeInstanceOf(EventEmitter);
+    expect(bus.emitter).toBeInstanceOf(EventEmitter);
   });
 
   // Additional: Multiple different event types tracked independently
