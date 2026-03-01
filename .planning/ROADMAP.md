@@ -187,6 +187,13 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 5. **Component isolation:** The `src/soc/` module has zero imports from `src/lcm/` or `src/orchestrator/`. SOC reads eigenspectrum and embedding data through well-typed interfaces defined in `src/types/`. All SOC unit tests pass when fed synthetic eigenspectrum and embedding data without any real Sheaf or TNA computation.
 
+### Plans
+
+**Plans:** 2 plans in 2 waves
+
+- [ ] 04-01-PLAN.md — Wave 1: SOC types + event definitions + Von Neumann entropy + embedding entropy pure functions (SOC-01, SOC-02)
+- [ ] 04-02-PLAN.md — Wave 2: SOCTracker (CDP + surprising edge ratio + phase transition + event emission) + isolation test + barrel export (SOC-03, SOC-04, SOC-05)
+
 ---
 
 ## Phase 5: Orchestrator Integration
@@ -304,4 +311,4 @@ All 25 v1 requirements are mapped to exactly one phase:
 
 *Roadmap created: 2026-02-27*
 *Requirements version: v1 (25 requirements)*
-*Last updated: 2026-02-28 — Phase 3 plans added*
+*Last updated: 2026-02-28 — Phase 4 plans added*
