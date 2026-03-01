@@ -74,7 +74,11 @@ export type SheafEvent = SheafConsensusReachedEvent | SheafH1ObstructionEvent;
  * SOCEventType — string literal union of all SOC event types.
  * These are emitted by SOCTracker (Phase 4), not by CohomologyAnalyzer.
  */
-export type SOCEventType = 'soc:metrics' | 'phase:transition';
+export type SOCEventType =
+  | 'soc:metrics'
+  | 'phase:transition'
+  | 'phase:transition-confirmed'
+  | 'regime:classification';
 
 // ---------------------------------------------------------------------------
 // SOC concrete event types
@@ -131,6 +135,42 @@ export interface SOCPhaseTransitionEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 6 SOC event types (SOC-06, SOC-07)
+// ---------------------------------------------------------------------------
+
+/**
+ * PhaseTransitionConfirmedEvent — emitted when a phase transition is validated
+ * by the RegimeValidator (persistence + coherence + H^1 gating).
+ *
+ * Unlike 'phase:transition' (instantaneous sign change), this event fires only
+ * after the transition has been confirmed over multiple iterations.
+ */
+export interface PhaseTransitionConfirmedEvent {
+  readonly type: 'phase:transition-confirmed';
+  readonly iteration: number;
+  readonly centeredAtIteration: number;
+  readonly coherence: number;
+  readonly h1Dimension: number;
+  readonly correlationCoefficient: number;
+  readonly previousCorrelation: number;
+}
+
+/**
+ * RegimeClassificationEvent — emitted every iteration with the current regime
+ * stability classification and supporting metrics.
+ *
+ * Consumed by ORCH-06 (agent spawning decisions) and TNA-09 (centrality frequency).
+ */
+export interface RegimeClassificationEvent {
+  readonly type: 'regime:classification';
+  readonly iteration: number;
+  readonly regime: import('../soc/interfaces.js').RegimeStability;
+  readonly cdpVariance: number;
+  readonly correlationConsistency: number;
+  readonly persistenceIterations: number;
+}
+
+// ---------------------------------------------------------------------------
 // SOC discriminated union
 // ---------------------------------------------------------------------------
 
@@ -138,4 +178,8 @@ export interface SOCPhaseTransitionEvent {
  * SOCEvent — discriminated union of all SOC events, keyed on `type`.
  * Use exhaustive switch/match patterns against the `type` field.
  */
-export type SOCEvent = SOCMetricsEvent | SOCPhaseTransitionEvent;
+export type SOCEvent =
+  | SOCMetricsEvent
+  | SOCPhaseTransitionEvent
+  | PhaseTransitionConfirmedEvent
+  | RegimeClassificationEvent;

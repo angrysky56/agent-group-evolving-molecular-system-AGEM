@@ -195,6 +195,12 @@ export interface SOCConfig {
    * Default: 5
    */
   readonly trendWindowSize: number;
+
+  /** Phase 6: RegimeValidator configuration overrides. */
+  readonly regimeValidatorConfig?: Partial<RegimeValidatorConfig>;
+
+  /** Phase 6: RegimeAnalyzer configuration overrides. */
+  readonly regimeAnalyzerConfig?: Partial<RegimeAnalyzerConfig>;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,4 +235,110 @@ export interface MetricsTrend {
    * Equal to min(history.length, SOCConfig.trendWindowSize).
    */
   readonly window: number;
+}
+
+// ---------------------------------------------------------------------------
+// Regime stability types (SOC-06 / SOC-07 — Phase 6)
+// ---------------------------------------------------------------------------
+
+/**
+ * RegimeStability — four-state classification of the system's current operating regime.
+ *
+ * States:
+ *   - 'nascent':       System recently entered a new regime (< persistenceThreshold iterations).
+ *                      Insufficient data to determine stability. Default on startup.
+ *   - 'stable':        System in steady-state. CDP variance low (< 0.2), correlation consistent
+ *                      (std dev < 0.3), persistence >= persistenceThreshold iterations.
+ *   - 'critical':      System approaching instability. CDP variance high (> 0.5) OR correlation
+ *                      wildly inconsistent (std dev > 0.8). May precede a phase transition.
+ *   - 'transitioning': Phase transition in progress. Correlation sign change detected and
+ *                      being validated. Transient state lasting 1-3 iterations.
+ */
+export type RegimeStability = 'nascent' | 'stable' | 'critical' | 'transitioning';
+
+/**
+ * RegimeMetrics — full regime analysis output emitted every iteration.
+ *
+ * Contains the four-state classification plus the numeric signals used to derive it.
+ * Consumed by ORCH-06 (VdW agent spawning) and TNA-09 (centrality tracking frequency).
+ */
+export interface RegimeMetrics {
+  /** Current regime classification. */
+  readonly regime: RegimeStability;
+
+  /** Variance of CDP values over the rolling analysis window. */
+  readonly cdpVariance: number;
+
+  /** Standard deviation of correlation coefficient over the rolling analysis window. */
+  readonly correlationConsistency: number;
+
+  /** Number of iterations since the system entered the current regime. */
+  readonly persistenceIterations: number;
+
+  /** The iteration number at which this analysis was computed. */
+  readonly iteration: number;
+}
+
+/**
+ * RegimeValidatorConfig — configurable parameters for RegimeValidator.
+ */
+export interface RegimeValidatorConfig {
+  /**
+   * Number of consecutive same-sign iterations required to confirm a phase transition.
+   * Default: 3
+   */
+  readonly persistenceWindow: number;
+
+  /**
+   * Minimum coherence (count_same_sign / window_size) to confirm a transition.
+   * Default: 0.6
+   */
+  readonly coherenceThreshold: number;
+
+  /**
+   * Minimum H^1 dimension required simultaneously with sign change.
+   * Default: 2
+   */
+  readonly h1DimensionThreshold: number;
+}
+
+/**
+ * RegimeAnalyzerConfig — configurable parameters for RegimeAnalyzer.
+ */
+export interface RegimeAnalyzerConfig {
+  /**
+   * Rolling window size for CDP variance and correlation consistency computation.
+   * Default: 10
+   */
+  readonly analysisWindowSize: number;
+
+  /**
+   * Minimum iterations in a regime before it can be classified as 'stable'.
+   * Default: 5
+   */
+  readonly persistenceThreshold: number;
+
+  /**
+   * CDP variance threshold above which regime is 'critical'.
+   * Default: 0.5
+   */
+  readonly criticalCdpVariance: number;
+
+  /**
+   * CDP variance threshold below which regime can be 'stable'.
+   * Default: 0.2
+   */
+  readonly stableCdpVariance: number;
+
+  /**
+   * Correlation std dev threshold above which regime is 'critical'.
+   * Default: 0.8
+   */
+  readonly criticalCorrelationStdDev: number;
+
+  /**
+   * Correlation std dev threshold below which regime can be 'stable'.
+   * Default: 0.3
+   */
+  readonly stableCorrelationStdDev: number;
 }
