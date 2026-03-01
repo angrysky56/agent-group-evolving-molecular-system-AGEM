@@ -1,8 +1,8 @@
 # Project State
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
-**Last updated:** 2026-02-28
-**Current phase:** Phase 3 (TNA + Molecular-CoT) — In progress (Plan 02 of 3 done)
+**Last updated:** 2026-03-01
+**Current phase:** Phase 4 (SOC) — Unblocked (Phase 3 complete)
 
 ## Status Snapshot
 
@@ -10,12 +10,12 @@
 |-------|------|--------|--------------|----------------------|
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
-| 3 | Text Network Analysis + Molecular-CoT | **In progress** (Plan 02/03 done: TNA foundation + LouvainDetector + CentralityAnalyzer) | TNA-01 through TNA-06, ORCH-03 | 4 / 5 (TNA-01, TNA-02, TNA-03, TNA-04, ORCH-03 satisfied) |
+| 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | Unblocked (Phase 1 complete, eigenspectrum ready) | SOC-01 through SOC-05 | 0 / 5 |
 | 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 16 / 25 implemented (SHEAF-01 through SHEAF-06 complete; LCM-01 through LCM-05 complete; TNA-01, TNA-02, TNA-03, TNA-04, ORCH-03 satisfied)
+**Overall v1 requirements:** 19 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied)
 
 ## What Has Been Done
 
@@ -41,13 +41,14 @@
   - See `.planning/phases/03-tna-molecular-cot/03-01-SUMMARY.md` for full details.
 - **Phase 3, Wave 2, Plan 02 complete (2026-02-28):** LouvainDetector (deterministic Louvain via Mulberry32 PRNG rng option) + CentralityAnalyzer (normalized betweenness centrality, bridge node identification). CooccurrenceGraph extended with updateNodeCentrality() + updateNodeCommunity(). 16 new tests (197 total passing, but 38 in TNA module). LOUVAIN DETERMINISM PITFALL RESOLVED: T9 (10 runs same seed = identical) is a permanent regression guard. TNA-03 (Louvain community detection with seeding) + TNA-04 (betweenness centrality for bridge nodes) SATISFIED.
   - See `.planning/phases/03-tna-molecular-cot/03-02-SUMMARY.md` for full details.
+- **Phase 3, Wave 3, Plan 03 complete (2026-03-01):** GapDetector (inter-community structural gap detection with topological metrics: density, shortest path, modularity delta, bridge nodes). TNA isolation test (T20–T21: zero cross-module imports, synthetic input only). TNA barrel export (Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector + all types). 12 new tests (209 total passing, 50 in TNA module). ROADMAP success criteria 3 + 5 guarded: T16 (zero gaps in fully connected) + T16b (one gap in bridge) + T20 (isolation). TNA-05 (structural gap detection) + TNA-06 (topological metrics) SATISFIED.
+  - See `.planning/phases/03-tna-molecular-cot/03-03-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 3 (TNA) Wave 2 Plan 02 done.** Next:
+**Phase 3 (TNA) complete — all 5 ROADMAP success criteria verified.** Phase 4 now unblocked:
 
-1. Phase 3 Plan 03 (Wave 3): GapDetector (inter-community gap metrics using LouvainDetector + CentralityAnalyzer) + TNA barrel export (satisfies TNA-05 + TNA-06)
-2. Phase 4 (SOC): Von Neumann entropy, surprising edge detection (unblocked — eigenspectrum ready from Phase 1)
+1. Phase 4 (SOC): Von Neumann entropy probes, surprising edge detection, phase transition detection (eigenspectrum ready from Phase 1)
 
 **Resolve before Phase 4:** embedding model selection (all-MiniLM-L6-v2 vs text-embedding-3-small)
 
@@ -139,6 +140,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 02 | 05 | ~6 min | 3/3 | 6 created | 2026-02-28 |
 | 03 | 01 | ~20 min | 2/2 | 7 created, 2 modified | 2026-02-28 |
 | 03 | 02 | ~8 min | 2/2 | 4 created, 1 modified | 2026-02-28 |
+| 03 | 03 | ~8 min | 2/2 | 4 created | 2026-03-01 |
 
 ## File Map
 
@@ -178,7 +180,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
         ├── 03-01-SUMMARY.md  — Wave 1 execution summary
         ├── 03-02-PLAN.md     — Wave 2: LouvainDetector + CentralityAnalyzer (DONE)
         ├── 03-02-SUMMARY.md  — Wave 2 execution summary
-        └── 03-03-PLAN.md     — Wave 3: GapDetector + TNA barrel export
+        ├── 03-03-PLAN.md     — Wave 3: GapDetector + TNA barrel export (DONE)
+        └── 03-03-SUMMARY.md  — Wave 3 execution summary
 
 src/
 ├── index.ts            — Placeholder entry point
@@ -233,10 +236,14 @@ src/
     ├── LouvainDetector.ts         — Louvain community detection: detect(seed?), getAssignment(), getCommunityMembers(), getCommunityCount(), getModularity()
     ├── LouvainDetector.test.ts    — 8 tests: T9 (determinism 10-run), T9b, T10/T10b (two-clique 2 communities), T11/T11b (complete graph 1 community), T12/T12b
     ├── CentralityAnalyzer.ts      — Betweenness centrality: compute(), getScore(), getTopNodes(n), getBridgeNodes(threshold)
-    └── CentralityAnalyzer.test.ts — 8 tests: T13 (bridge highest), T13b (peripheral low), T14/T14b (normalized [0,1]), T15/T15b (metadata writeback + top-N)
+    ├── CentralityAnalyzer.test.ts — 8 tests: T13 (bridge highest), T13b (peripheral low), T14/T14b (normalized [0,1]), T15/T15b (metadata writeback + top-N)
+    ├── GapDetector.ts             — Structural gap detection: findGaps(), findNearestGap(), getGapCount(), getGapBetween(communityA, communityB); metrics: density, shortest-path, modularity-delta, bridge-nodes
+    ├── GapDetector.test.ts        — 9 tests: T16 (zero gaps fully connected), T16b (one gap bridge), T17-T17c (metrics), T18-T18b (bridge nodes + 3-cluster), T19-T19b (nearest + idempotence)
+    ├── isolation.test.ts          — 3 tests: T20 (zero cross-module imports), T20b (no test-file imports), T21 (synthetic input only)
+    └── index.ts                   — Public barrel export: Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector + all types
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-02-28 — Stopped at: Completed Phase 3, Plan 03-02-PLAN.md (Wave 2: LouvainDetector + CentralityAnalyzer — TNA-03, TNA-04 satisfied)*
+*Last session: 2026-03-01 — Completed Phase 3, Plan 03-03-PLAN.md (Wave 3: GapDetector + TNA barrel export — TNA-05, TNA-06, ROADMAP-SC3, ROADMAP-SC5 satisfied)*
 *Update this file at the start and end of each work session*
