@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-03-01
-**Current phase:** Phase 4 (SOC) — Unblocked (Phase 3 complete)
+**Current phase:** Phase 5 (Orchestrator) — Unblocked (Phase 4 complete)
 
 ## Status Snapshot
 
@@ -11,11 +11,11 @@
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
-| 4 | Self-Organized Criticality Tracking | **IN PROGRESS** (Plan 01/02 done: SOC types + entropy functions) | SOC-01 through SOC-05 | 1 / 5 (SOC-01, SOC-02 guarded) |
-| 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
+| 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
+| 5 | Orchestrator Integration | **Unblocked** (Phases 1, 3, 4 all complete) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 19 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01, SOC-02 mathematical foundations guarded)
+**Overall v1 requirements:** 24 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01, ORCH-02, ORCH-04, ORCH-05 remaining)
 
 ## What Has Been Done
 
@@ -45,14 +45,18 @@
   - See `.planning/phases/03-tna-molecular-cot/03-03-SUMMARY.md` for full details.
 - **Phase 4, Wave 1, Plan 01 complete (2026-02-28):** SOC types and event definitions (SOCMetricsEvent, SOCPhaseTransitionEvent, SOCEventType, SOCEvent in Events.ts; SOCInputs, SOCMetrics, SOCConfig, MetricsTrend in soc/interfaces.ts). Von Neumann entropy pure function (normalized Laplacian density matrix via math.eigs()) and embedding entropy pure function (covariance eigenspectrum via ml-matrix EigenvalueDecomposition). 11 new tests (220 total passing). PRIMARY CORRECTNESS GATES: T-VN-01..05 guard S(K_n) = ln(n-1) for normalized Laplacian; T-EE-01..05 guard identical→0 and orthogonal→ln(d). SOC-01 and SOC-02 permanently guarded. Rule 1 auto-fix: corrected K_n criterion from ln(n) to ln(n-1) per mathematical derivation.
   - See `.planning/phases/04-soc/04-01-SUMMARY.md` for full details.
+- **Phase 4, Wave 2, Plan 02 complete (2026-03-01):** SOCTracker class extending EventEmitter with CDP computation, per-iteration surprising edge ratio (both cross-community AND low-similarity required, Pitfall 3 guard), rolling Pearson correlation sign-change phase transition detection (configurable window, no hard-coded constants). pearsonCorrelation() and linearSlope() pure utilities. 19 new tests (239 total passing): T-CDP-01/02, T-SE-01..05, T-PT-01/02/04, T-EV-01..05 + T-ISO-01..04. SOC barrel export (src/soc/index.ts). PHASE 4 COMPLETE: SOC-01 through SOC-05 all permanently guarded. Pitfalls RESOLVED: "phase transition hard-coded to 400" (T-ISO-03 + T-PT-01) + "surprising edge ratio cumulative" (T-SE-05).
+  - See `.planning/phases/04-soc/04-02-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 4 (SOC) Wave 1 complete — SOC-01 and SOC-02 mathematical foundations guarded.** Phase 4 Wave 2 is next:
+**Phase 4 (SOC) COMPLETE — all 5 SOC requirements satisfied and permanently guarded.** Phase 5 (Orchestrator) is next and now fully unblocked:
 
-1. Phase 4 Wave 2 (04-02-PLAN.md): SOCTracker class + EventEmitter wiring + correlationCoefficient + isPhaseTransition + metrics history + isolation test + barrel export
+1. Phase 5 Plan 01: Orchestrator foundation — state machine (NORMAL/OBSTRUCTED/CRITICAL), multi-module imports, event bus wiring, SOCTracker integration
+2. Phase 5 Plan 02: Agent coordination loop — Sheaf consensus rounds, TNA pipeline, SOC metric emission per iteration
+3. Phase 5 Plan 03: Molecular-CoT reasoning integration and ORCH-01 through ORCH-05 satisfaction
 
-**Open question resolved:** SOCInputs accepts plain types (not TNA class instances) — embedding model selection question deferred to Phase 5 integration.
+**Import point for Phase 5:** `import { SOCTracker } from '../soc/index.js'` — all other SOC internals are encapsulated.
 
 ## Active Decisions
 
@@ -94,6 +98,9 @@
 | S(K_n) = ln(n-1) for normalized Laplacian density matrix | 2026-02-28 | rho = L_norm/trace(L_norm) gives eigenvalues [0, 1/(n-1) x (n-1 times)]; S = ln(n-1). ROADMAP stated ln(n) but math gives ln(n-1); RESEARCH.md §Pattern 1 acknowledged discrepancy. Tests corrected to ln(n-1). |
 | SOCInputs uses plain types (not TNA class instances) | 2026-02-28 | ReadonlyMap<string, Float64Array> and ReadonlyArray for edges — zero compile-time SOC-to-TNA dependency; enables synthetic testing |
 | SOCEvent / SOCEventType separate from SheafEventType | 2026-02-28 | SOC events (soc:metrics, phase:transition) have their own discriminated union; not merged into SheafEventType |
+| SOCTracker phase transition noise filter |r|>0.1 | 2026-03-01 | Sign change on near-zero correlations (e.g., 0.001→-0.001) is false positive; both |prevR| and |currR| must exceed 0.1 threshold |
+| previousCorrelation only updated when r !== 0 | 2026-03-01 | Avoids overwriting meaningful correlation with 0 (insufficient data) during window warmup period |
+| T-PT-01 uses blended embeddings for independent VNE/EE control | 2026-03-01 | v[0]=sqrt(1-t) (shared) + v[k]=sqrt(t) (unique), normalized; path-graph length controls VNE independently; verified sign change fires at iter 9 (r: +0.906 to -0.664) |
 
 ## Resolved Questions
 
@@ -130,8 +137,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | Non-deterministic Louvain (Pitfall 5) | 3 | Different runs produce different community assignments for same graph | **RESOLVED: T9 (10 runs same seed = identical) guards permanently; Mulberry32 PRNG via rng option** |
 | Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | **RESOLVED: T-VN-01..05 guard S(K_n)=ln(n-1) for normalized Laplacian density matrix; T-VN-05 confirms entropy <= ln(n)** |
 | Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | **RESOLVED: T-EE-01 (identical→0) + T-EE-02 (orthogonal→ln(d)) guard permanently** |
-| Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | Not started (Wave 2) |
-| Surprising edge ratio cumulative | 4 | Ratio is stable at exactly 12% from iteration 1 | Not started (Wave 2) |
+| Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | **RESOLVED: T-ISO-03 (no literal 400) + T-PT-01 (dynamic sign change) guard permanently** |
+| Surprising edge ratio cumulative | 4 | Ratio is stable at exactly 12% from iteration 1 | **RESOLVED: T-SE-05 (per-iteration isolation, Pitfall 3 guard) permanently enforced** |
 
 ## Performance Metrics
 
@@ -148,6 +155,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 03 | 03 | ~8 min | 2/2 | 4 created | 2026-03-01 |
 | 04 | 01 | ~7 min | 2/2 | 3 created, 1 modified | 2026-02-28 |
 | Phase 04 P01 | 7min | 2 tasks | 4 files |
+| 04 | 02 | 9 min | 2/2 | 5 created | 2026-03-01 |
+| Phase 04 P02 | 9 | 2 tasks | 5 files |
 
 ## File Map
 
@@ -251,10 +260,15 @@ src/
 └── soc/
     ├── interfaces.ts              — SOCInputs, SOCMetrics, SOCConfig, MetricsTrend (plain types; zero cross-module imports)
     ├── entropy.ts                 — vonNeumannEntropy() (mathjs eigs on L_norm density matrix), embeddingEntropy() (ml-matrix EigenvalueDecomposition on covariance), cosineSimilarity()
-    └── entropy.test.ts            — 11 tests: T-VN-01..05 (K_n correctness, path < K_n, degenerate=0, upper-bound), T-EE-01..05 (identical→0, orthogonal→ln(d), degenerate cases)
+    ├── entropy.test.ts            — 11 tests: T-VN-01..05 (K_n correctness, path < K_n, degenerate=0, upper-bound), T-EE-01..05 (identical→0, orthogonal→ln(d), degenerate cases)
+    ├── correlation.ts             — pearsonCorrelation() (standard Pearson r), linearSlope() (OLS direct formula)
+    ├── SOCTracker.ts              — SOCTracker class extending EventEmitter: computeAndEmit(), getMetricsHistory(), getLatestMetrics(), getMetricsTrend(); emits soc:metrics and phase:transition
+    ├── SOCTracker.test.ts         — 15 tests: T-CDP-01/02, T-SE-01..05, T-PT-01/02/04, T-EV-01..05
+    ├── isolation.test.ts          — 4 tests: T-ISO-01 (zero cross-module imports), T-ISO-02 (no test imports), T-ISO-03 (no literal 400), T-ISO-04 (synthetic only)
+    └── index.ts                   — Public barrel export: SOCTracker, vonNeumannEntropy, embeddingEntropy, cosineSimilarity, pearsonCorrelation, linearSlope + all types
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-02-28 — Completed Phase 4, Plan 04-01-PLAN.md (Wave 1: SOC types + entropy pure functions — SOC-01, SOC-02 mathematical correctness permanently guarded by 11 tests)*
+*Last session: 2026-03-01 — Completed Phase 4, Plan 04-02-PLAN.md (Wave 2: SOCTracker + isolation + barrel — Phase 4 COMPLETE, SOC-01 through SOC-05 all permanently guarded by 30 tests, 239 total passing)*
 *Update this file at the start and end of each work session*
