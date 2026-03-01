@@ -11,11 +11,11 @@
 | 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
 | 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
-| 4 | Self-Organized Criticality Tracking | Unblocked (Phase 1 complete, eigenspectrum ready) | SOC-01 through SOC-05 | 0 / 5 |
+| 4 | Self-Organized Criticality Tracking | **IN PROGRESS** (Plan 01/02 done: SOC types + entropy functions) | SOC-01 through SOC-05 | 1 / 5 (SOC-01, SOC-02 guarded) |
 | 5 | Orchestrator Integration | Blocked (requires Phases 1, 3, 4) | ORCH-01, ORCH-02, ORCH-04, ORCH-05 | 0 / 5 |
 | 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
 
-**Overall v1 requirements:** 19 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied)
+**Overall v1 requirements:** 19 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01, SOC-02 mathematical foundations guarded)
 
 ## What Has Been Done
 
@@ -43,14 +43,16 @@
   - See `.planning/phases/03-tna-molecular-cot/03-02-SUMMARY.md` for full details.
 - **Phase 3, Wave 3, Plan 03 complete (2026-03-01):** GapDetector (inter-community structural gap detection with topological metrics: density, shortest path, modularity delta, bridge nodes). TNA isolation test (T20–T21: zero cross-module imports, synthetic input only). TNA barrel export (Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector + all types). 12 new tests (209 total passing, 50 in TNA module). ROADMAP success criteria 3 + 5 guarded: T16 (zero gaps in fully connected) + T16b (one gap in bridge) + T20 (isolation). TNA-05 (structural gap detection) + TNA-06 (topological metrics) SATISFIED.
   - See `.planning/phases/03-tna-molecular-cot/03-03-SUMMARY.md` for full details.
+- **Phase 4, Wave 1, Plan 01 complete (2026-02-28):** SOC types and event definitions (SOCMetricsEvent, SOCPhaseTransitionEvent, SOCEventType, SOCEvent in Events.ts; SOCInputs, SOCMetrics, SOCConfig, MetricsTrend in soc/interfaces.ts). Von Neumann entropy pure function (normalized Laplacian density matrix via math.eigs()) and embedding entropy pure function (covariance eigenspectrum via ml-matrix EigenvalueDecomposition). 11 new tests (220 total passing). PRIMARY CORRECTNESS GATES: T-VN-01..05 guard S(K_n) = ln(n-1) for normalized Laplacian; T-EE-01..05 guard identical→0 and orthogonal→ln(d). SOC-01 and SOC-02 permanently guarded. Rule 1 auto-fix: corrected K_n criterion from ln(n) to ln(n-1) per mathematical derivation.
+  - See `.planning/phases/04-soc/04-01-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 3 (TNA) complete — all 5 ROADMAP success criteria verified.** Phase 4 now unblocked:
+**Phase 4 (SOC) Wave 1 complete — SOC-01 and SOC-02 mathematical foundations guarded.** Phase 4 Wave 2 is next:
 
-1. Phase 4 (SOC): Von Neumann entropy probes, surprising edge detection, phase transition detection (eigenspectrum ready from Phase 1)
+1. Phase 4 Wave 2 (04-02-PLAN.md): SOCTracker class + EventEmitter wiring + correlationCoefficient + isPhaseTransition + metrics history + isolation test + barrel export
 
-**Resolve before Phase 4:** embedding model selection (all-MiniLM-L6-v2 vs text-embedding-3-small)
+**Open question resolved:** SOCInputs accepts plain types (not TNA class instances) — embedding model selection question deferred to Phase 5 integration.
 
 ## Active Decisions
 
@@ -89,6 +91,9 @@
 | BondGraph class (not interface) for behavioral invariants | 2026-02-28 | Covalent cascade invalidate + hydrogen distance threshold + VdW trajectory minimum enforced at creation time, not as runtime metadata |
 | Mulberry32 PRNG seeded via rng option (Louvain determinism) | 2026-02-28 | graphology-communities-louvain natively supports rng parameter; Mulberry32(seed) passed as rng — no Math.random patching needed |
 | createRequire CJS interop for graphology-metrics + louvain | 2026-02-28 | graphology-metrics has no package.json exports (NodeNext subpath fails); louvain.detailed() needs CJS require to expose attached methods; createRequire(import.meta.url) is the established pattern |
+| S(K_n) = ln(n-1) for normalized Laplacian density matrix | 2026-02-28 | rho = L_norm/trace(L_norm) gives eigenvalues [0, 1/(n-1) x (n-1 times)]; S = ln(n-1). ROADMAP stated ln(n) but math gives ln(n-1); RESEARCH.md §Pattern 1 acknowledged discrepancy. Tests corrected to ln(n-1). |
+| SOCInputs uses plain types (not TNA class instances) | 2026-02-28 | ReadonlyMap<string, Float64Array> and ReadonlyArray for edges — zero compile-time SOC-to-TNA dependency; enables synthetic testing |
+| SOCEvent / SOCEventType separate from SheafEventType | 2026-02-28 | SOC events (soc:metrics, phase:transition) have their own discriminated union; not merged into SheafEventType |
 
 ## Resolved Questions
 
@@ -123,10 +128,10 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | **RESOLVED: T6b (80 tokens → ≤2 nodes) guards permanently** |
 | Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | **RESOLVED: BondGraph class enforces invariants at creation time; creation throws on violation** |
 | Non-deterministic Louvain (Pitfall 5) | 3 | Different runs produce different community assignments for same graph | **RESOLVED: T9 (10 runs same seed = identical) guards permanently; Mulberry32 PRNG via rng option** |
-| Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | Not started |
-| Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | Not started |
-| Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | Not started |
-| Surprising edge ratio cumulative | 4 | Ratio is stable at exactly 12% from iteration 1 | Not started |
+| Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | **RESOLVED: T-VN-01..05 guard S(K_n)=ln(n-1) for normalized Laplacian density matrix; T-VN-05 confirms entropy <= ln(n)** |
+| Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | **RESOLVED: T-EE-01 (identical→0) + T-EE-02 (orthogonal→ln(d)) guard permanently** |
+| Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | Not started (Wave 2) |
+| Surprising edge ratio cumulative | 4 | Ratio is stable at exactly 12% from iteration 1 | Not started (Wave 2) |
 
 ## Performance Metrics
 
@@ -141,6 +146,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 03 | 01 | ~20 min | 2/2 | 7 created, 2 modified | 2026-02-28 |
 | 03 | 02 | ~8 min | 2/2 | 4 created, 1 modified | 2026-02-28 |
 | 03 | 03 | ~8 min | 2/2 | 4 created | 2026-03-01 |
+| 04 | 01 | ~7 min | 2/2 | 3 created, 1 modified | 2026-02-28 |
+| Phase 04 P01 | 7min | 2 tasks | 4 files |
 
 ## File Map
 
@@ -241,9 +248,13 @@ src/
     ├── GapDetector.test.ts        — 9 tests: T16 (zero gaps fully connected), T16b (one gap bridge), T17-T17c (metrics), T18-T18b (bridge nodes + 3-cluster), T19-T19b (nearest + idempotence)
     ├── isolation.test.ts          — 3 tests: T20 (zero cross-module imports), T20b (no test-file imports), T21 (synthetic input only)
     └── index.ts                   — Public barrel export: Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector + all types
+└── soc/
+    ├── interfaces.ts              — SOCInputs, SOCMetrics, SOCConfig, MetricsTrend (plain types; zero cross-module imports)
+    ├── entropy.ts                 — vonNeumannEntropy() (mathjs eigs on L_norm density matrix), embeddingEntropy() (ml-matrix EigenvalueDecomposition on covariance), cosineSimilarity()
+    └── entropy.test.ts            — 11 tests: T-VN-01..05 (K_n correctness, path < K_n, degenerate=0, upper-bound), T-EE-01..05 (identical→0, orthogonal→ln(d), degenerate cases)
 ```
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-01 — Completed Phase 3, Plan 03-03-PLAN.md (Wave 3: GapDetector + TNA barrel export — TNA-05, TNA-06, ROADMAP-SC3, ROADMAP-SC5 satisfied)*
+*Last session: 2026-02-28 — Completed Phase 4, Plan 04-01-PLAN.md (Wave 1: SOC types + entropy pure functions — SOC-01, SOC-02 mathematical correctness permanently guarded by 11 tests)*
 *Update this file at the start and end of each work session*
