@@ -239,7 +239,7 @@ export class GapDetector {
    * Sample-based for performance: only compute from first 3 nodes of community A
    * to all of community B (sufficient for metric purposes).
    */
-  private readonly #computeShortestPathLength = (
+  readonly #computeShortestPathLength = (
     graph: any,
     membersA: string[],
     membersB: string[]
@@ -271,7 +271,7 @@ export class GapDetector {
    * #bfs — breadth-first search from a start node.
    * Returns a map of node -> shortest distance.
    */
-  private readonly #bfs = (
+  readonly #bfs = (
     graph: any,
     startNode: string
   ): Map<string, number> => {
@@ -308,7 +308,7 @@ export class GapDetector {
    * Simple heuristic: higher inter-community edge count relative to community
    * size -> larger (positive) delta. Assumes that bridges reduce modularity.
    */
-  private readonly #estimateModularityDelta = (
+  readonly #estimateModularityDelta = (
     graph: any,
     commA: number,
     commB: number,
@@ -362,7 +362,7 @@ export class GapDetector {
    * #identifyBridgeNodes — find nodes with high betweenness centrality and
    * inter-community edges.
    */
-  private readonly #identifyBridgeNodes = (
+  readonly #identifyBridgeNodes = (
     membersA: string[],
     membersB: string[],
     interEdgeNodes: Set<string>
