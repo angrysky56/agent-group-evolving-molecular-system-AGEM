@@ -361,6 +361,19 @@ describe('Phase transition detection (SOC-05)', () => {
   }
 
   it('T-PT-01: Synthetic trajectory with known sign change fires phase:transition', () => {
+    // Strategy: use blended embeddings to independently control EE and VNE.
+    //
+    // Fixed nodeCount = 8 (all iterations use 8 nodes, same community).
+    // VNE is controlled by varying the number of edges in the graph (path graph).
+    // EE is controlled by a blend parameter t: 0 → all identical (EE≈0), 1 → all orthogonal (EE=ln(8)).
+    //
+    // Phase A (iterations 1-8): edges 0→7 (VNE increasing), t 0.0→0.7 (EE increasing)
+    //   → deltaVNE > 0 (mostly), deltaEE > 0 → positive Pearson correlation
+    // Phase B (iterations 9-18): edges 6→0 (VNE decreasing), t 0.8→1.0 (EE still increasing)
+    //   → deltaVNE < 0, deltaEE > 0 → negative Pearson correlation → SIGN CHANGE
+    //
+    // Empirically verified: sign change fires at iteration 9 (after r goes from +0.9 to -0.6).
+
     const tracker = new SOCTracker({ correlationWindowSize: 5 });
     const transitionFired: number[] = [];
 
@@ -368,31 +381,69 @@ describe('Phase transition detection (SOC-05)', () => {
       transitionFired.push(event.centeredAtIteration);
     });
 
-    const nodeCount = 5;
+    const N = 8;
 
-    // Iterations 1-7: both VN entropy and embedding entropy increase together (positive correlation)
-    // dense graph + diverse embeddings → both entropy measures high
-    for (let i = 1; i <= 7; i++) {
-      tracker.computeAndEmit(buildIterationInputs({
-        nodeCount,
-        graphDensity: 'dense',
-        embeddingDiversity: 'diverse',
-        iteration: i,
-      }));
+    // Build path graph of k edges: 0-1-...-k
+    function buildPathEdgesLocal(k: number): ReadonlyArray<{ source: number; target: number; weight: number }> {
+      const edges: Array<{ source: number; target: number; weight: number }> = [];
+      for (let i = 0; i < k; i++) edges.push({ source: i, target: i + 1, weight: 1 });
+      return edges;
     }
 
-    // Iterations 8-15: VN entropy stays high (dense graph) but embedding entropy drops (uniform)
-    // → negative correlation between the two entropy deltas
-    for (let i = 8; i <= 15; i++) {
-      tracker.computeAndEmit(buildIterationInputs({
-        nodeCount,
-        graphDensity: 'dense',
-        embeddingDiversity: 'uniform',
-        iteration: i,
-      }));
+    // Build blended embeddings: t=0 → all identical (EE=0), t→1 → more orthogonal (EE increases)
+    // blend: each node k has vector with shared component sqrt(1-t) at dim 0, unique component sqrt(t) at dim k
+    function buildBlendedEmbeddings(t: number): ReadonlyMap<string, Float64Array> {
+      const embs = new Map<string, Float64Array>();
+      for (let k = 0; k < N; k++) {
+        const v = new Float64Array(N);
+        if (t === 0) {
+          v[0] = 1;
+        } else {
+          v[0] = Math.sqrt(1 - t);
+          v[k] = Math.sqrt(t);
+          let norm = 0;
+          for (let d = 0; d < N; d++) norm += v[d] * v[d];
+          norm = Math.sqrt(norm);
+          for (let d = 0; d < N; d++) v[d] /= norm;
+        }
+        embs.set(String(k), v);
+      }
+      return embs as ReadonlyMap<string, Float64Array>;
     }
 
-    // Phase transition should have fired
+    const communityAssignments = new Map<string, number>(
+      Array.from({ length: N }, (_, i) => [String(i), 0] as [string, number])
+    ) as ReadonlyMap<string, number>;
+
+    // Phase A (iterations 1-8): VNE and EE both increase
+    for (let i = 0; i < 8; i++) {
+      const numEdges = i;     // 0,1,2,3,4,5,6,7
+      const t = i * 0.1;     // 0.0,0.1,...,0.7
+      tracker.computeAndEmit({
+        nodeCount: N,
+        edges: buildPathEdgesLocal(numEdges),
+        embeddings: buildBlendedEmbeddings(t),
+        communityAssignments,
+        newEdges: [],
+        iteration: i + 1,
+      });
+    }
+
+    // Phase B (iterations 9-18): VNE decreases, EE continues increasing
+    for (let i = 0; i < 10; i++) {
+      const numEdges = Math.max(0, 6 - i);   // 6,5,4,3,2,1,0,0,0,0 (decreasing)
+      const t = Math.min(1.0, 0.8 + i * 0.025); // 0.80,0.825,...,1.0
+      tracker.computeAndEmit({
+        nodeCount: N,
+        edges: buildPathEdgesLocal(numEdges),
+        embeddings: buildBlendedEmbeddings(t),
+        communityAssignments,
+        newEdges: [],
+        iteration: i + 9,
+      });
+    }
+
+    // Phase transition should have fired (sign change from positive to negative correlation)
     expect(transitionFired.length).toBeGreaterThan(0);
   });
 
