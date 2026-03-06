@@ -65,8 +65,8 @@ function createSpawner(config?: Partial<VdWSpawnerConfig>): {
 } {
   const eventBus = new EventBus();
   const events: AnyEvent[] = [];
-  eventBus.subscribe('orch:vdw-agent-spawned', (e) => events.push(e));
-  eventBus.subscribe('orch:vdw-agent-complete', (e) => events.push(e));
+  eventBus.subscribe('orch:vdw-agent-spawned', (e) => { events.push(e); });
+  eventBus.subscribe('orch:vdw-agent-complete', (e) => { events.push(e); });
   const spawner = new VdWAgentSpawner(eventBus, config);
   return { spawner, eventBus, events };
 }
@@ -540,7 +540,7 @@ describe('VdWAgentSpawner', () => {
 
       await spawner.evaluateAndSpawn([makeGap(3, 7)], 4, 1);
 
-      const spawnedEvent = events.find((e) => e.type === 'orch:vdw-agent-spawned') as Record<string, unknown>;
+      const spawnedEvent = events.find((e) => e.type === 'orch:vdw-agent-spawned') as unknown as Record<string, unknown>;
       expect(spawnedEvent).toBeDefined();
       expect(typeof spawnedEvent['agentId']).toBe('string');
       expect(spawnedEvent['h1Dimension']).toBe(4);
@@ -572,7 +572,7 @@ describe('VdWAgentSpawner', () => {
 
       const completeEvent = events.find(
         (e) => e.type === 'orch:vdw-agent-complete'
-      ) as Record<string, unknown>;
+      ) as unknown as Record<string, unknown>;
       expect(completeEvent).toBeDefined();
       const synthQueries = completeEvent['synthQueries'] as string[];
       expect(Array.isArray(synthQueries)).toBe(true);

@@ -59,6 +59,10 @@ export { AgentPool } from './AgentPool.js';
 export { llm_map, contextStorage, formatTaskForWorker } from './llm_map.js';
 export type { WorkerInboundMessage, WorkerOutboundMessage } from './llm_map.js';
 
+// Phase 6: VdW agent spawning (ORCH-06)
+export { VdWAgentSpawner, VdWAgent } from './VdWAgentSpawner.js';
+export type { VdWSpawnParams, VdWSpawnerConfig } from './VdWAgentSpawner.js';
+
 // ---------------------------------------------------------------------------
 // Types and interfaces
 // ---------------------------------------------------------------------------
