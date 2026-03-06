@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-03-06
-**Current phase:** Phase 6 (P2 Enhancements) — IN PROGRESS (Plan 02/04 done: VdWAgentSpawner + ObstructionHandler integration + 471 tests)
+**Current phase:** Phase 6 (P2 Enhancements) — IN PROGRESS (Plan 03/04 done: CatalystQuestionGenerator + CentralityAnalyzer time-series + 532 tests)
 
 ## Status Snapshot
 
@@ -13,9 +13,9 @@
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
 | 5 | Orchestrator Integration | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied) |
-| 6 | P2 Enhancements | IN PROGRESS (Plan 02/04 done) | ORCH-06 + v2 requirements | Plan 06-01: RegimeValidator+RegimeAnalyzer done; Plan 06-02: VdWAgentSpawner done |
+| 6 | P2 Enhancements | IN PROGRESS (Plan 03/04 done) | ORCH-06 + v2 requirements | Plan 06-01: RegimeValidator+RegimeAnalyzer done; Plan 06-02: VdWAgentSpawner done; Plan 06-03: CatalystQuestionGenerator+CentralityAnalyzer time-series done |
 
-**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing; Phase 6 extending with ORCH-06 + SOC-06/07, 471 total tests passing)
+**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing; Phase 6 extending with ORCH-06 + SOC-06/07 + TNA-07 + TNA-09, 532 total tests passing)
 
 ## What Has Been Done
 
@@ -57,14 +57,16 @@
   - See `.planning/phases/06-p2-enhancements/06-01-SUMMARY.md` for full details.
 - **Phase 6, Plan 02 complete (2026-03-06):** VdWAgentSpawner (ORCH-06) implemented. VdWAgent ephemeral reasoning agent with bounded lifecycle (spawning→active→terminated), synthetic bridging queries, self-termination at maxIterations. VdWAgentSpawner with regime-gated H^1-parameterized spawning: 2-iteration hysteresis, stable suppresses/nascent limits/transitioning-critical enables, inverse token budget max(500,5000/h1), 10-agent cap, 3-iteration cooldown per gap. Integrated into ObstructionHandler (optional injection) and ComposeRootModule (event wiring). New events: orch:vdw-agent-spawned, orch:vdw-agent-complete. 57 new tests (471 total passing): 42 unit + 6 integration + 9 additional. ORCH-06 SATISFIED.
   - See `.planning/phases/06-p2-enhancements/06-02-SUMMARY.md` for full details.
+- **Phase 6, Plan 03 complete (2026-03-06):** CatalystQuestionGenerator (TNA-07) and CentralityAnalyzer time-series (TNA-09) implemented. CatalystQuestionGenerator generates 1-3 template-based catalyst questions per structural gap using top-centrality representative nodes from each community; TF-IDF proxy for semantic distance; gapId cache with invalidation; batch generation. CentralityAnalyzer extended with EventEmitter, time-series tracking (50 entries/node), trend detection (rising/falling/stable/oscillating from 3+ points), peak/valley identification, rapid change events (3x multiplier), topology reorganization events (>3 major rank changes), regime-adaptive intervals (5/10/20). New event types: tna:catalyst-questions-generated, tna:centrality-change-detected, tna:topology-reorganized. TNAEvent added to AnyEvent. Orchestrator wires CentralityAnalyzer events to EventBus; computeIfDue() called each iteration. 61 new tests (532 total passing). TNA-07 and TNA-09 SATISFIED.
+  - See `.planning/phases/06-p2-enhancements/06-03-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 6 IN PROGRESS — Plan 02/04 done, 471 total tests passing.** Phase 6 plans remaining:
+**Phase 6 IN PROGRESS — Plan 03/04 done, 532 total tests passing.** Phase 6 plans remaining:
 
 1. ~~Phase 6 Plan 01: RegimeValidator + RegimeAnalyzer (SOC-06/07) — regime classification events~~ DONE
 2. ~~Phase 6 Plan 02: VdWAgentSpawner (ORCH-06) — regime-gated H^1-parameterized agent spawning~~ DONE
-3. Phase 6 Plan 03: TNA-07 Catalyst Question Generation — catalyst questions as VdW agent priors
+3. ~~Phase 6 Plan 03: TNA-07 Catalyst Question Generation + TNA-09 Centrality time-series~~ DONE
 4. Phase 6 Plan 04: Dynamic sheaf topology construction from TNA community structure
 
 **Phase 6 VdW entry point:** VdW agents receive regime:classification → VdWAgentSpawner.evaluateAndSpawn() → VdWAgent.executeStep() → orch:vdw-agent-complete events
@@ -129,6 +131,11 @@
 | AnyEvent union extended to include OrchestratorEvent | 2026-03-06 | AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent in interfaces.ts; enables VdW events to flow through EventBus type system |
 | VdW agents serialized in runAgents() (not parallel) | 2026-03-06 | runAgents() processes agents one at a time to avoid graph mutation races when integrating entity results into TNA graph |
 | Token budget inverse scaling: max(500, 5000/h1Dimension) | 2026-03-06 | Higher obstruction → more exploratory agents → smaller budget each; H^1=2→2500, H^1=10→500, capped at 500 minimum |
+| Phase 6 TNA-07 semantic distance = TF-IDF weight proxy | 2026-03-06 | Deterministic, no LLM required; Phase 7 replaces with 1 - cosine_similarity(centroid_A_embedding, centroid_B_embedding) |
+| computeIfDue() gates O(n^3) betweenness centrality | 2026-03-06 | Regime-adaptive intervals: critical/transitioning=5, default=10, stable=20; direct compute() still available for tests |
+| CatalystQuestionGenerator gapId format: communityA_communityB | 2026-03-06 | Consistent with VdWAgentSpawner gap tracking; cache invalidation uses same key; batch map keyed by gapId |
+| CentralityTimeSeries capped at 50 entries per node | 2026-03-06 | Circular buffer via splice(); prevents unbounded memory growth; sufficient for trend/peak/valley detection |
+| Rapid change multiplier 3x (rapidChangeMultiplier default) | 2026-03-06 | Calibrated to avoid noise from minor graph updates; configurable for regime-specific tuning |
 
 ## Resolved Questions
 
@@ -191,6 +198,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 05 | 03 | ~25 min | 3/3 | 6 created | 2026-03-01 |
 | 06 | 01 | 9 min | 5/5 | 5 created, 2 modified | 2026-03-06 |
 | 06 | 02 | 9 min | 5/5 | 2 created, 6 modified | 2026-03-06 |
+| 06 | 03 | 11 min | 5/5 | 2 created, 7 modified | 2026-03-06 |
+| Phase 06 P03 | 11 | 5 tasks | 9 files |
 
 ## File Map
 
@@ -325,5 +334,5 @@ src/
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-06 — Completed Phase 6, Plan 06-02 (ORCH-06 VdWAgentSpawner + 101 new tests — 471 total passing, tsc --noEmit clean, isolation maintained)*
+*Last session: 2026-03-06 — Completed Phase 6, Plan 06-03 (TNA-07 CatalystQuestionGenerator + TNA-09 CentralityAnalyzer time-series + 61 new tests — 532 total passing, tsc --noEmit clean, all isolation tests pass)*
 *Update this file at the start and end of each work session*
