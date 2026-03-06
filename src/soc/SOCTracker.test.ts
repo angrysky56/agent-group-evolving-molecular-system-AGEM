@@ -628,3 +628,303 @@ describe('Event emission (SOC-03)', () => {
     expect(trend.mean).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6: Regime validation integration (SOC-06, SOC-07)
+// ---------------------------------------------------------------------------
+
+describe('Phase 6: Regime validation integration', () => {
+  it('T-INT-1: SOCTracker emits "regime:classification" event every iteration', () => {
+    const tracker = new SOCTracker();
+    const classificationEvents: unknown[] = [];
+
+    tracker.on('regime:classification', (event: unknown) => {
+      classificationEvents.push(event);
+    });
+
+    // Call computeAndEmit 5 times with synthetic inputs
+    for (let i = 1; i <= 5; i++) {
+      tracker.computeAndEmit(buildSyntheticInputs({ iteration: i }));
+    }
+
+    // Exactly 5 classification events emitted (one per iteration)
+    expect(classificationEvents).toHaveLength(5);
+    for (const event of classificationEvents) {
+      const ev = event as Record<string, unknown>;
+      expect(ev['type']).toBe('regime:classification');
+      expect(typeof ev['iteration']).toBe('number');
+      expect(typeof ev['regime']).toBe('string');
+      expect(typeof ev['cdpVariance']).toBe('number');
+      expect(typeof ev['correlationConsistency']).toBe('number');
+      expect(typeof ev['persistenceIterations']).toBe('number');
+    }
+  });
+
+  it('T-INT-2: Initial regime classification is "nascent"', () => {
+    const tracker = new SOCTracker();
+    let firstEvent: Record<string, unknown> | null = null;
+
+    tracker.on('regime:classification', (event: unknown) => {
+      if (!firstEvent) firstEvent = event as Record<string, unknown>;
+    });
+
+    tracker.computeAndEmit(buildSyntheticInputs({ iteration: 1 }));
+
+    expect(firstEvent).not.toBeNull();
+    expect(firstEvent!['regime']).toBe('nascent');
+  });
+
+  it('T-INT-3: Regime becomes "stable" after sufficient stable iterations', () => {
+    // Use custom config: persistenceThreshold=3 so we can confirm quickly
+    const tracker = new SOCTracker({
+      regimeAnalyzerConfig: {
+        persistenceThreshold: 3,
+        analysisWindowSize: 5,
+        stableCdpVariance: 0.2,
+        stableCorrelationStdDev: 0.3,
+        criticalCdpVariance: 0.5,
+        criticalCorrelationStdDev: 0.8,
+      },
+    });
+
+    let lastClassification: Record<string, unknown> | null = null;
+
+    tracker.on('regime:classification', (event: unknown) => {
+      lastClassification = event as Record<string, unknown>;
+    });
+
+    // Feed 5 stable iterations with same graph and same embeddings
+    // (zero variance in CDP and correlation)
+    for (let i = 1; i <= 5; i++) {
+      tracker.computeAndEmit(buildSyntheticInputs({ iteration: i }));
+    }
+
+    expect(lastClassification).not.toBeNull();
+    expect(lastClassification!['regime']).toBe('stable');
+  });
+
+  it('T-INT-4: "phase:transition-confirmed" NOT emitted without updateH1Dimension()', () => {
+    const tracker = new SOCTracker({ correlationWindowSize: 5 });
+    let confirmedFired = false;
+
+    tracker.on('phase:transition-confirmed', () => {
+      confirmedFired = true;
+    });
+
+    // Feed 20 iterations with mixed data — even if sign change occurs,
+    // H^1 = 0 (never updated) < threshold of 2 → no confirmation
+    const N = 8;
+    for (let i = 1; i <= 20; i++) {
+      const t = (i % 10) / 10; // oscillating blend
+      const embeds = new Map<string, Float64Array>();
+      for (let k = 0; k < N; k++) {
+        const v = new Float64Array(N);
+        v[0] = Math.sqrt(1 - t);
+        if (t > 0) v[k] = Math.sqrt(t);
+        let norm = 0;
+        for (let d = 0; d < N; d++) norm += v[d] * v[d];
+        norm = Math.sqrt(norm) || 1;
+        for (let d = 0; d < N; d++) v[d] /= norm;
+        embeds.set(String(k), v);
+      }
+
+      const numEdges = i <= 10 ? i : 20 - i;
+      const edges: Array<{ source: number; target: number; weight: number }> = [];
+      for (let e = 0; e < numEdges && e < N - 1; e++) {
+        edges.push({ source: e, target: e + 1, weight: 1 });
+      }
+
+      tracker.computeAndEmit({
+        nodeCount: N,
+        edges,
+        embeddings: embeds as ReadonlyMap<string, Float64Array>,
+        communityAssignments: new Map(Array.from({ length: N }, (_, k) => [String(k), 0])) as ReadonlyMap<string, number>,
+        newEdges: [],
+        iteration: i,
+      });
+    }
+
+    // H^1 was never updated (remains 0), so no transition can be confirmed
+    expect(confirmedFired).toBe(false);
+  });
+
+  it('T-INT-5: "phase:transition-confirmed" emitted after updateH1Dimension(3) + sign change persistence', () => {
+    // Small persistence window to trigger confirmation quickly
+    const tracker = new SOCTracker({
+      correlationWindowSize: 5,
+      regimeValidatorConfig: {
+        persistenceWindow: 2,
+        coherenceThreshold: 0.5,
+        h1DimensionThreshold: 2,
+      },
+    });
+
+    const confirmedEvents: Record<string, unknown>[] = [];
+    tracker.on('phase:transition-confirmed', (event: unknown) => {
+      confirmedEvents.push(event as Record<string, unknown>);
+    });
+
+    // Set H^1 = 3 (satisfies threshold of 2)
+    tracker.updateH1Dimension(3);
+
+    const N = 8;
+
+    // Build path graph with k edges
+    function buildPathEdges(k: number): Array<{ source: number; target: number; weight: number }> {
+      const edges: Array<{ source: number; target: number; weight: number }> = [];
+      for (let i = 0; i < k && i < N - 1; i++) edges.push({ source: i, target: i + 1, weight: 1 });
+      return edges;
+    }
+
+    // Build blended embeddings to control EE
+    function buildBlendedEmbs(t: number): ReadonlyMap<string, Float64Array> {
+      const embs = new Map<string, Float64Array>();
+      for (let k = 0; k < N; k++) {
+        const v = new Float64Array(N);
+        if (t === 0) {
+          v[0] = 1;
+        } else {
+          v[0] = Math.sqrt(1 - t);
+          v[k] = Math.sqrt(t);
+          let norm = 0;
+          for (let d = 0; d < N; d++) norm += v[d] * v[d];
+          norm = Math.sqrt(norm);
+          for (let d = 0; d < N; d++) v[d] /= norm;
+        }
+        embs.set(String(k), v);
+      }
+      return embs as ReadonlyMap<string, Float64Array>;
+    }
+
+    const communities = new Map<string, number>(
+      Array.from({ length: N }, (_, i) => [String(i), 0] as [string, number])
+    ) as ReadonlyMap<string, number>;
+
+    // Phase A (iters 1-8): both VNE and EE increase → positive correlation
+    for (let i = 0; i < 8; i++) {
+      tracker.computeAndEmit({
+        nodeCount: N,
+        edges: buildPathEdges(i),
+        embeddings: buildBlendedEmbs(i * 0.1),
+        communityAssignments: communities,
+        newEdges: [],
+        iteration: i + 1,
+      });
+    }
+
+    // Phase B (iters 9-18): VNE decreases, EE still increases → sign change
+    for (let i = 0; i < 10; i++) {
+      tracker.computeAndEmit({
+        nodeCount: N,
+        edges: buildPathEdges(Math.max(0, 6 - i)),
+        embeddings: buildBlendedEmbs(Math.min(1.0, 0.8 + i * 0.025)),
+        communityAssignments: communities,
+        newEdges: [],
+        iteration: 9 + i,
+      });
+    }
+
+    // After sign change + persistence + H^1=3, 'phase:transition-confirmed' should fire
+    expect(confirmedEvents.length).toBeGreaterThan(0);
+    expect(confirmedEvents[0]!['type']).toBe('phase:transition-confirmed');
+    expect(confirmedEvents[0]!['h1Dimension']).toBe(3);
+    expect(confirmedEvents[0]!['coherence']).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('T-INT-6: Existing "phase:transition" event still emitted (backward compatibility)', () => {
+    const tracker = new SOCTracker({ correlationWindowSize: 5 });
+    const transitionEvents: unknown[] = [];
+
+    tracker.on('phase:transition', (event: unknown) => {
+      transitionEvents.push(event);
+    });
+
+    const N = 8;
+    function buildPathEdges(k: number): Array<{ source: number; target: number; weight: number }> {
+      const edges: Array<{ source: number; target: number; weight: number }> = [];
+      for (let i = 0; i < k && i < N - 1; i++) edges.push({ source: i, target: i + 1, weight: 1 });
+      return edges;
+    }
+
+    function buildBlendedEmbs(t: number): ReadonlyMap<string, Float64Array> {
+      const embs = new Map<string, Float64Array>();
+      for (let k = 0; k < N; k++) {
+        const v = new Float64Array(N);
+        if (t === 0) { v[0] = 1; }
+        else {
+          v[0] = Math.sqrt(1 - t); v[k] = Math.sqrt(t);
+          let norm = 0;
+          for (let d = 0; d < N; d++) norm += v[d] * v[d];
+          norm = Math.sqrt(norm);
+          for (let d = 0; d < N; d++) v[d] /= norm;
+        }
+        embs.set(String(k), v);
+      }
+      return embs as ReadonlyMap<string, Float64Array>;
+    }
+
+    const communities = new Map<string, number>(
+      Array.from({ length: N }, (_, i) => [String(i), 0] as [string, number])
+    ) as ReadonlyMap<string, number>;
+
+    // Same trajectory as T-PT-01 — verified to produce sign change
+    for (let i = 0; i < 8; i++) {
+      tracker.computeAndEmit({ nodeCount: N, edges: buildPathEdges(i), embeddings: buildBlendedEmbs(i * 0.1), communityAssignments: communities, newEdges: [], iteration: i + 1 });
+    }
+    for (let i = 0; i < 10; i++) {
+      tracker.computeAndEmit({ nodeCount: N, edges: buildPathEdges(Math.max(0, 6 - i)), embeddings: buildBlendedEmbs(Math.min(1.0, 0.8 + i * 0.025)), communityAssignments: communities, newEdges: [], iteration: 9 + i });
+    }
+
+    // The original 'phase:transition' event must still fire (backward compatibility)
+    expect(transitionEvents.length).toBeGreaterThan(0);
+    const ev = transitionEvents[0] as Record<string, unknown>;
+    expect(ev['type']).toBe('phase:transition');
+    expect(typeof ev['correlationCoefficient']).toBe('number');
+    expect(typeof ev['previousCorrelation']).toBe('number');
+  });
+
+  it('T-INT-7: getRegimeMetrics() returns current regime analysis after first call', () => {
+    const tracker = new SOCTracker();
+
+    // Initially undefined (no calls yet)
+    expect(tracker.getRegimeMetrics()).toBeUndefined();
+
+    tracker.computeAndEmit(buildSyntheticInputs({ iteration: 1 }));
+    tracker.computeAndEmit(buildSyntheticInputs({ iteration: 2 }));
+    tracker.computeAndEmit(buildSyntheticInputs({ iteration: 3 }));
+
+    const metrics = tracker.getRegimeMetrics();
+    expect(metrics).toBeDefined();
+    expect(metrics!.iteration).toBe(3);
+    expect(typeof metrics!.regime).toBe('string');
+    expect(typeof metrics!.cdpVariance).toBe('number');
+    expect(typeof metrics!.correlationConsistency).toBe('number');
+    expect(typeof metrics!.persistenceIterations).toBe('number');
+  });
+
+  it('T-INT-8: getCurrentRegime() returns "nascent" initially (before first computeAndEmit)', () => {
+    const tracker = new SOCTracker();
+
+    // getCurrentRegime delegates to #regimeAnalyzer.getCurrentRegime() which starts as 'nascent'
+    expect(tracker.getCurrentRegime()).toBe('nascent');
+  });
+
+  it('T-INT-9: computeAndEmit() return type unchanged (backward compatible — still returns SOCMetrics)', () => {
+    const tracker = new SOCTracker();
+    const result = tracker.computeAndEmit(buildSyntheticInputs({ iteration: 1 }));
+
+    // Must have all 8 original SOCMetrics fields
+    expect(result).toHaveProperty('iteration');
+    expect(result).toHaveProperty('timestamp');
+    expect(result).toHaveProperty('vonNeumannEntropy');
+    expect(result).toHaveProperty('embeddingEntropy');
+    expect(result).toHaveProperty('cdp');
+    expect(result).toHaveProperty('surprisingEdgeRatio');
+    expect(result).toHaveProperty('correlationCoefficient');
+    expect(result).toHaveProperty('isPhaseTransition');
+
+    // Must NOT have Phase 6 fields on the return value (Phase 6 data via events only)
+    expect(result).not.toHaveProperty('regime');
+    expect(result).not.toHaveProperty('cdpVariance');
+  });
+});
