@@ -39,10 +39,18 @@ export { GapDetector } from './GapDetector.js';
 // Phase 6: Catalyst question generation (TNA-07)
 export { CatalystQuestionGenerator } from './CatalystQuestionGenerator.js';
 
-// Phase 6: Extended types
+// Phase 6: Layout computation (TNA-08)
+export { LayoutComputer } from './LayoutComputer.js';
+
+// Phase 6: Extended types (TNA-07, TNA-08, TNA-09)
 export type {
   CatalystQuestion,
   CentralityTimeSeries,
   CentralityTrend,
   CentralityTimeSeriesConfig,
+  NodePosition,
+  LayoutConfig,
+  LayoutOutput,
+  LayoutExportJSON,
+  LayoutComputerConfig,
 } from './interfaces.js';

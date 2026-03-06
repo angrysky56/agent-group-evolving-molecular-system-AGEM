@@ -42,6 +42,7 @@ import {
   CentralityAnalyzer,
   GapDetector,
   CatalystQuestionGenerator,
+  LayoutComputer,
 } from '../tna/index.js';
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,9 @@ export class Orchestrator {
   /** TNA catalyst question generator: gap-targeted question generation (Phase 6, TNA-07). */
   readonly tnaCatalystGenerator: CatalystQuestionGenerator;
 
+  /** TNA layout computer: ForceAtlas2 visualization layout for semantic graph (Phase 6, TNA-08). */
+  readonly tnaLayout: LayoutComputer;
+
   /** SOC tracker: computes all five SOC metrics and detects phase transitions. */
   readonly socTracker: SOCTracker;
 
@@ -184,6 +188,9 @@ export class Orchestrator {
       this.tnaGraph,
       this.tnaCentrality
     );
+
+    // Phase 6: Instantiate LayoutComputer (TNA-08)
+    this.tnaLayout = new LayoutComputer(this.tnaGraph);
 
     // Step 5: Instantiate SOC
     this.socTracker = new SOCTracker({ correlationWindowSize: 10 });
@@ -271,6 +278,17 @@ export class Orchestrator {
     this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.tnaCentrality.adjustInterval(regimeEvent.regime);
+    });
+
+    // Phase 6: Wire LayoutComputer events (TNA-08) to EventBus
+    this.tnaLayout.on('tna:layout-updated', (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
+
+    // Phase 6: Adjust layout computation interval based on regime
+    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+      const regimeEvent = event as unknown as { regime: string };
+      this.tnaLayout.adjustInterval(regimeEvent.regime);
     });
 
     // StateManager state changes are emitted via EventBus internally — subscribe for logging
@@ -378,6 +396,12 @@ export class Orchestrator {
       // Phase 6: Centrality time-series update (TNA-09)
       // computeIfDue() checks internal interval and computes centrality + updates time series
       this.tnaCentrality.computeIfDue(this.#iterationCounter);
+
+      // Phase 6: Layout computation (TNA-08)
+      // computeIfDue() checks internal interval and runs ForceAtlas2 if needed
+      if (this.tnaGraph.order >= 3) {
+        this.tnaLayout.computeIfDue(this.#iterationCounter);
+      }
     }
 
     // Step 5: Append prompt to LCM
