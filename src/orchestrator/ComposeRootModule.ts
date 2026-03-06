@@ -56,6 +56,7 @@ import { EventBus } from './EventBus.js';
 import { OrchestratorState, OrchestratorStateManager } from './OrchestratorState.js';
 import type { StateChangeEvent } from './OrchestratorState.js';
 import { ObstructionHandler } from './ObstructionHandler.js';
+import { VdWAgentSpawner } from './VdWAgentSpawner.js';
 import type { AnyEvent } from './interfaces.js';
 
 // ---------------------------------------------------------------------------
@@ -180,12 +181,15 @@ export class Orchestrator {
     // Step 6: Instantiate StateManager
     this.stateManager = new OrchestratorStateManager(this.eventBus);
 
-    // Step 7: Instantiate ObstructionHandler (ROADMAP criteria #3)
+    // Step 7b: Instantiate VdW agent spawner (Phase 6: ORCH-06)
+    const vdwSpawner = new VdWAgentSpawner(this.eventBus);
+
+    // Step 7: Instantiate ObstructionHandler (ROADMAP criteria #3) with VdW spawner injection
     this.obstructionHandler = new ObstructionHandler(
       this.eventBus,
       this.tnaGapDetector,
       this.tnaGraph,
-      { agentPoolSize: 4 }
+      { agentPoolSize: 4, vdwSpawner }
     );
 
     // Step 8: Wire event emissions to EventBus
@@ -219,6 +223,9 @@ export class Orchestrator {
       // The event has h1Dimension field for obstruction events
       const h1Dimension = (event as { h1Dimension?: number }).h1Dimension ?? 0;
       this.stateManager.updateMetrics(h1Dimension);
+
+      // Phase 6: Forward H^1 dimension to VdW spawner for hysteresis tracking
+      this.obstructionHandler.updateH1ForSpawner(h1Dimension);
     });
 
     // From SOCTracker (EventEmitter)
@@ -228,6 +235,18 @@ export class Orchestrator {
 
     this.socTracker.on('phase:transition', (event: AnyEvent) => {
       void this.eventBus.emit(event);
+    });
+
+    // Phase 6: Forward regime:classification events from SOCTracker to EventBus
+    // and then to ObstructionHandler for VdW spawner regime gating
+    this.socTracker.on('regime:classification', (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
+
+    // Phase 6: Forward regime classification to ObstructionHandler for VdW spawner
+    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+      const regimeEvent = event as unknown as { regime: string };
+      this.obstructionHandler.updateRegime(regimeEvent.regime);
     });
 
     // StateManager state changes are emitted via EventBus internally — subscribe for logging

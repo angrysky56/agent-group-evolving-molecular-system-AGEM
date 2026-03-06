@@ -29,6 +29,8 @@ import { EventBus } from './EventBus.js';
 import type { GapDetector } from '../tna/GapDetector.js';
 import type { CooccurrenceGraph } from '../tna/CooccurrenceGraph.js';
 import type { AnyEvent } from './interfaces.js';
+import { VdWAgentSpawner } from './VdWAgentSpawner.js';
+import type { VdWAgent } from './VdWAgentSpawner.js';
 
 // ---------------------------------------------------------------------------
 // GapDetectorAgent — stub agent for Phase 5
@@ -139,6 +141,9 @@ export class ObstructionHandler {
   readonly #agentPool: GapDetectorAgent[];
   readonly #agentPoolSize: number;
 
+  /** Phase 6: optional VdW agent spawner (null if not injected — backward compatible). */
+  readonly #vdwSpawner: VdWAgentSpawner | null;
+
   /** FIFO queue of obstruction events awaiting processing. */
   #obstructionQueue: ObstructionEventPayload[] = [];
 
@@ -157,18 +162,19 @@ export class ObstructionHandler {
    * @param eventBus    - Central EventBus to subscribe to and emit on.
    * @param gapDetector - TNA GapDetector for structural gap analysis.
    * @param tnaGraph    - TNA CooccurrenceGraph to integrate gap fill results into.
-   * @param config      - Optional configuration (agentPoolSize defaults to 4).
+   * @param config      - Optional configuration (agentPoolSize defaults to 4; vdwSpawner optional).
    */
   constructor(
     eventBus: EventBus,
     gapDetector: GapDetector,
     tnaGraph: CooccurrenceGraph,
-    config?: { agentPoolSize?: number }
+    config?: { agentPoolSize?: number; vdwSpawner?: VdWAgentSpawner }
   ) {
     this.#eventBus = eventBus;
     this.#gapDetector = gapDetector;
     this.#tnaGraph = tnaGraph;
     this.#agentPoolSize = config?.agentPoolSize ?? 4;
+    this.#vdwSpawner = config?.vdwSpawner ?? null;
 
     // Pre-populate agent pool with idle agents
     this.#agentPool = [];
@@ -248,6 +254,35 @@ export class ObstructionHandler {
 
         // Return agent to idle state
         agent.status = 'idle';
+
+        // Phase 6: VdW agent spawning (ORCH-06)
+        if (this.#vdwSpawner) {
+          const gaps = this.#gapDetector.findGaps();
+          const spawnedAgents: VdWAgent[] = await this.#vdwSpawner.evaluateAndSpawn(
+            gaps,
+            obstruction.h1Dimension,
+            obstruction.iteration
+          );
+
+          if (spawnedAgents.length > 0) {
+            console.log(
+              `[ORCH-OBSTRUCTION] Spawned ${spawnedAgents.length} VdW agents ` +
+              `for iteration ${obstruction.iteration}`
+            );
+
+            // Run spawned agents (serialized to avoid graph mutation races)
+            await this.#vdwSpawner.runAgents();
+
+            // Integrate VdW agent results into TNA graph
+            for (const vdwAgent of spawnedAgents) {
+              const results = vdwAgent.getResults();
+              if (results.entitiesAdded.length > 0) {
+                // Spread readonly array to mutable string[] (required by ingestTokens signature)
+                this.#tnaGraph.ingestTokens([...results.entitiesAdded]);
+              }
+            }
+          }
+        }
 
         // Emit monitoring event
         const filledEvent = {
@@ -367,6 +402,28 @@ export class ObstructionHandler {
   }
 
   // -------------------------------------------------------------------------
+  // Public: Phase 6 regime and H^1 forwarding methods
+  // -------------------------------------------------------------------------
+
+  /**
+   * updateRegime — forward regime classification to the VdW spawner.
+   * Called by ComposeRootModule when 'regime:classification' events arrive.
+   * No-op if no VdW spawner is configured (backward compatible).
+   */
+  updateRegime(regime: string): void {
+    this.#vdwSpawner?.updateRegime(regime);
+  }
+
+  /**
+   * updateH1ForSpawner — forward H^1 dimension to VdW spawner for hysteresis tracking.
+   * Called by ComposeRootModule when 'sheaf:h1-obstruction-detected' events arrive.
+   * No-op if no VdW spawner is configured (backward compatible).
+   */
+  updateH1ForSpawner(h1Dimension: number): void {
+    this.#vdwSpawner?.updateH1Dimension(h1Dimension);
+  }
+
+  // -------------------------------------------------------------------------
   // Public: shutdown
   // -------------------------------------------------------------------------
 
@@ -389,6 +446,9 @@ export class ObstructionHandler {
            Date.now() - startTime < maxWaitMs) {
       await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
     }
+
+    // Phase 6: Clean up VdW spawner
+    this.#vdwSpawner?.cleanup();
 
     // Clean up all agents
     await Promise.all(this.#agentPool.map((agent) => agent.cleanup()));
