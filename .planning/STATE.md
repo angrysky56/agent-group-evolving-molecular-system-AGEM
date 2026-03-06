@@ -2,7 +2,7 @@
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
 **Last updated:** 2026-03-06
-**Current phase:** Phase 6 (P2 Enhancements) — IN PROGRESS (Plan 03/04 done: CatalystQuestionGenerator + CentralityAnalyzer time-series + 532 tests)
+**Current phase:** Phase 6 (P2 Enhancements) — **COMPLETE** (Plan 04/04 done: LayoutComputer ForceAtlas2 + 574 total tests)
 
 ## Status Snapshot
 
@@ -13,9 +13,9 @@
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
 | 5 | Orchestrator Integration | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied) |
-| 6 | P2 Enhancements | IN PROGRESS (Plan 03/04 done) | ORCH-06 + v2 requirements | Plan 06-01: RegimeValidator+RegimeAnalyzer done; Plan 06-02: VdWAgentSpawner done; Plan 06-03: CatalystQuestionGenerator+CentralityAnalyzer time-series done |
+| 6 | P2 Enhancements | **COMPLETE** (Plan 04/04 done) | ORCH-06 + TNA-07/08/09 + SOC-06/07 | Plans 01-04: RegimeValidator+RegimeAnalyzer+VdWAgentSpawner+CatalystQuestionGenerator+CentralityAnalyzer+LayoutComputer done |
 
-**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing; Phase 6 extending with ORCH-06 + SOC-06/07 + TNA-07 + TNA-09, 532 total tests passing)
+**Overall v1 requirements:** 25 / 25 implemented + P2 enhancements complete (SHEAF-01–06; LCM-01–05; TNA-01–09; SOC-01–07; ORCH-01–06 — PHASE 6 DONE with 574 total tests passing, all 6 P2 requirements satisfied)
 
 ## What Has Been Done
 
@@ -62,14 +62,19 @@
 
 ## What Is Next
 
-**Phase 6 IN PROGRESS — Plan 03/04 done, 532 total tests passing.** Phase 6 plans remaining:
+**Phase 6 COMPLETE — 574 total tests passing. All 6 P2 enhancements done.**
 
 1. ~~Phase 6 Plan 01: RegimeValidator + RegimeAnalyzer (SOC-06/07) — regime classification events~~ DONE
 2. ~~Phase 6 Plan 02: VdWAgentSpawner (ORCH-06) — regime-gated H^1-parameterized agent spawning~~ DONE
 3. ~~Phase 6 Plan 03: TNA-07 Catalyst Question Generation + TNA-09 Centrality time-series~~ DONE
-4. Phase 6 Plan 04: Dynamic sheaf topology construction from TNA community structure
+4. ~~Phase 6 Plan 04: LayoutComputer ForceAtlas2 visualization layout (TNA-08)~~ DONE
+
+No additional planned phases. Phase 7+ (P3 enhancements, LLM integration, semantic distance with real embeddings) are future work outside the current roadmap.
 
 **Phase 6 VdW entry point:** VdW agents receive regime:classification → VdWAgentSpawner.evaluateAndSpawn() → VdWAgent.executeStep() → orch:vdw-agent-complete events
+
+- **Phase 6, Plan 04 complete (2026-03-06):** LayoutComputer (TNA-08) implements ForceAtlas2 force-directed layout for TNA co-occurrence graph visualization. Deterministic hash-based seeding (Bernstein + FNV hash from node ID strings). computeIfDue() with regime-adaptive intervals (critical=10, default=15, stable=20); warm-up always runs on first call. Convergence energy = mean squared displacement from previous positions (Infinity on first run). Barnes-Hut O(n log n) optimization enabled. exportJSON() produces D3.js/Sigma.js-compatible JSON. CooccurrenceGraph extended with updateNodePosition() + getNodePosition(). LayoutUpdatedEvent added to TNA event types. 42 new tests (574 total). PHASE 6 COMPLETE: TNA-08 SATISFIED.
+  - See `.planning/phases/06-p2-enhancements/06-04-SUMMARY.md` for full details.
 
 ## Active Decisions
 
@@ -136,6 +141,11 @@
 | CatalystQuestionGenerator gapId format: communityA_communityB | 2026-03-06 | Consistent with VdWAgentSpawner gap tracking; cache invalidation uses same key; batch map keyed by gapId |
 | CentralityTimeSeries capped at 50 entries per node | 2026-03-06 | Circular buffer via splice(); prevents unbounded memory growth; sufficient for trend/peak/valley detection |
 | Rapid change multiplier 3x (rapidChangeMultiplier default) | 2026-03-06 | Calibrated to avoid noise from minor graph updates; configurable for regime-specific tuning |
+| computeIfDue warm-up always runs on first call (hasComputedInitial guard) | 2026-03-06 | Without warm-up guard, first call at iteration=0 would always skip (elapsed=0 < any interval). Initial full layout is always required before incremental updates begin |
+| LayoutComputer trivial layout for < 3 nodes: hash positions, 0 iterations, no event | 2026-03-06 | FA2 requires >= 3 nodes for meaningful physics; small graphs get deterministic hash-based positions instead |
+| Layout convergence energy = mean squared displacement from previous positions | 2026-03-06 | First run returns Infinity (no reference). Non-monotone across runs (FA2 positions oscillate before settling). Finite energy indicates layout is being tracked |
+| Hash-based deterministic seeding: Bernstein hash for x, FNV-variant for y | 2026-03-06 | Same node ID always maps to same starting position; orthogonal hash functions prevent x/y correlation |
+| createRequire CJS interop for graphology-layout-forceatlas2 (no exports field) | 2026-03-06 | Package has no package.json exports field; bundled index.d.ts uses old CJS import style incompatible with NodeNext. createRequire + vendor-types.d.ts declaration is consistent with graphology-metrics pattern |
 
 ## Resolved Questions
 
@@ -200,6 +210,7 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 06 | 02 | 9 min | 5/5 | 2 created, 6 modified | 2026-03-06 |
 | 06 | 03 | 11 min | 5/5 | 2 created, 7 modified | 2026-03-06 |
 | Phase 06 P03 | 11 | 5 tasks | 9 files |
+| 06 | 04 | 12 min | 6/6 | 2 created, 7 modified | 2026-03-06 |
 
 ## File Map
 
@@ -298,8 +309,12 @@ src/
     ├── CentralityAnalyzer.test.ts — 8 tests: T13 (bridge highest), T13b (peripheral low), T14/T14b (normalized [0,1]), T15/T15b (metadata writeback + top-N)
     ├── GapDetector.ts             — Structural gap detection: findGaps(), findNearestGap(), getGapCount(), getGapBetween(communityA, communityB); metrics: density, shortest-path, modularity-delta, bridge-nodes
     ├── GapDetector.test.ts        — 9 tests: T16 (zero gaps fully connected), T16b (one gap bridge), T17-T17c (metrics), T18-T18b (bridge nodes + 3-cluster), T19-T19b (nearest + idempotence)
-    ├── isolation.test.ts          — 3 tests: T20 (zero cross-module imports), T20b (no test-file imports), T21 (synthetic input only)
-    └── index.ts                   — Public barrel export: Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector + all types
+    ├── CatalystQuestionGenerator.ts       — CatalystQuestion generator (TNA-07): template-based bridging questions per structural gap
+    ├── CatalystQuestionGenerator.test.ts  — 29 tests: question generation, caching, semantic distance, batch generation
+    ├── LayoutComputer.ts                  — LayoutComputer (TNA-08): ForceAtlas2 force-directed layout with deterministic seeding
+    ├── LayoutComputer.test.ts             — 42 tests: convergence, determinism, incremental updates, community clustering, JSON export
+    ├── isolation.test.ts                  — 3 tests: T20 (zero cross-module imports), T20b (no test-file imports), T21 (synthetic input only)
+    └── index.ts                           — Public barrel export: Preprocessor, CooccurrenceGraph, LouvainDetector, CentralityAnalyzer, GapDetector, CatalystQuestionGenerator, LayoutComputer + all types
 └── soc/
     ├── interfaces.ts              — SOCInputs, SOCMetrics, SOCConfig, MetricsTrend (plain types; zero cross-module imports)
     ├── entropy.ts                 — vonNeumannEntropy() (mathjs eigs on L_norm density matrix), embeddingEntropy() (ml-matrix EigenvalueDecomposition on covariance), cosineSimilarity()
@@ -334,5 +349,5 @@ src/
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-06 — Completed Phase 6, Plan 06-03 (TNA-07 CatalystQuestionGenerator + TNA-09 CentralityAnalyzer time-series + 61 new tests — 532 total passing, tsc --noEmit clean, all isolation tests pass)*
+*Last session: 2026-03-06 — Completed Phase 6, Plan 06-04 (TNA-08 LayoutComputer ForceAtlas2 + 42 new tests — 574 total passing, tsc --noEmit clean, all isolation tests pass — PHASE 6 COMPLETE)*
 *Update this file at the start and end of each work session*
