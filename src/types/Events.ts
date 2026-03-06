@@ -239,7 +239,8 @@ export type OrchestratorEvent = VdWAgentSpawnedEvent | VdWAgentCompleteEvent;
 export type TNAEventType =
   | 'tna:catalyst-questions-generated'
   | 'tna:centrality-change-detected'
-  | 'tna:topology-reorganized';
+  | 'tna:topology-reorganized'
+  | 'tna:layout-updated';
 
 /**
  * CatalystQuestionsGeneratedEvent — emitted when catalyst questions are generated for a gap.
@@ -274,9 +275,28 @@ export interface TopologyReorganizedEvent {
 }
 
 /**
+ * LayoutUpdatedEvent — emitted after a ForceAtlas2 layout computation completes.
+ *
+ * Consumed by visualization consumers and the EventBus for layout monitoring.
+ * Energy indicates convergence quality (lower = more settled layout).
+ */
+export interface LayoutUpdatedEvent {
+  readonly type: 'tna:layout-updated';
+  /** Current reasoning iteration at layout time. */
+  readonly iteration: number;
+  /** Convergence energy (mean squared displacement from previous layout). */
+  readonly energy: number;
+  /** Number of nodes positioned in this layout. */
+  readonly nodeCount: number;
+  /** Number of ForceAtlas2 physics iterations executed. */
+  readonly physicsIterations: number;
+}
+
+/**
  * TNAEvent — discriminated union of TNA events.
  */
 export type TNAEvent =
   | CatalystQuestionsGeneratedEvent
   | CentralityChangeDetectedEvent
-  | TopologyReorganizedEvent;
+  | TopologyReorganizedEvent
+  | LayoutUpdatedEvent;

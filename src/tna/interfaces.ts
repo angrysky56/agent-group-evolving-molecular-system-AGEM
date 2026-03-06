@@ -54,6 +54,10 @@ export interface TextNode {
   readonly communityId?: number;
   /** Betweenness centrality score. Set after CentralityAnalyzer runs. */
   readonly betweennessCentrality?: number;
+  /** Horizontal layout position (set after LayoutComputer runs). */
+  readonly x?: number;
+  /** Vertical layout position (set after LayoutComputer runs). */
+  readonly y?: number;
 }
 
 /**
@@ -201,6 +205,162 @@ export interface CentralityTimeSeriesConfig {
    * Default: 3.0 (3x increase)
    */
   readonly rapidChangeMultiplier: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: Layout types (TNA-08)
+// ---------------------------------------------------------------------------
+
+/**
+ * NodePosition — 2D coordinates for a graph node computed by LayoutComputer.
+ *
+ * Positions are in an arbitrary coordinate space defined by the ForceAtlas2
+ * physics simulation. They are meaningful only relative to each other:
+ * closer nodes have stronger co-occurrence relationships.
+ */
+export interface NodePosition {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * LayoutConfig — physics simulation parameters for the ForceAtlas2 algorithm.
+ *
+ * All parameters have documented defaults that produce good visualizations
+ * for TNA co-occurrence graphs (sparse, community-structured graphs).
+ */
+export interface LayoutConfig {
+  /** Number of simulation iterations. Default: 100 */
+  readonly iterations: number;
+
+  /** Use Barnes-Hut optimization for O(n log n) repulsion. Default: true */
+  readonly barnesHutOptimize: boolean;
+
+  /** Barnes-Hut accuracy parameter (0.5 = balanced accuracy/speed). Default: 0.5 */
+  readonly barnesHutTheta: number;
+
+  /** LinLog mode (logarithmic attraction — better for sparse graphs). Default: false */
+  readonly linLogMode: boolean;
+
+  /** Gravity constant (pulls nodes toward center). Default: 1.0 */
+  readonly gravity: number;
+
+  /** Slowdown factor (larger = more stable but slower). Default: 1.0 */
+  readonly slowDown: number;
+
+  /** Edge weight influence on attraction forces. Default: 1.0 */
+  readonly edgeWeightInfluence: number;
+
+  /** Scaling ratio (repulsion strength relative to node count). Default: 2.0 */
+  readonly scalingRatio: number;
+
+  /** Use strong gravity mode (non-linear gravity). Default: false */
+  readonly strongGravityMode: boolean;
+
+  /** Random seed for deterministic initial position assignment. Default: 42 */
+  readonly seed: number;
+}
+
+/**
+ * LayoutOutput — result of a single ForceAtlas2 layout computation.
+ *
+ * Energy is the convergence metric: sum of squared position deltas from
+ * the previous layout, normalized by node count. Lower energy = more stable.
+ */
+export interface LayoutOutput {
+  /** Map of nodeId → 2D position after ForceAtlas2 simulation. */
+  readonly positions: ReadonlyMap<string, NodePosition>;
+
+  /**
+   * Convergence energy: mean squared displacement from previous layout.
+   * First computation returns Infinity (no previous reference).
+   * Below ~1.0 indicates the layout has largely converged.
+   */
+  readonly energy: number;
+
+  /** Number of ForceAtlas2 physics iterations executed in this run. */
+  readonly iterations: number;
+
+  /** Number of nodes positioned in this layout. */
+  readonly nodeCount: number;
+
+  /** Number of edges in the graph at layout time. */
+  readonly edgeCount: number;
+}
+
+/**
+ * LayoutExportJSON — JSON-serializable layout for visualization consumers.
+ *
+ * Compatible with D3.js force simulation and Sigma.js graph renderers.
+ * Contains all information needed to render the semantic graph visually.
+ */
+export interface LayoutExportJSON {
+  readonly nodes: ReadonlyArray<{
+    /** Node identifier (canonical lemma). */
+    readonly id: string;
+    /** Horizontal layout position. */
+    readonly x: number;
+    /** Vertical layout position. */
+    readonly y: number;
+    /** Community cluster ID (from Louvain). */
+    readonly communityId?: number;
+    /** Betweenness centrality score [0, 1]. */
+    readonly betweennessCentrality?: number;
+    /** Human-readable label (same as id for TNA nodes). */
+    readonly label: string;
+  }>;
+  readonly edges: ReadonlyArray<{
+    /** Source node ID. */
+    readonly source: string;
+    /** Target node ID. */
+    readonly target: string;
+    /** Accumulated co-occurrence weight. */
+    readonly weight: number;
+  }>;
+  readonly metadata: {
+    /** Number of nodes in this layout. */
+    readonly nodeCount: number;
+    /** Number of edges in this layout. */
+    readonly edgeCount: number;
+    /** Convergence energy (lower = more settled). */
+    readonly energy: number;
+    /** Physics iterations executed. */
+    readonly iterations: number;
+    /** Unix timestamp (ms) at layout export time. */
+    readonly timestamp: number;
+  };
+}
+
+/**
+ * LayoutComputerConfig — configuration for automatic layout scheduling.
+ *
+ * Controls when layouts are recomputed (interval) and how convergence
+ * is assessed. Regime-adaptive: critical/transitioning = more frequent.
+ */
+export interface LayoutComputerConfig {
+  /** Default interval (reasoning iterations) between layout computations. Default: 15 */
+  readonly defaultComputeInterval: number;
+
+  /** Interval during transitioning/critical regimes (more frequent). Default: 10 */
+  readonly urgentComputeInterval: number;
+
+  /** Interval during stable regimes (less frequent). Default: 20 */
+  readonly relaxedComputeInterval: number;
+
+  /**
+   * Energy threshold below which layout is considered converged.
+   * isConverged() returns true when energy < this value. Default: 1.0
+   */
+  readonly convergenceEnergyThreshold: number;
+
+  /** Minimum graph node count to run layout (trivial for smaller). Default: 3 */
+  readonly minGraphOrder: number;
+
+  /**
+   * Iteration multiplier for incremental updates (after initial full layout).
+   * Incremental iterations = round(full_iterations * multiplier). Default: 0.5
+   */
+  readonly incrementalMultiplier: number;
 }
 
 // ---------------------------------------------------------------------------
