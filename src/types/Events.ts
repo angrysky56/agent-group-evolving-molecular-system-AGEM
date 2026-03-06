@@ -228,3 +228,55 @@ export interface VdWAgentCompleteEvent {
  * OrchestratorEvent — discriminated union of orchestrator events.
  */
 export type OrchestratorEvent = VdWAgentSpawnedEvent | VdWAgentCompleteEvent;
+
+// ---------------------------------------------------------------------------
+// Phase 6 TNA event types (TNA-07, TNA-09)
+// ---------------------------------------------------------------------------
+
+/**
+ * TNAEventType — string literal union of TNA event types.
+ */
+export type TNAEventType =
+  | 'tna:catalyst-questions-generated'
+  | 'tna:centrality-change-detected'
+  | 'tna:topology-reorganized';
+
+/**
+ * CatalystQuestionsGeneratedEvent — emitted when catalyst questions are generated for a gap.
+ */
+export interface CatalystQuestionsGeneratedEvent {
+  readonly type: 'tna:catalyst-questions-generated';
+  readonly gapId: string;
+  readonly questionCount: number;
+  readonly semanticDistance: number;
+  readonly iteration: number;
+}
+
+/**
+ * CentralityChangeDetectedEvent — emitted when a node's centrality changes rapidly.
+ */
+export interface CentralityChangeDetectedEvent {
+  readonly type: 'tna:centrality-change-detected';
+  readonly nodeId: string;
+  readonly trend: import('../tna/interfaces.js').CentralityTrend;
+  readonly previousScore: number;
+  readonly currentScore: number;
+  readonly iteration: number;
+}
+
+/**
+ * TopologyReorganizedEvent — emitted when major centrality swaps detected.
+ */
+export interface TopologyReorganizedEvent {
+  readonly type: 'tna:topology-reorganized';
+  readonly majorNodeSwaps: number;
+  readonly iteration: number;
+}
+
+/**
+ * TNAEvent — discriminated union of TNA events.
+ */
+export type TNAEvent =
+  | CatalystQuestionsGeneratedEvent
+  | CentralityChangeDetectedEvent
+  | TopologyReorganizedEvent;
