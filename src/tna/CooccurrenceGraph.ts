@@ -69,7 +69,8 @@ export class CooccurrenceGraph {
 
   /**
    * nodeMetadata — maps lemma string to full TextNode data.
-   * Tracks: canonical lemma, all surface forms observed, TF-IDF weight.
+   * Tracks: canonical lemma, all surface forms observed, TF-IDF weight,
+   * community assignment, centrality score, and Phase 6 layout position.
    */
   readonly #nodeMetadata: Map<string, {
     id: TextNodeId;
@@ -78,6 +79,9 @@ export class CooccurrenceGraph {
     tfidfWeight: number;
     communityId?: number;
     betweennessCentrality?: number;
+    // Phase 6: Layout position (set by LayoutComputer after ForceAtlas2 simulation)
+    x?: number;
+    y?: number;
   }> = new Map();
 
   #currentIteration: number = 0;
@@ -275,6 +279,8 @@ export class CooccurrenceGraph {
       tfidfWeight: meta.tfidfWeight,
       communityId: meta.communityId,
       betweennessCentrality: meta.betweennessCentrality,
+      x: meta.x,
+      y: meta.y,
     };
   }
 
@@ -289,6 +295,8 @@ export class CooccurrenceGraph {
       tfidfWeight: meta.tfidfWeight,
       communityId: meta.communityId,
       betweennessCentrality: meta.betweennessCentrality,
+      x: meta.x,
+      y: meta.y,
     }));
   }
 
@@ -340,6 +348,46 @@ export class CooccurrenceGraph {
     if (meta) {
       meta.communityId = communityId;
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 6: node position methods (used by LayoutComputer — TNA-08)
+  // --------------------------------------------------------------------------
+
+  /**
+   * updateNodePosition — stores the ForceAtlas2 layout position for a node.
+   *
+   * Called by LayoutComputer after each ForceAtlas2 simulation to cache
+   * the computed (x, y) coordinates in node metadata. These coordinates
+   * are exposed via getNode() and getNodePosition() for downstream consumers.
+   *
+   * @param nodeId - The node's identifier (canonical lemma string).
+   * @param x - Horizontal layout position (ForceAtlas2 coordinate space).
+   * @param y - Vertical layout position (ForceAtlas2 coordinate space).
+   */
+  updateNodePosition(nodeId: string, x: number, y: number): void {
+    const meta = this.#nodeMetadata.get(nodeId);
+    if (meta) {
+      meta.x = x;
+      meta.y = y;
+    }
+  }
+
+  /**
+   * getNodePosition — returns the cached layout position for a node.
+   *
+   * Returns undefined if LayoutComputer has not yet computed positions
+   * or if the node does not exist.
+   *
+   * @param nodeId - The node's identifier (canonical lemma string).
+   * @returns { x, y } or undefined.
+   */
+  getNodePosition(nodeId: string): { x: number; y: number } | undefined {
+    const meta = this.#nodeMetadata.get(nodeId);
+    if (meta !== undefined && meta.x !== undefined && meta.y !== undefined) {
+      return { x: meta.x, y: meta.y };
+    }
+    return undefined;
   }
 
   /**
