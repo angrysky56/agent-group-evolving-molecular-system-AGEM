@@ -10,7 +10,7 @@
  * No other external dependencies.
  */
 
-import type { SheafEvent, SOCEvent } from '../types/Events.js';
+import type { SheafEvent, SOCEvent, OrchestratorEvent } from '../types/Events.js';
 
 // ---------------------------------------------------------------------------
 // Agent lifecycle types
@@ -147,11 +147,10 @@ export interface TaskResult<T = unknown> {
 /**
  * AnyEvent — discriminated union of all event types flowing through the EventBus.
  *
- * Covers all events emitted by Phase 1 (CohomologyAnalyzer) and Phase 4 (SOCTracker).
- * Additional event types (e.g., OrchestratorState changes) extend this in their own
- * modules and do not require modifying AnyEvent here.
+ * Covers all events emitted by Phase 1 (CohomologyAnalyzer), Phase 4 (SOCTracker),
+ * and Phase 6 orchestrator components (VdWAgentSpawner).
  */
-export type AnyEvent = SheafEvent | SOCEvent;
+export type AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent;
 
 /**
  * EventSubscriber — handler function registered with EventBus.subscribe().

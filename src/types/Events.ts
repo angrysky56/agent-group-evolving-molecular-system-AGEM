@@ -183,3 +183,48 @@ export type SOCEvent =
   | SOCPhaseTransitionEvent
   | PhaseTransitionConfirmedEvent
   | RegimeClassificationEvent;
+
+// ---------------------------------------------------------------------------
+// Phase 6 Orchestrator event types (ORCH-06)
+// ---------------------------------------------------------------------------
+
+/**
+ * OrchestratorEventType — string literal union of orchestrator event types.
+ * These are emitted by orchestrator components, not by Phase 1-4 modules.
+ */
+export type OrchestratorEventType =
+  | 'orch:vdw-agent-spawned'
+  | 'orch:vdw-agent-complete';
+
+/**
+ * VdWAgentSpawnedEvent — emitted when a Van der Waals agent is spawned.
+ */
+export interface VdWAgentSpawnedEvent {
+  readonly type: 'orch:vdw-agent-spawned';
+  readonly agentId: string;
+  readonly iteration: number;
+  readonly h1Dimension: number;
+  readonly gapId: string;
+  readonly tokenBudget: number;
+  readonly maxIterations: number;
+  readonly regime: string;
+}
+
+/**
+ * VdWAgentCompleteEvent — emitted when a Van der Waals agent finishes its lifecycle.
+ */
+export interface VdWAgentCompleteEvent {
+  readonly type: 'orch:vdw-agent-complete';
+  readonly agentId: string;
+  readonly iteration: number;
+  readonly synthQueries: readonly string[];
+  readonly entitiesAdded: readonly string[];
+  readonly relationsAdded: ReadonlyArray<{ from: string; to: string; type: string }>;
+  readonly stepsExecuted: number;
+  readonly success: boolean;
+}
+
+/**
+ * OrchestratorEvent — discriminated union of orchestrator events.
+ */
+export type OrchestratorEvent = VdWAgentSpawnedEvent | VdWAgentCompleteEvent;
