@@ -269,7 +269,9 @@ export class LayoutComputer extends EventEmitter {
   computeIfDue(iteration: number): boolean {
     const elapsed = iteration - this.#lastComputeIteration;
 
-    if (elapsed < this.#currentInterval) {
+    // Always run the initial full layout (warm-up) regardless of interval.
+    // Subsequent runs are gated by the interval.
+    if (this.#hasComputedInitial && elapsed < this.#currentInterval) {
       return false;
     }
 
