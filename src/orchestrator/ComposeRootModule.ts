@@ -41,6 +41,7 @@ import {
   LouvainDetector,
   CentralityAnalyzer,
   GapDetector,
+  CatalystQuestionGenerator,
 } from '../tna/index.js';
 
 // ---------------------------------------------------------------------------
@@ -116,6 +117,9 @@ export class Orchestrator {
   /** TNA gap detector: structural gap detection with topological metrics. */
   readonly tnaGapDetector: GapDetector;
 
+  /** TNA catalyst question generator: gap-targeted question generation (Phase 6, TNA-07). */
+  readonly tnaCatalystGenerator: CatalystQuestionGenerator;
+
   /** SOC tracker: computes all five SOC metrics and detects phase transitions. */
   readonly socTracker: SOCTracker;
 
@@ -174,6 +178,12 @@ export class Orchestrator {
     this.tnaLouvain = new LouvainDetector(this.tnaGraph);
     this.tnaCentrality = new CentralityAnalyzer(this.tnaGraph);
     this.tnaGapDetector = new GapDetector(this.tnaGraph, this.tnaLouvain, this.tnaCentrality);
+
+    // Phase 6: Instantiate CatalystQuestionGenerator (TNA-07)
+    this.tnaCatalystGenerator = new CatalystQuestionGenerator(
+      this.tnaGraph,
+      this.tnaCentrality
+    );
 
     // Step 5: Instantiate SOC
     this.socTracker = new SOCTracker({ correlationWindowSize: 10 });
@@ -247,6 +257,20 @@ export class Orchestrator {
     this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.obstructionHandler.updateRegime(regimeEvent.regime);
+    });
+
+    // Phase 6: Wire CentralityAnalyzer events (TNA-09) to EventBus
+    this.tnaCentrality.on('tna:centrality-change-detected', (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
+    this.tnaCentrality.on('tna:topology-reorganized', (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
+
+    // Phase 6: Adjust centrality computation interval based on regime
+    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+      const regimeEvent = event as unknown as { regime: string };
+      this.tnaCentrality.adjustInterval(regimeEvent.regime);
     });
 
     // StateManager state changes are emitted via EventBus internally — subscribe for logging
@@ -350,6 +374,10 @@ export class Orchestrator {
         `[ORCH] Iteration ${this.#iterationCounter}: Communities detected: ` +
         `${communities.communityCount}, modularity=${modularity.toFixed(3)}`
       );
+
+      // Phase 6: Centrality time-series update (TNA-09)
+      // computeIfDue() checks internal interval and computes centrality + updates time series
+      this.tnaCentrality.computeIfDue(this.#iterationCounter);
     }
 
     // Step 5: Append prompt to LCM

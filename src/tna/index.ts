@@ -35,3 +35,14 @@ export { CooccurrenceGraph } from './CooccurrenceGraph.js';
 export { LouvainDetector } from './LouvainDetector.js';
 export { CentralityAnalyzer } from './CentralityAnalyzer.js';
 export { GapDetector } from './GapDetector.js';
+
+// Phase 6: Catalyst question generation (TNA-07)
+export { CatalystQuestionGenerator } from './CatalystQuestionGenerator.js';
+
+// Phase 6: Extended types
+export type {
+  CatalystQuestion,
+  CentralityTimeSeries,
+  CentralityTrend,
+  CentralityTimeSeriesConfig,
+} from './interfaces.js';

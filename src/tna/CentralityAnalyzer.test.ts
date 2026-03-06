@@ -797,7 +797,9 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
         expect(topologyEvent).toHaveProperty('type', 'tna:topology-reorganized');
         expect(topologyEvent).toHaveProperty('majorNodeSwaps');
         expect(topologyEvent).toHaveProperty('iteration', 2);
-        expect((topologyEvent.majorNodeSwaps as number)).toBeGreaterThan(3);
+        const swaps = (topologyEvent as Record<string, unknown>)['majorNodeSwaps'];
+        expect(typeof swaps).toBe('number');
+        expect(swaps as number).toBeGreaterThan(3);
       }
     });
 
