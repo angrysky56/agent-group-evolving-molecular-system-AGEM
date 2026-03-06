@@ -227,6 +227,9 @@ export class RegimeAnalyzer {
   #regimeStartIteration: number = 0;
   #metricsWindow: SOCMetrics[] = [];
 
+  /** Total number of analyzeRegime() calls made. Used for initial nascent detection. */
+  #totalIterations: number = 0;
+
   constructor(config: Partial<RegimeAnalyzerConfig> = {}) {
     this.#config = { ...DEFAULT_ANALYZER_CONFIG, ...config };
   }
@@ -245,11 +248,17 @@ export class RegimeAnalyzer {
       this.#metricsWindow.shift();
     }
 
+    // Track total calls for initial nascent detection
+    this.#totalIterations++;
+
     // Compute metrics
     const cdpValues = this.#metricsWindow.map(m => m.cdp);
     const corrValues = this.#metricsWindow.map(m => m.correlationCoefficient);
     const cdpVariance = variance(cdpValues);
     const correlationConsistency = stdDev(corrValues);
+
+    // Persistence: how many iterations since the system entered the current regime.
+    // Uses metrics.iteration - #regimeStartIteration for consistent tracking.
     const persistenceIterations = metrics.iteration - this.#regimeStartIteration;
 
     // Classify regime
@@ -260,7 +269,9 @@ export class RegimeAnalyzer {
       isTransitioning
     );
 
-    // If regime changed, reset persistence counter
+    // If regime changed, reset persistence counter.
+    // When transitioning OUT of 'nascent' (to stable/critical/transitioning),
+    // mark the regime start at the current iteration so persistence resets correctly.
     if (newRegime !== this.#currentRegime) {
       this.#currentRegime = newRegime;
       this.#regimeStartIteration = metrics.iteration;
@@ -287,8 +298,13 @@ export class RegimeAnalyzer {
     // Priority 1: Transitioning (transient state for sign changes)
     if (isTransitioning) return 'transitioning';
 
-    // Priority 2: Nascent (insufficient history)
-    if (persistence < this.#config.persistenceThreshold) return 'nascent';
+    // Priority 2: Nascent — only applies while still in initial 'nascent' regime.
+    // Once the system has graduated to stable/critical/transitioning, the persistence
+    // check no longer blocks classification. 'nascent' can only re-appear as a default
+    // when metrics are ambiguous (between stable and critical thresholds).
+    if (this.#currentRegime === 'nascent' && persistence < this.#config.persistenceThreshold) {
+      return 'nascent';
+    }
 
     // Priority 3: Critical (high instability markers)
     if (
@@ -306,7 +322,7 @@ export class RegimeAnalyzer {
       return 'stable';
     }
 
-    // Default: nascent (insufficient evidence for stable or critical)
+    // Default: nascent (insufficient evidence for stable or critical after data warmup)
     return 'nascent';
   }
 
