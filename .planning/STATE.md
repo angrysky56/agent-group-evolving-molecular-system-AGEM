@@ -301,7 +301,7 @@ src/
     ├── isolation.test.ts          — 4 tests: T-ISO-01 (zero cross-module imports), T-ISO-02 (no test imports), T-ISO-03 (no literal 400), T-ISO-04 (synthetic only)
     └── index.ts                   — Public barrel export: SOCTracker, vonNeumannEntropy, embeddingEntropy, cosineSimilarity, pearsonCorrelation, linearSlope + all types
 └── orchestrator/
-    ├── interfaces.ts              — Agent (5-stage lifecycle), PoolConfig, Task<T>, TaskResult<T>, AnyEvent = SheafEvent | SOCEvent, EventSubscriber type alias
+    ├── interfaces.ts              — Agent (5-stage lifecycle), PoolConfig, Task<T>, TaskResult<T>, AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent, EventSubscriber type alias
     ├── EventBus.ts                — EventBus class: subscribe/emit/unsubscribe/getSubscriberCount; Promise.all parallel dispatch; #subscribers Map<string, EventSubscriber[]>
     ├── EventBus.test.ts           — 12 tests: T1-T10 (routing, parallel, unsubscribe, async, case-sensitive) + 2 additional
     ├── AgentPool.ts               — AgentPool class: initialize/shutdown (idempotent)/getAgents/getIdleAgents/getAgentCount; Promise.race per-agent heartbeat timeout
@@ -310,12 +310,14 @@ src/
     ├── OrchestratorState.test.ts  — 12 tests: T1-T8 (state transitions, event payloads, thresholds, H1=0) + 4 additional
     ├── llm_map.ts                 — llm_map<T>() parallel dispatch, contextStorage AsyncLocalStorage, formatTaskForWorker(), WorkerInboundMessage/WorkerOutboundMessage types
     ├── llm_map.test.ts            — 33 tests: T1-T15 (dispatch, ORDER PRESERVATION guard, partial failures, context propagation, cleanup, round-robin, edge cases)
-    ├── ComposeRootModule.ts       — Orchestrator class: 11 readonly component properties, EventBus wiring, runReasoning() pipeline (TNA→LCM→Sheaf→SOC), shutdown()
+    ├── VdWAgentSpawner.ts         — VdWAgent (bounded lifecycle; spawning→active→terminated; maxIterations self-terminate) + VdWAgentSpawner (ORCH-06 regime-gated H^1-parameterized spawning)
+    ├── VdWAgentSpawner.test.ts    — 42 unit tests: T1-T9 (VdWAgent), T10-T14 (H^1 hysteresis), T15-T19 (regime gating), T20-T24 (spawn count), T25-T28 (token budget), T29-T31 (cooldown), T32-T40 (events+cleanup)
+    ├── ComposeRootModule.ts       — Orchestrator class: VdWAgentSpawner instantiated and injected into ObstructionHandler; regime:classification + H^1 event wiring added
     ├── ComposeRootModule.test.ts  — 37 integration tests: instantiation, event wiring, state transitions, 10-iteration loop (T6), LCM/TNA/SOC integration, edge cases
-    ├── ObstructionHandler.ts      — H^1 → FIFO queue → GapDetectorAgent spawn → findGaps() → ingestTokens() feedback loop; GapFillResult; orch:obstruction-filled event
-    ├── ObstructionHandler.test.ts — 18 tests: subscription, async processing, agent spawning, graph integration, FIFO ordering, event emission, status accuracy
+    ├── ObstructionHandler.ts      — H^1 → FIFO → GapDetectorAgent + Phase 6 VdW spawn pipeline; optional vdwSpawner injection; updateRegime()/updateH1ForSpawner() public methods
+    ├── ObstructionHandler.test.ts — 24 tests: 18 original + 6 VdW integration tests (T-INT-1..T-INT-5 + backward compat)
     ├── isolation.test.ts          — 7 tests: T1-T4 per-module isolation (zero cross-imports sheaf/lcm/tna/soc), T5 only ComposeRootModule.ts has multi-module imports
-    ├── index.ts                   — Barrel export: Orchestrator, ObstructionHandler, OrchestratorState, EventBus, AgentPool, llm_map + all types
+    ├── index.ts                   — Barrel export: Orchestrator, ObstructionHandler, VdWAgentSpawner, VdWAgent, OrchestratorState, EventBus, AgentPool, llm_map + all types
     └── workers/
         ├── TaskWorker.ts          — ESM worker entry point: worker-local AsyncLocalStorage, stub executor (shouldFail/value/prompt), error sandboxing, parentPort guard
         └── TaskWorker.mock.mjs    — Pure JavaScript mock worker for tests: delay support, shouldFail injection, _context echo, workerMessageCount tracking
@@ -323,5 +325,5 @@ src/
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-06 — Completed Phase 6, Plan 06-01 (SOC-06 RegimeValidator + SOC-07 RegimeAnalyzer + 53 new tests — 471 total passing, isolation invariants maintained, Phase 6 Plan 01/04 done)*
+*Last session: 2026-03-06 — Completed Phase 6, Plan 06-02 (ORCH-06 VdWAgentSpawner + 101 new tests — 471 total passing, tsc --noEmit clean, isolation maintained)*
 *Update this file at the start and end of each work session*
