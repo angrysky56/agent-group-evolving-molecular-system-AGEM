@@ -39,7 +39,19 @@ export { vonNeumannEntropy, embeddingEntropy, cosineSimilarity } from './entropy
 export { pearsonCorrelation, linearSlope } from './correlation.js';
 
 // ---------------------------------------------------------------------------
-// Main class — SOCTracker (SOC-03, SOC-04, SOC-05)
+// Main class — SOCTracker (SOC-03, SOC-04, SOC-05, SOC-06, SOC-07)
 // ---------------------------------------------------------------------------
 
 export { SOCTracker } from './SOCTracker.js';
+
+// ---------------------------------------------------------------------------
+// Phase 6: Regime validation and stability analysis (SOC-06, SOC-07)
+// ---------------------------------------------------------------------------
+
+export { RegimeValidator, RegimeAnalyzer } from './RegimeValidator.js';
+export type {
+  RegimeStability,
+  RegimeMetrics,
+  RegimeValidatorConfig,
+  RegimeAnalyzerConfig,
+} from './interfaces.js';

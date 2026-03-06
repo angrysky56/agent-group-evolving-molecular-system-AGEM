@@ -1,5 +1,5 @@
 /**
- * SOCTracker.ts — SOCTracker class (SOC-03, SOC-04, SOC-05)
+ * SOCTracker.ts — SOCTracker class (SOC-03, SOC-04, SOC-05, SOC-06, SOC-07)
  *
  * The SOCTracker is the integration point for all five SOC metrics:
  *   1. Von Neumann entropy (vonNeumannEntropy — SOC-01)
@@ -8,13 +8,22 @@
  *   4. Per-iteration surprising edge ratio (SOC-04)
  *   5. Dynamic phase transition detection via rolling Pearson correlation (SOC-05)
  *
+ * Phase 6 additions:
+ *   6. Regime persistence validation (SOC-06) — RegimeValidator confirms transitions
+ *      only after N consecutive same-sign iterations with coherence check and H^1 gating.
+ *   7. Regime stability analysis (SOC-07) — RegimeAnalyzer classifies system into
+ *      one of four states: nascent / stable / critical / transitioning.
+ *
  * Extends EventEmitter (same pattern as CohomologyAnalyzer.ts in Phase 1).
  * Emits:
  *   - 'soc:metrics' (SOCMetricsEvent): every iteration with all 8 fields
  *   - 'phase:transition' (SOCPhaseTransitionEvent): when correlation sign changes
+ *   - 'phase:transition-confirmed' (PhaseTransitionConfirmedEvent): after validation
+ *   - 'regime:classification' (RegimeClassificationEvent): every iteration
  *
  * Isolation invariant: ZERO imports from src/tna/, src/lcm/, or src/orchestrator/.
  * All inputs arrive via the SOCInputs plain-type interface.
+ * H^1 dimension is provided externally via updateH1Dimension() — no sheaf import needed.
  *
  * Key design decisions (from CONTEXT.md and 04-01-SUMMARY.md):
  *   - Phase transition detected via sign change in rolling Pearson correlation of
@@ -31,13 +40,18 @@ import type {
   SOCMetrics,
   SOCConfig,
   MetricsTrend,
+  RegimeStability,
+  RegimeMetrics,
 } from './interfaces.js';
 import type {
   SOCMetricsEvent,
   SOCPhaseTransitionEvent,
+  PhaseTransitionConfirmedEvent,
+  RegimeClassificationEvent,
 } from '../types/Events.js';
 import { vonNeumannEntropy, embeddingEntropy, cosineSimilarity } from './entropy.js';
 import { pearsonCorrelation, linearSlope } from './correlation.js';
+import { RegimeValidator, RegimeAnalyzer } from './RegimeValidator.js';
 
 // ---------------------------------------------------------------------------
 // SOCConfig defaults
@@ -76,6 +90,12 @@ export class SOCTracker extends EventEmitter {
   #deltaStructural: number[];
   #deltaSemantic: number[];
 
+  // Phase 6: Regime validation (SOC-06) and stability analysis (SOC-07)
+  readonly #regimeValidator: RegimeValidator;
+  readonly #regimeAnalyzer: RegimeAnalyzer;
+  #currentH1Dimension: number;
+  #latestRegimeMetrics: RegimeMetrics | undefined;
+
   /**
    * Creates a new SOCTracker with optional configuration overrides.
    *
@@ -90,6 +110,12 @@ export class SOCTracker extends EventEmitter {
     this.#previousCorrelation = null;
     this.#deltaStructural = [];
     this.#deltaSemantic = [];
+
+    // Phase 6: Instantiate regime components with optional config overrides
+    this.#regimeValidator = new RegimeValidator(config.regimeValidatorConfig ?? {});
+    this.#regimeAnalyzer = new RegimeAnalyzer(config.regimeAnalyzerConfig ?? {});
+    this.#currentH1Dimension = 0;
+    this.#latestRegimeMetrics = undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -211,7 +237,84 @@ export class SOCTracker extends EventEmitter {
       this.emit('phase:transition', transitionEvent);
     }
 
+    // Phase 6: Regime validation (SOC-06)
+    // Track correlation sign in the validator every iteration
+    this.#regimeValidator.trackCorrelation(correlationCoefficient, iteration);
+
+    // Check if any pending transition candidate should be confirmed
+    let isTransitionConfirmed = false;
+    const candidate = this.#regimeValidator.getCurrentCandidate();
+    if (isPhaseTransition || candidate.startIteration !== null) {
+      const validationResult = this.#regimeValidator.validateTransition(
+        this.#currentH1Dimension,
+        iteration
+      );
+      if (validationResult.confirmed) {
+        isTransitionConfirmed = true;
+        const confirmedEvent: PhaseTransitionConfirmedEvent = {
+          type: 'phase:transition-confirmed',
+          iteration,
+          centeredAtIteration: iteration - Math.floor(windowSize / 2),
+          coherence: validationResult.coherence,
+          h1Dimension: this.#currentH1Dimension,
+          correlationCoefficient,
+          previousCorrelation: this.#previousCorrelation ?? 0,
+        };
+        this.emit('phase:transition-confirmed', confirmedEvent);
+      }
+    }
+
+    // Phase 6: Regime stability analysis (SOC-07) — emit every iteration
+    const regimeMetrics = this.#regimeAnalyzer.analyzeRegime(metrics, isTransitionConfirmed);
+    this.#latestRegimeMetrics = regimeMetrics;
+    const classificationEvent: RegimeClassificationEvent = {
+      type: 'regime:classification',
+      iteration,
+      regime: regimeMetrics.regime,
+      cdpVariance: regimeMetrics.cdpVariance,
+      correlationConsistency: regimeMetrics.correlationConsistency,
+      persistenceIterations: regimeMetrics.persistenceIterations,
+    };
+    this.emit('regime:classification', classificationEvent);
+
     return metrics;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 6 public methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * updateH1Dimension — update the current H^1 dimension from sheaf obstruction events.
+   *
+   * Called by the orchestrator (ComposeRootModule) when 'sheaf:h1-obstruction-detected'
+   * events arrive. This value is used by RegimeValidator for H^1 gating.
+   *
+   * Design: SOCTracker does NOT import from sheaf/. Instead, the orchestrator
+   * passes the H^1 dimension via this method, maintaining module isolation.
+   *
+   * @param h1Dimension - Current H^1 dimension from CohomologyAnalyzer.
+   */
+  updateH1Dimension(h1Dimension: number): void {
+    this.#currentH1Dimension = h1Dimension;
+  }
+
+  /**
+   * getRegimeMetrics — returns the most recent regime analysis.
+   *
+   * Returns undefined if computeAndEmit() has never been called.
+   */
+  getRegimeMetrics(): RegimeMetrics | undefined {
+    return this.#latestRegimeMetrics;
+  }
+
+  /**
+   * getCurrentRegime — returns the current regime stability classification.
+   *
+   * Returns 'nascent' before computeAndEmit() is first called.
+   */
+  getCurrentRegime(): RegimeStability {
+    return this.#regimeAnalyzer.getCurrentRegime();
   }
 
   // ---------------------------------------------------------------------------
