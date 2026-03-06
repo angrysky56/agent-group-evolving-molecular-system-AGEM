@@ -1,8 +1,8 @@
 # Project State
 
 **Project:** RLM-LCM Molecular-CoT Group Evolving Agents (AGEM)
-**Last updated:** 2026-03-01
-**Current phase:** Phase 5 (Orchestrator) — COMPLETE (Plan 03/03 done: Composition root + ObstructionHandler + 131 tests)
+**Last updated:** 2026-03-06
+**Current phase:** Phase 6 (P2 Enhancements) — IN PROGRESS (Plan 02/04 done: VdWAgentSpawner + ObstructionHandler integration + 471 tests)
 
 ## Status Snapshot
 
@@ -13,9 +13,9 @@
 | 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
 | 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
 | 5 | Orchestrator Integration | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied) |
-| 6 | P2 Enhancements | Blocked (Phase 5 not done) | v2 requirements | — |
+| 6 | P2 Enhancements | IN PROGRESS (Plan 02/04 done) | ORCH-06 + v2 requirements | Plan 06-01: RegimeValidator+RegimeAnalyzer done; Plan 06-02: VdWAgentSpawner done |
 
-**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing)
+**Overall v1 requirements:** 25 / 25 implemented (SHEAF-01–06 complete; LCM-01–05 complete; TNA-01–06 + ORCH-03 satisfied; SOC-01–05 all permanently guarded; ORCH-01–05 all complete — Phase 5 DONE with 370 total tests passing; Phase 6 extending with ORCH-06 + SOC-06/07, 471 total tests passing)
 
 ## What Has Been Done
 
@@ -53,23 +53,21 @@
   - See `.planning/phases/05-orchestrator/05-02-SUMMARY.md` for full details.
 - **Phase 5, Wave 3, Plan 03 complete (2026-03-01):** Orchestrator composition root (ORCH-05): ComposeRootModule.ts wires all four AGEM modules (Sheaf, LCM, TNA, SOC) with shared IEmbedder dependency. EventBus wired to receive events from CohomologyAnalyzer (via .on() forwarding) and SOCTracker (same pattern). runReasoning() executes full TNA→Sheaf→SOC pipeline per iteration with LCM append and Louvain detection. ObstructionHandler implements ROADMAP criteria #3: H^1 obstruction → FIFO queue → GapDetectorAgent spawn → findGaps() → ingestTokens() → orch:obstruction-filled event. Isolation test confirms zero cross-imports between sheaf/lcm/tna/soc (via from-clause regex extraction). Barrel export complete. 62 new tests (370 total passing): 37 ComposeRootModule integration, 18 ObstructionHandler, 7 isolation. Rule 1 auto-fixes: ImmutableStore requires ITokenCounter; CellularSheaf requires (vertices, edges); Preprocessor.process() → preprocess(); multiline import regex fix in isolation test. PHASE 5 COMPLETE: all 5 ROADMAP criteria + ORCH-01–05 satisfied.
   - See `.planning/phases/05-orchestrator/05-03-SUMMARY.md` for full details.
+- **Phase 6, Plan 01 complete (2026-03-06):** RegimeValidator (SOC-06) and RegimeAnalyzer (SOC-07) implemented. SOCTracker extended with updateH1Dimension(), updateCdp(), getRegimeMetrics() and integration with RegimeValidator+RegimeAnalyzer. New event types: phase:transition-confirmed, regime:classification. RegimeValidator validates transitions via persistence+coherence+H^1 gating. RegimeAnalyzer classifies system into nascent/stable/critical/transitioning using CDP variance and correlation consistency. 44 new tests (414 total). SOC-06 and SOC-07 SATISFIED.
+  - See `.planning/phases/06-p2-enhancements/06-01-SUMMARY.md` for full details.
+- **Phase 6, Plan 02 complete (2026-03-06):** VdWAgentSpawner (ORCH-06) implemented. VdWAgent ephemeral reasoning agent with bounded lifecycle (spawning→active→terminated), synthetic bridging queries, self-termination at maxIterations. VdWAgentSpawner with regime-gated H^1-parameterized spawning: 2-iteration hysteresis, stable suppresses/nascent limits/transitioning-critical enables, inverse token budget max(500,5000/h1), 10-agent cap, 3-iteration cooldown per gap. Integrated into ObstructionHandler (optional injection) and ComposeRootModule (event wiring). New events: orch:vdw-agent-spawned, orch:vdw-agent-complete. 57 new tests (471 total passing): 42 unit + 6 integration + 9 additional. ORCH-06 SATISFIED.
+  - See `.planning/phases/06-p2-enhancements/06-02-SUMMARY.md` for full details.
 
 ## What Is Next
 
-**Phase 5 COMPLETE — All 5 ROADMAP success criteria satisfied, 370 total tests passing.** Phase 6 can begin when ready:
+**Phase 6 IN PROGRESS — Plan 02/04 done, 471 total tests passing.** Phase 6 plans remaining:
 
-1. ~~Phase 5 Plan 01: Orchestrator foundation — EventBus, AgentPool, OrchestratorStateManager, interfaces~~ DONE
-2. ~~Phase 5 Plan 02: llm_map primitive — parallel task dispatch, context propagation, order preservation, TaskWorker~~ DONE
-3. ~~Phase 5 Plan 03: Composition root — Orchestrator (ComposeRootModule), ObstructionHandler, integration tests, isolation test, barrel export~~ DONE
+1. ~~Phase 6 Plan 01: RegimeValidator + RegimeAnalyzer (SOC-06/07) — regime classification events~~ DONE
+2. ~~Phase 6 Plan 02: VdWAgentSpawner (ORCH-06) — regime-gated H^1-parameterized agent spawning~~ DONE
+3. Phase 6 Plan 03: TNA-07 Catalyst Question Generation — catalyst questions as VdW agent priors
+4. Phase 6 Plan 04: Dynamic sheaf topology construction from TNA community structure
 
-**Phase 6 entry point:** `import { Orchestrator } from 'src/orchestrator/index.js'` → `new Orchestrator(embedder)` → `runReasoning(prompt)`
-
-Phase 6 opportunities:
-- Dynamic pool scaling for ObstructionHandler
-- Real LLM inference in GapDetectorAgent (replacing Phase 5 stubs)
-- GraphRAG catalyst generation for gap filling
-- Dynamic sheaf topology construction from TNA community structure
-- Topology healing via direct edge addition in CooccurrenceGraph
+**Phase 6 VdW entry point:** VdW agents receive regime:classification → VdWAgentSpawner.evaluateAndSpawn() → VdWAgent.executeStep() → orch:vdw-agent-complete events
 
 ## Active Decisions
 
@@ -124,6 +122,13 @@ Phase 6 opportunities:
 | GptTokenCounter injected into ImmutableStore | 2026-03-01 | ImmutableStore(tokenCounter) requires ITokenCounter arg — plan pseudocode showed no-arg constructor; fixed by injecting GptTokenCounter in Orchestrator |
 | Isolation test uses from-clause regex extraction | 2026-03-01 | `\bfrom\s+['"]([^'"]+)['"]` handles TypeScript multiline import blocks; segment equality check (`path.split('/').some(seg => seg === module)`) correctly matches all relative path styles |
 | ObstructionHandler stores subscription callback as class field | 2026-03-01 | `#obstructionHandler` field stores the arrow function reference for EventBus.unsubscribe() in shutdown() — required since unsubscribe uses reference equality |
+| RegimeAnalyzer persistence gate applies only in initial nascent state | 2026-03-06 | persistence < persistenceThreshold returns 'nascent' ONLY while #currentRegime === 'nascent'; prevents oscillation bug where every regime change reset persistence to 1, causing system to never graduate from nascent |
+| H^1 coupling via updateH1Dimension() (no sheaf import in SOC) | 2026-03-06 | SOCTracker.updateH1Dimension(h1Dim) receives H^1 from orchestrator; SOC module never imports sheaf; maintains strict module isolation invariant |
+| Phase 6 regime events are additive (not replacements) | 2026-03-06 | 'phase:transition-confirmed' and 'regime:classification' emit alongside existing 'phase:transition' and 'soc:metrics'; zero backward-compatibility breaks |
+| VdWAgentSpawner receives regime as string (not RegimeStability import) | 2026-03-06 | VdWAgentSpawner.updateRegime(regime: string) receives regime as plain string — never imports from soc/; maintains module isolation (at-most-1-module rule) |
+| AnyEvent union extended to include OrchestratorEvent | 2026-03-06 | AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent in interfaces.ts; enables VdW events to flow through EventBus type system |
+| VdW agents serialized in runAgents() (not parallel) | 2026-03-06 | runAgents() processes agents one at a time to avoid graph mutation races when integrating entity results into TNA graph |
+| Token budget inverse scaling: max(500, 5000/h1Dimension) | 2026-03-06 | Higher obstruction → more exploratory agents → smaller budget each; H^1=2→2500, H^1=10→500, capped at 500 minimum |
 
 ## Resolved Questions
 
@@ -184,6 +189,8 @@ High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for 
 | 05 | 02 | 6 min | 2/2 | 4 created | 2026-03-01 |
 | Phase 05 P02 | 6 | 2 tasks | 4 files |
 | 05 | 03 | ~25 min | 3/3 | 6 created | 2026-03-01 |
+| 06 | 01 | 9 min | 5/5 | 5 created, 2 modified | 2026-03-06 |
+| 06 | 02 | 9 min | 5/5 | 2 created, 6 modified | 2026-03-06 |
 
 ## File Map
 
@@ -316,5 +323,5 @@ src/
 
 ---
 *State initialized: 2026-02-27*
-*Last session: 2026-03-01 — Completed Phase 5, Plan 05-03 (Wave 3: Orchestrator composition root + ObstructionHandler + 62 new tests — 370 total passing, tsc --noEmit clean, all 5 ROADMAP criteria satisfied)*
+*Last session: 2026-03-06 — Completed Phase 6, Plan 06-01 (SOC-06 RegimeValidator + SOC-07 RegimeAnalyzer + 53 new tests — 471 total passing, isolation invariants maintained, Phase 6 Plan 01/04 done)*
 *Update this file at the start and end of each work session*
