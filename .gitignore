@@ -1,8 +1,40 @@
+# Dependencies
 node_modules/
-package-lock.json
+
+# Build output
 dist/
 build/
+
+# Environment
 .env
 .env.local
+.env.*.local
+
+# Logs
 *.log
+npm-debug.log*
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite
+interface/frontend/dist/
+
+# Knowledge base outputs (track structure, not generated content)
+knowledge_base/reports/*.md
+knowledge_base/analysis/*.json
+knowledge_base/outputs/*
+!knowledge_base/**/.gitkeep
+
+# Session data
+knowledge_base/sessions/
