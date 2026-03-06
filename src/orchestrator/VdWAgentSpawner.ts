@@ -261,49 +261,21 @@ export class VdWAgentSpawner {
     h1Dimension: number,
     iteration: number
   ): Promise<VdWAgent[]> {
-    // Step 1: Check hysteresis — H^1 must have been sustained for enough iterations
-    if (this.#h1AboveThresholdCount < this.#config.h1HysteresisCount) {
+    if (this.#shouldSuppressSpawn(gaps)) {
       return [];
     }
 
-    // Step 2: Check regime gating
     const regime = this.#currentRegime;
+    const tokenBudget = this.#computeTokenBudget(regime, h1Dimension);
+    const agentsPerGap = this.#determineAgentsPerGap(regime, h1Dimension);
 
-    if (regime === 'stable') {
-      // Stable regime: system in steady-state, no exploration needed
-      return [];
-    }
-
-    if (gaps.length === 0) {
-      // No gaps to spawn for
-      return [];
-    }
-
-    // Step 3: Compute token budget (inverse scaling)
-    let tokenBudget: number;
-    if (regime === 'nascent') {
-      // Nascent: forced to minimum budget regardless of H^1
-      tokenBudget = 500;
-    } else {
-      tokenBudget = Math.max(500, Math.floor(5000 / h1Dimension));
-    }
-
-    // Step 4: Determine agents per gap based on regime and H^1
-    let agentsPerGap: number;
-    if (regime === 'critical' && h1Dimension >= 5) {
-      agentsPerGap = 2;
-    } else {
-      agentsPerGap = 1;
-    }
-
-    // Step 5: Limit by nascent regime (max 1 agent total)
+    // Limit by nascent regime (max 1 agent total)
     const maxNewAgents =
       regime === 'nascent'
         ? 1
         : this.#config.maxConcurrentAgents - this.#agents.length;
 
     if (maxNewAgents <= 0) {
-      // Already at agent cap
       return [];
     }
 
@@ -346,19 +318,7 @@ export class VdWAgentSpawner {
         this.#agents.push(agent);
         spawnedAgents.push(agent);
 
-        // Emit 'orch:vdw-agent-spawned' event
-        const spawnedEvent: AnyEvent = {
-          type: 'orch:vdw-agent-spawned',
-          agentId,
-          iteration,
-          h1Dimension,
-          gapId,
-          tokenBudget,
-          maxIterations: this.#config.agentMaxIterations,
-          regime,
-        } as unknown as AnyEvent;
-
-        await this.#eventBus.emit(spawnedEvent);
+        await this.#emitSpawnEvent(agentId, h1Dimension, gapId, tokenBudget, iteration);
       }
 
       // Record spawn for cooldown tracking (use the iteration of first agent for this gap)
@@ -393,18 +353,7 @@ export class VdWAgentSpawner {
 
       // Get results and emit completion event
       const results = agent.getResults();
-      const completeEvent: AnyEvent = {
-        type: 'orch:vdw-agent-complete',
-        agentId: agent.id,
-        iteration: agent.params.h1Dimension, // use h1Dimension as proxy; real iteration tracked by ObstructionHandler
-        synthQueries: results.synthQueries,
-        entitiesAdded: results.entitiesAdded,
-        relationsAdded: results.relationsAdded,
-        stepsExecuted: results.stepsExecuted,
-        success: results.success,
-      } as unknown as AnyEvent;
-
-      await this.#eventBus.emit(completeEvent);
+      await this.#emitCompleteEvent(agent, results);
 
       // Remove agent from active list
       const idx = this.#agents.indexOf(agent);
@@ -449,5 +398,78 @@ export class VdWAgentSpawner {
       agent.terminate();
     }
     this.#agents = [];
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Helper Methods
+  // -------------------------------------------------------------------------
+
+  #shouldSuppressSpawn(gaps: ReadonlyArray<GapMetrics>): boolean {
+    // 1. Check hysteresis
+    if (this.#h1AboveThresholdCount < this.#config.h1HysteresisCount) {
+      return true;
+    }
+
+    // 2. Check regime gating
+    if (this.#currentRegime === 'stable') {
+      return true;
+    }
+
+    // 3. No gaps to spawn for
+    if (gaps.length === 0) {
+      return true;
+    }
+
+    return false;
+  }
+
+  #computeTokenBudget(regime: string, h1Dimension: number): number {
+    if (regime === 'nascent') {
+      return 500;
+    }
+    return Math.max(500, Math.floor(5000 / h1Dimension));
+  }
+
+  #determineAgentsPerGap(regime: string, h1Dimension: number): number {
+    return regime === 'critical' && h1Dimension >= 5 ? 2 : 1;
+  }
+
+  async #emitSpawnEvent(
+    agentId: string,
+    h1Dimension: number,
+    gapId: string,
+    tokenBudget: number,
+    iteration: number
+  ): Promise<void> {
+    const spawnedEvent: AnyEvent = {
+      type: 'orch:vdw-agent-spawned',
+      agentId,
+      iteration,
+      h1Dimension,
+      gapId,
+      tokenBudget,
+      maxIterations: this.#config.agentMaxIterations,
+      regime: this.#currentRegime,
+    } as unknown as AnyEvent;
+
+    await this.#eventBus.emit(spawnedEvent);
+  }
+
+  async #emitCompleteEvent(
+    agent: VdWAgent,
+    results: ReturnType<VdWAgent['getResults']>
+  ): Promise<void> {
+    const completeEvent: AnyEvent = {
+      type: 'orch:vdw-agent-complete',
+      agentId: agent.id,
+      iteration: agent.params.h1Dimension,
+      synthQueries: results.synthQueries,
+      entitiesAdded: results.entitiesAdded,
+      relationsAdded: results.relationsAdded,
+      stepsExecuted: results.stepsExecuted,
+      success: results.success,
+    } as unknown as AnyEvent;
+
+    await this.#eventBus.emit(completeEvent);
   }
 }

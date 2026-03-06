@@ -57,6 +57,9 @@ export class GapDetector {
   /** Whether gaps have been computed yet. */
   #computed: boolean = false;
 
+  /** Default inter-community density threshold below which a region is considered a gap. */
+  static readonly DENSITY_THRESHOLD = 0.2;
+
   constructor(
     cooccurrenceGraph: CooccurrenceGraph,
     louvainDetector: LouvainDetector,
@@ -91,21 +94,8 @@ export class GapDetector {
       return this.#gaps;
     }
 
-    const graph = this.#cooccurrenceGraph.getGraph();
-    const nodes = this.#cooccurrenceGraph.getNodes();
-
-    // Build community membership map: communityId -> [nodeIds]
-    const communityMembers = new Map<number, string[]>();
-    for (const node of nodes) {
-      const communityId = node.communityId;
-      if (communityId !== undefined) {
-        const members = communityMembers.get(communityId) ?? [];
-        members.push(node.lemma);
-        communityMembers.set(communityId, members);
-      }
-    }
-
-    const communityIds = Array.from(communityMembers.keys()).sort((a, b) => a - b);
+    const membersByCommunity = this.#getMembersByCommunity();
+    const communityIds = Array.from(membersByCommunity.keys()).sort((a, b) => a - b);
 
     // If only 1 community, no gaps possible.
     if (communityIds.length <= 1) {
@@ -113,8 +103,8 @@ export class GapDetector {
       return [];
     }
 
+    const graph = this.#cooccurrenceGraph.getGraph();
     const newGaps: GapMetrics[] = [];
-    const densityThreshold = 0.2;
 
     // For each pair of communities, compute gap metrics.
     for (let i = 0; i < communityIds.length; i++) {
@@ -122,51 +112,13 @@ export class GapDetector {
         const commA = communityIds[i]!;
         const commB = communityIds[j]!;
 
-        const membersA = communityMembers.get(commA) ?? [];
-        const membersB = communityMembers.get(commB) ?? [];
+        const membersA = membersByCommunity.get(commA) ?? [];
+        const membersB = membersByCommunity.get(commB) ?? [];
 
-        // Count inter-community edges.
-        let interEdges = 0;
-        const interEdgeNodes = new Set<string>();
-
-        for (const nodeA of membersA) {
-          for (const nodeB of membersB) {
-            if (graph.hasEdge(nodeA, nodeB)) {
-              interEdges++;
-              interEdgeNodes.add(nodeA);
-              interEdgeNodes.add(nodeB);
-            }
-          }
+        const gap = this.#evaluateCommPair(graph, commA, commB, membersA, membersB);
+        if (gap) {
+          newGaps.push(gap);
         }
-
-        // Skip zero-density pairs (disconnected, not a gap).
-        if (interEdges === 0) continue;
-
-        // Compute inter-community density.
-        const density = interEdges / (membersA.length * membersB.length);
-
-        // Only include if below threshold.
-        if (density >= densityThreshold) continue;
-
-        // Compute shortest path length (via BFS sample).
-        const spl = this.#computeShortestPathLength(graph, membersA, membersB);
-
-        // Compute modularity delta (estimate).
-        const modDelta = this.#estimateModularityDelta(graph, commA, commB, membersA, membersB);
-
-        // Identify bridge nodes: high centrality nodes with inter-community edges.
-        const bridges = this.#identifyBridgeNodes(membersA, membersB, interEdgeNodes);
-
-        const gap: GapMetrics = {
-          communityA: commA,
-          communityB: commB,
-          interCommunityDensity: density,
-          shortestPathLength: spl,
-          modularityDelta: modDelta,
-          bridgeNodes: bridges,
-        };
-
-        newGaps.push(gap);
       }
     }
 
@@ -176,6 +128,77 @@ export class GapDetector {
     this.#gaps = newGaps;
     this.#computed = true;
     return this.#gaps;
+  }
+
+  /**
+   * #getMembersByCommunity — groups node lemmas by community ID.
+   */
+  #getMembersByCommunity(): Map<number, string[]> {
+    const nodes = this.#cooccurrenceGraph.getNodes();
+    const communityMembers = new Map<number, string[]>();
+
+    for (const node of nodes) {
+      const communityId = node.communityId;
+      if (communityId !== undefined) {
+        const members = communityMembers.get(communityId) ?? [];
+        members.push(node.lemma);
+        communityMembers.set(communityId, members);
+      }
+    }
+
+    return communityMembers;
+  }
+
+  /**
+   * #evaluateCommPair — checks if a pair of communities constitutes a gap.
+   */
+  #evaluateCommPair(
+    graph: any,
+    commA: number,
+    commB: number,
+    membersA: string[],
+    membersB: string[]
+  ): GapMetrics | null {
+    // Count inter-community edges.
+    let interEdges = 0;
+    const interEdgeNodes = new Set<string>();
+
+    for (const nodeA of membersA) {
+      for (const nodeB of membersB) {
+        if (graph.hasEdge(nodeA, nodeB)) {
+          interEdges++;
+          interEdgeNodes.add(nodeA);
+          interEdgeNodes.add(nodeB);
+        }
+      }
+    }
+
+    // Skip zero-density pairs (disconnected, not a gap).
+    if (interEdges === 0) return null;
+
+    // Compute inter-community density.
+    const density = interEdges / (membersA.length * membersB.length);
+
+    // Only include if below threshold.
+    if (density >= GapDetector.DENSITY_THRESHOLD) return null;
+
+    // Compute shortest path length (via BFS sample).
+    const spl = this.#computeShortestPathLength(graph, membersA, membersB);
+
+    // Compute modularity delta (estimate).
+    const modDelta = this.#estimateModularityDelta(graph, membersA, membersB);
+
+    // Identify bridge nodes: high centrality nodes with inter-community edges.
+    const bridges = this.#identifyBridgeNodes(interEdgeNodes);
+
+    return {
+      communityA: commA,
+      communityB: commB,
+      interCommunityDensity: density,
+      shortestPathLength: spl,
+      modularityDelta: modDelta,
+      bridgeNodes: bridges,
+    };
   }
 
   // --------------------------------------------------------------------------
@@ -239,13 +262,13 @@ export class GapDetector {
    * Sample-based for performance: only compute from first 3 nodes of community A
    * to all of community B (sufficient for metric purposes).
    */
-  readonly #computeShortestPathLength = (
+  #computeShortestPathLength(
     graph: any,
     membersA: string[],
     membersB: string[]
-  ): number => {
-    const sample = membersA.slice(0, Math.min(3, membersA.length));
-    const setB = new Set(membersB);
+  ): number {
+    const sampleSize = Math.min(3, membersA.length);
+    const sample = membersA.slice(0, sampleSize);
     let totalDistance = 0;
     let count = 0;
 
@@ -261,7 +284,7 @@ export class GapDetector {
     }
 
     return count > 0 ? totalDistance / count : Infinity;
-  };
+  }
 
   // --------------------------------------------------------------------------
   // Private: BFS for shortest path
@@ -271,10 +294,7 @@ export class GapDetector {
    * #bfs — breadth-first search from a start node.
    * Returns a map of node -> shortest distance.
    */
-  readonly #bfs = (
-    graph: any,
-    startNode: string
-  ): Map<string, number> => {
+  #bfs(graph: any, startNode: string): Map<string, number> {
     const distances = new Map<string, number>();
     const visited = new Set<string>();
     const queue: [string, number][] = [[startNode, 0]];
@@ -295,7 +315,7 @@ export class GapDetector {
     }
 
     return distances;
-  };
+  }
 
   // --------------------------------------------------------------------------
   // Private: estimate modularity delta
@@ -308,13 +328,11 @@ export class GapDetector {
    * Simple heuristic: higher inter-community edge count relative to community
    * size -> larger (positive) delta. Assumes that bridges reduce modularity.
    */
-  readonly #estimateModularityDelta = (
+  #estimateModularityDelta(
     graph: any,
-    commA: number,
-    commB: number,
     membersA: string[],
     membersB: string[]
-  ): number => {
+  ): number {
     // Count inter- and intra-community edges.
     let interEdges = 0;
     let intraEdgesA = 0;
@@ -352,7 +370,7 @@ export class GapDetector {
 
     // Scale to a reasonable range (0 to ~1).
     return Math.max(0.01, Math.min(1, intraRatio - 0.5));
-  };
+  }
 
   // --------------------------------------------------------------------------
   // Private: identify bridge nodes
@@ -362,11 +380,7 @@ export class GapDetector {
    * #identifyBridgeNodes — find nodes with high betweenness centrality and
    * inter-community edges.
    */
-  readonly #identifyBridgeNodes = (
-    membersA: string[],
-    membersB: string[],
-    interEdgeNodes: Set<string>
-  ): readonly TextNodeId[] => {
+  #identifyBridgeNodes(interEdgeNodes: Set<string>): readonly TextNodeId[] {
     const candidates: { nodeId: string; score: number }[] = [];
 
     // Gather candidates from both communities that participate in inter-community edges.
@@ -383,5 +397,5 @@ export class GapDetector {
     return candidates
       .slice(0, topN)
       .map(c => c.nodeId as TextNodeId);
-  };
+  }
 }

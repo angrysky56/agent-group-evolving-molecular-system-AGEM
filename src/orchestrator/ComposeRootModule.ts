@@ -95,43 +95,43 @@ export class Orchestrator {
   readonly eventBus: EventBus;
 
   /** Sheaf data structure: tracks agent stalk sections and restriction maps. */
-  readonly sheaf: CellularSheaf;
+  readonly sheaf!: CellularSheaf;
 
   /** Cohomology analyzer: computes H^0/H^1 from sheaf and emits obstruction events. */
-  readonly cohomologyAnalyzer: CohomologyAnalyzer;
+  readonly cohomologyAnalyzer!: CohomologyAnalyzer;
 
   /** LCM client: append-only context store with embedding caching. */
-  readonly lcmClient: LCMClient;
+  readonly lcmClient!: LCMClient;
 
   /** TNA text preprocessor: lemmatization + TF-IDF pipeline. */
-  readonly tnaPreprocessor: Preprocessor;
+  readonly tnaPreprocessor!: Preprocessor;
 
   /** TNA co-occurrence graph: 4-gram weighted semantic network. */
-  readonly tnaGraph: CooccurrenceGraph;
+  readonly tnaGraph!: CooccurrenceGraph;
 
   /** TNA Louvain community detector: deterministic community partitioning. */
-  readonly tnaLouvain: LouvainDetector;
+  readonly tnaLouvain!: LouvainDetector;
 
   /** TNA centrality analyzer: betweenness centrality for bridge node identification. */
-  readonly tnaCentrality: CentralityAnalyzer;
+  readonly tnaCentrality!: CentralityAnalyzer;
 
   /** TNA gap detector: structural gap detection with topological metrics. */
-  readonly tnaGapDetector: GapDetector;
+  readonly tnaGapDetector!: GapDetector;
 
   /** TNA catalyst question generator: gap-targeted question generation (Phase 6, TNA-07). */
-  readonly tnaCatalystGenerator: CatalystQuestionGenerator;
+  readonly tnaCatalystGenerator!: CatalystQuestionGenerator;
 
   /** TNA layout computer: ForceAtlas2 visualization layout for semantic graph (Phase 6, TNA-08). */
-  readonly tnaLayout: LayoutComputer;
+  readonly tnaLayout!: LayoutComputer;
 
   /** SOC tracker: computes all five SOC metrics and detects phase transitions. */
-  readonly socTracker: SOCTracker;
+  readonly socTracker!: SOCTracker;
 
   /** State manager: tracks NORMAL/OBSTRUCTED/CRITICAL operational modes. */
   readonly stateManager: OrchestratorStateManager;
 
   /** Obstruction handler: H^1 detection → gapDetector agent spawn pipeline. */
-  readonly obstructionHandler: ObstructionHandler;
+  readonly obstructionHandler!: ObstructionHandler;
 
   // -------------------------------------------------------------------------
   // Private fields
@@ -155,64 +155,16 @@ export class Orchestrator {
    *                   MockEmbedder from src/lcm/interfaces.ts can be used in tests.
    */
   constructor(embedder: IEmbedder) {
-    // Step 1: Instantiate EventBus (central coordination point)
     this.eventBus = new EventBus();
 
-    // Step 2: Instantiate LCM components
-    // ImmutableStore requires an ITokenCounter for deterministic token counting.
-    const tokenCounter = new GptTokenCounter();
-    const store = new ImmutableStore(tokenCounter);
-    const cache = new EmbeddingCache(embedder);
-    this.lcmClient = new LCMClient(store, cache, embedder);
-
-    // Step 3: Instantiate Sheaf components
-    // CellularSheaf(vertices, edges): use a minimal 2-vertex flat sheaf for Phase 5.
-    // In a real system, the sheaf topology would be constructed from TNA graph structure.
-    // buildFlatSheaf(2, 1) creates a 2-vertex path sheaf with 1-dim identity restriction maps.
-    // H^0 = 1 (one global section), H^1 = 0 (no obstruction) — triggers consensus event.
-    this.sheaf = buildFlatSheaf(2, 1);
-    this.cohomologyAnalyzer = new CohomologyAnalyzer();
-
-    // Step 4: Instantiate TNA components
-    // Note: CooccurrenceGraph requires a Preprocessor argument (dependency injection).
-    // LouvainDetector and CentralityAnalyzer require a CooccurrenceGraph.
-    // GapDetector requires all three TNA components.
-    this.tnaPreprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
-    this.tnaGraph = new CooccurrenceGraph(this.tnaPreprocessor);
-    this.tnaLouvain = new LouvainDetector(this.tnaGraph);
-    this.tnaCentrality = new CentralityAnalyzer(this.tnaGraph);
-    this.tnaGapDetector = new GapDetector(this.tnaGraph, this.tnaLouvain, this.tnaCentrality);
-
-    // Phase 6: Instantiate CatalystQuestionGenerator (TNA-07)
-    this.tnaCatalystGenerator = new CatalystQuestionGenerator(
-      this.tnaGraph,
-      this.tnaCentrality
-    );
-
-    // Phase 6: Instantiate LayoutComputer (TNA-08)
-    this.tnaLayout = new LayoutComputer(this.tnaGraph);
-
-    // Step 5: Instantiate SOC
-    this.socTracker = new SOCTracker({ correlationWindowSize: 10 });
-
-    // Step 6: Instantiate StateManager
+    this.#initLcm(embedder);
+    this.#initSheaf();
+    this.#initTna();
+    this.#initSoc();
     this.stateManager = new OrchestratorStateManager(this.eventBus);
+    this.#initOrchestration();
 
-    // Step 7b: Instantiate VdW agent spawner (Phase 6: ORCH-06)
-    const vdwSpawner = new VdWAgentSpawner(this.eventBus);
-
-    // Step 7: Instantiate ObstructionHandler (ROADMAP criteria #3) with VdW spawner injection
-    this.obstructionHandler = new ObstructionHandler(
-      this.eventBus,
-      this.tnaGapDetector,
-      this.tnaGraph,
-      { agentPoolSize: 4, vdwSpawner }
-    );
-
-    // Step 8: Wire event emissions to EventBus
     this.#wireEventBus();
-
-    // Step 9: Register default event subscribers (logging/monitoring)
     this.#registerDefaultSubscribers();
   }
 
@@ -228,7 +180,13 @@ export class Orchestrator {
    * StateManager emits via EventBus directly (already wired in its constructor).
    */
   #wireEventBus(): void {
-    // From CohomologyAnalyzer (EventEmitter)
+    this.#wireCohomologyEvents();
+    this.#wireSocEvents();
+    this.#wireTnaEvents();
+    this.#wireStateEvents();
+  }
+
+  #wireCohomologyEvents(): void {
     this.cohomologyAnalyzer.on('sheaf:consensus-reached', (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
@@ -236,16 +194,13 @@ export class Orchestrator {
     this.cohomologyAnalyzer.on('sheaf:h1-obstruction-detected', (event: AnyEvent) => {
       void this.eventBus.emit(event);
 
-      // StateManager updates on H^1 detection
-      // The event has h1Dimension field for obstruction events
       const h1Dimension = (event as { h1Dimension?: number }).h1Dimension ?? 0;
       this.stateManager.updateMetrics(h1Dimension);
-
-      // Phase 6: Forward H^1 dimension to VdW spawner for hysteresis tracking
       this.obstructionHandler.updateH1ForSpawner(h1Dimension);
     });
+  }
 
-    // From SOCTracker (EventEmitter)
+  #wireSocEvents(): void {
     this.socTracker.on('soc:metrics', (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
@@ -254,19 +209,17 @@ export class Orchestrator {
       void this.eventBus.emit(event);
     });
 
-    // Phase 6: Forward regime:classification events from SOCTracker to EventBus
-    // and then to ObstructionHandler for VdW spawner regime gating
     this.socTracker.on('regime:classification', (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    // Phase 6: Forward regime classification to ObstructionHandler for VdW spawner
     this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.obstructionHandler.updateRegime(regimeEvent.regime);
     });
+  }
 
-    // Phase 6: Wire CentralityAnalyzer events (TNA-09) to EventBus
+  #wireTnaEvents(): void {
     this.tnaCentrality.on('tna:centrality-change-detected', (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
@@ -274,29 +227,27 @@ export class Orchestrator {
       void this.eventBus.emit(event);
     });
 
-    // Phase 6: Adjust centrality computation interval based on regime
     this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.tnaCentrality.adjustInterval(regimeEvent.regime);
     });
 
-    // Phase 6: Wire LayoutComputer events (TNA-08) to EventBus
     this.tnaLayout.on('tna:layout-updated', (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    // Phase 6: Adjust layout computation interval based on regime
     this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.tnaLayout.adjustInterval(regimeEvent.regime);
     });
+  }
 
-    // StateManager state changes are emitted via EventBus internally — subscribe for logging
+  #wireStateEvents(): void {
     this.eventBus.subscribe('orch:state-changed', (event) => {
       const stateEvent = event as unknown as StateChangeEvent;
       console.log(
         `[ORCH] Iteration ${this.#iterationCounter}: State transition to ` +
-        `${stateEvent.newState} (reason: ${stateEvent.reason})`
+          `${stateEvent.newState} (reason: ${stateEvent.reason})`
       );
     });
   }
@@ -490,5 +441,52 @@ export class Orchestrator {
    */
   getState(): OrchestratorState {
     return this.stateManager.getState();
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Initialization Methods
+  // -------------------------------------------------------------------------
+
+  #initLcm(embedder: IEmbedder): void {
+    const tokenCounter = new GptTokenCounter();
+    const store = new ImmutableStore(tokenCounter);
+    const cache = new EmbeddingCache(embedder);
+    (this as any).lcmClient = new LCMClient(store, cache, embedder);
+  }
+
+  #initSheaf(): void {
+    (this as any).sheaf = buildFlatSheaf(2, 1);
+    (this as any).cohomologyAnalyzer = new CohomologyAnalyzer();
+  }
+
+  #initTna(): void {
+    (this as any).tnaPreprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
+    (this as any).tnaGraph = new CooccurrenceGraph(this.tnaPreprocessor);
+    (this as any).tnaLouvain = new LouvainDetector(this.tnaGraph);
+    (this as any).tnaCentrality = new CentralityAnalyzer(this.tnaGraph);
+    (this as any).tnaGapDetector = new GapDetector(
+      this.tnaGraph,
+      this.tnaLouvain,
+      this.tnaCentrality
+    );
+    (this as any).tnaCatalystGenerator = new CatalystQuestionGenerator(
+      this.tnaGraph,
+      this.tnaCentrality
+    );
+    (this as any).tnaLayout = new LayoutComputer(this.tnaGraph);
+  }
+
+  #initSoc(): void {
+    (this as any).socTracker = new SOCTracker({ correlationWindowSize: 10 });
+  }
+
+  #initOrchestration(): void {
+    const vdwSpawner = new VdWAgentSpawner(this.eventBus);
+    (this as any).obstructionHandler = new ObstructionHandler(
+      this.eventBus,
+      this.tnaGapDetector,
+      this.tnaGraph,
+      { agentPoolSize: 4, vdwSpawner }
+    );
   }
 }

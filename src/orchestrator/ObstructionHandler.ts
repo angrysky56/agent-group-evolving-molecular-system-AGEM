@@ -229,78 +229,91 @@ export class ObstructionHandler {
     try {
       while (this.#obstructionQueue.length > 0) {
         const obstruction = this.#obstructionQueue.shift()!;
-
-        // Get an idle agent from the pool (or create a new one if needed)
-        let agent = this.#agentPool.find((a) => a.status === 'idle');
-        if (!agent) {
-          // No idle agents: create a new one (up to agentPoolSize)
-          if (this.#agentPool.length < this.#agentPoolSize) {
-            agent = new GapDetectorAgent(`gap-detector-${++this.#agentCounter}`);
-            this.#agentPool.push(agent);
-          } else {
-            // All agents busy: use the first one anyway (best-effort for Phase 5)
-            agent = this.#agentPool[0]!;
-          }
-        }
-
-        // Spawn agent (transition to active)
-        await agent.spawn();
-
-        // Run gap detection and fill
-        const gapFillResult = await this.#runGapDetectorAgent(agent, obstruction);
-
-        // Integrate results into TNA graph
-        this.#integrateGapFillResults(gapFillResult);
-
-        // Return agent to idle state
-        agent.status = 'idle';
-
-        // Phase 6: VdW agent spawning (ORCH-06)
-        if (this.#vdwSpawner) {
-          const gaps = this.#gapDetector.findGaps();
-          const spawnedAgents: VdWAgent[] = await this.#vdwSpawner.evaluateAndSpawn(
-            gaps,
-            obstruction.h1Dimension,
-            obstruction.iteration
-          );
-
-          if (spawnedAgents.length > 0) {
-            console.log(
-              `[ORCH-OBSTRUCTION] Spawned ${spawnedAgents.length} VdW agents ` +
-              `for iteration ${obstruction.iteration}`
-            );
-
-            // Run spawned agents (serialized to avoid graph mutation races)
-            await this.#vdwSpawner.runAgents();
-
-            // Integrate VdW agent results into TNA graph
-            for (const vdwAgent of spawnedAgents) {
-              const results = vdwAgent.getResults();
-              if (results.entitiesAdded.length > 0) {
-                // Spread readonly array to mutable string[] (required by ingestTokens signature)
-                this.#tnaGraph.ingestTokens([...results.entitiesAdded]);
-              }
-            }
-          }
-        }
-
-        // Emit monitoring event
-        const filledEvent = {
-          type: 'orch:obstruction-filled' as const,
-          ...gapFillResult,
-        };
-        // Emit as unknown/any since orch:obstruction-filled is not in AnyEvent union
-        await this.#eventBus.emit(filledEvent as unknown as AnyEvent);
-
-        console.log(
-          `[ORCH-OBSTRUCTION] Filled obstruction from iteration ${obstruction.iteration}: ` +
-          `${gapFillResult.gapsDetected} gaps, ` +
-          `${gapFillResult.entitiesAdded.length} new entities, ` +
-          `${gapFillResult.relationsAdded.length} new relations`
-        );
+        await this.#processSingleObstruction(obstruction);
       }
     } finally {
       this.#isProcessing = false;
+    }
+  }
+
+  /**
+   * #processSingleObstruction — process one obstruction from the queue.
+   */
+  async #processSingleObstruction(obstruction: ObstructionEventPayload): Promise<void> {
+    // Get an idle agent from the pool (or create a new one if needed)
+    let agent = this.#agentPool.find((a) => a.status === 'idle');
+    if (!agent) {
+      // No idle agents: create a new one (up to agentPoolSize)
+      if (this.#agentPool.length < this.#agentPoolSize) {
+        agent = new GapDetectorAgent(`gap-detector-${++this.#agentCounter}`);
+        this.#agentPool.push(agent);
+      } else {
+        // All agents busy: use the first one anyway (best-effort for Phase 5)
+        agent = this.#agentPool[0]!;
+      }
+    }
+
+    // Spawn agent (transition to active)
+    await agent.spawn();
+
+    // Run gap detection and fill
+    const gapFillResult = await this.#runGapDetectorAgent(agent, obstruction);
+
+    // Integrate results into TNA graph
+    this.#integrateGapFillResults(gapFillResult);
+
+    // Return agent to idle state
+    agent.status = 'idle';
+
+    // Phase 6: VdW agent spawning (ORCH-06)
+    await this.#processVdWSpawning(obstruction);
+
+    // Emit monitoring event
+    const filledEvent = {
+      type: 'orch:obstruction-filled' as const,
+      ...gapFillResult,
+    };
+    // Emit as unknown/any since orch:obstruction-filled is not in AnyEvent union
+    await this.#eventBus.emit(filledEvent as unknown as AnyEvent);
+
+    console.log(
+      `[ORCH-OBSTRUCTION] Filled obstruction from iteration ${obstruction.iteration}: ` +
+      `${gapFillResult.gapsDetected} gaps, ` +
+      `${gapFillResult.entitiesAdded.length} new entities, ` +
+      `${gapFillResult.relationsAdded.length} new relations`
+    );
+  }
+
+  /**
+   * #processVdWSpawning — handle Phase 6 VdW agent spawning logic.
+   */
+  async #processVdWSpawning(obstruction: ObstructionEventPayload): Promise<void> {
+    if (!this.#vdwSpawner) return;
+
+    const gaps = this.#gapDetector.findGaps();
+    const spawnedAgents: VdWAgent[] = await this.#vdwSpawner.evaluateAndSpawn(
+      gaps,
+      obstruction.h1Dimension,
+      obstruction.iteration
+    );
+
+    if (spawnedAgents.length > 0) {
+      console.log(
+        `[ORCH-OBSTRUCTION] Spawned ${spawnedAgents.length} VdW agents ` +
+        `for iteration ${obstruction.iteration}`
+      );
+
+      // Run spawned agents (serialized to avoid graph mutation races)
+      await this.#vdwSpawner.runAgents();
+
+      // Integrate VdW agent results into TNA graph
+      for (const vdwAgent of spawnedAgents) {
+        const results = vdwAgent.getResults();
+        if (results.entitiesAdded.length > 0) {
+          // Spread readonly array to mutable string[] (required by ingestTokens signature)
+          this.#tnaGraph.ingestTokens([...results.entitiesAdded]);
+        }
+      }
     }
   }
 
