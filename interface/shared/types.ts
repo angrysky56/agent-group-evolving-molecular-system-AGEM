@@ -6,7 +6,7 @@
 /* ─── LLM Provider Types ─── */
 
 /** Supported LLM provider identifiers. */
-export type LLMProviderType = "ollama" | "openrouter";
+export type LLMProviderType = "ollama" | "openrouter" | "anthropic";
 
 /** Model information returned by provider APIs. */
 export interface ModelInfo {
@@ -86,6 +86,66 @@ export interface AgemStateSnapshot {
   iteration: number;
   communities: number;
   graph_summary?: GraphSummary;
+}
+
+/* ─── AGEM Tool Response Types ─── */
+
+/** Sheaf cohomology analysis snapshot. */
+export interface CohomologySnapshot {
+  h0_dimension: number;
+  h1_dimension: number;
+  has_obstruction: boolean;
+  coboundary_rank: number;
+  tolerance: number;
+}
+
+/** SOC metrics snapshot with regime analysis. */
+export interface SOCSnapshot {
+  latest: {
+    iteration: number;
+    von_neumann_entropy: number;
+    embedding_entropy: number;
+    cdp: number;
+    surprising_edge_ratio: number;
+    correlation_coefficient: number;
+    is_phase_transition: boolean;
+  } | null;
+  regime: {
+    regime: string;
+    cdp_variance: number;
+    correlation_consistency: number;
+    persistence_iterations: number;
+  } | null;
+  trend: { mean: number; slope: number; window: number };
+  history_length: number;
+}
+
+/** Structural gap between two communities. */
+export interface GapSnapshot {
+  community_a: number;
+  community_b: number;
+  density: number;
+  shortest_path: number;
+  modularity_delta: number;
+  bridge_nodes: string[];
+}
+
+/** A catalyst bridging question generated for a gap. */
+export interface CatalystQuestionResult {
+  gap_id: string;
+  question_text: string;
+  seed_node_a: string;
+  seed_node_b: string;
+  semantic_distance: number;
+  priority: number;
+}
+
+/** A context search result from LCMGrep. */
+export interface ContextSearchResult {
+  entry_id: string;
+  content: string;
+  similarity: number;
+  timestamp: number;
 }
 
 /** Summary of the graph for visualization. */

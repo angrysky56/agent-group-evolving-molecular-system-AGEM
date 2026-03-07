@@ -12,6 +12,8 @@ import { chatRouter } from "./routes/chat.js";
 import { knowledgeRouter } from "./routes/knowledge.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { systemRouter } from "./routes/system.js";
+import { skillRegistry } from "./services/skills.js";
+import { mcpManager } from "./services/mcp.js";
 
 const app = express();
 
@@ -72,7 +74,7 @@ app.use(
 
 const { PORT, HOST } = settings.all;
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   const config = settings.getLLMConfig();
   console.log(`
 ╔══════════════════════════════════════════════╗
@@ -84,6 +86,16 @@ app.listen(PORT, () => {
 ║  → API Docs:  http://localhost:${PORT}/api/v1     ║
 ╚══════════════════════════════════════════════╝
   `);
+
+  // Initialize Skills Registry
+  skillRegistry.initialize().catch(err => {
+    console.error("[SkillRegistry] Failed to start:", err);
+  });
+
+  // Initialize MCP Manager
+  mcpManager.initialize().catch(err => {
+    console.error("[MCPManager] Failed to start:", err);
+  });
 });
 
 export default app;

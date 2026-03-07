@@ -14,16 +14,6 @@ interface Props {
 
 export function SettingsPanel({ onClose }: Props) {
   const settings = useSettingsStore();
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-
-  useEffect(() => {
-    setLoadingModels(true);
-    listModels(settings.provider)
-      .then(setModels)
-      .catch((err) => console.error("Failed to load models:", err))
-      .finally(() => setLoadingModels(false));
-  }, [settings.provider]);
 
   return (
     <>
@@ -53,7 +43,7 @@ export function SettingsPanel({ onClose }: Props) {
                 }`}
                 onClick={() => settings.setProvider("ollama")}
               >
-                Ollama (Local)
+                Ollama
               </button>
               <button
                 className={`provider-toggle__btn ${
@@ -64,6 +54,16 @@ export function SettingsPanel({ onClose }: Props) {
                 onClick={() => settings.setProvider("openrouter")}
               >
                 OpenRouter
+              </button>
+              <button
+                className={`provider-toggle__btn ${
+                  settings.provider === "anthropic"
+                    ? "provider-toggle__btn--active"
+                    : ""
+                }`}
+                onClick={() => settings.setProvider("anthropic")}
+              >
+                Anthropic
               </button>
             </div>
           </div>
@@ -84,10 +84,12 @@ export function SettingsPanel({ onClose }: Props) {
             </div>
           )}
 
-          {/* OpenRouter Settings */}
-          {settings.provider === "openrouter" && (
+          {/* API Key Settings (OpenRouter/Anthropic) */}
+          {(settings.provider === "openrouter" || settings.provider === "anthropic") && (
             <div className="settings-group">
-              <div className="settings-group__label">OpenRouter</div>
+              <div className="settings-group__label">
+                {settings.provider === "openrouter" ? "OpenRouter" : "Anthropic"}
+              </div>
               <div className="settings-field">
                 <label className="settings-field__label">API Key</label>
                 <input
@@ -95,7 +97,9 @@ export function SettingsPanel({ onClose }: Props) {
                   type="password"
                   value={settings.apiKey}
                   onChange={(e) => settings.setApiKey(e.target.value)}
-                  placeholder="sk-or-..."
+                  placeholder={
+                    settings.provider === "anthropic" ? "sk-ant-..." : "sk-or-..."
+                  }
                 />
               </div>
             </div>
@@ -106,22 +110,13 @@ export function SettingsPanel({ onClose }: Props) {
             <div className="settings-group__label">Models</div>
             <div className="settings-field">
               <label className="settings-field__label">Chat Model</label>
-              {loadingModels ? (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-tertiary)",
-                  }}
-                >
-                  Loading models...
-                </div>
-              ) : models.length > 0 ? (
+              {settings.availableModels.length > 0 ? (
                 <select
                   className="settings-field__select"
                   value={settings.chatModel}
                   onChange={(e) => settings.setChatModel(e.target.value)}
                 >
-                  {models.map((m) => (
+                  {settings.availableModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name || m.id}
                     </option>

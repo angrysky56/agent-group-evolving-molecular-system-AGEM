@@ -15,7 +15,10 @@ AGEM is a sophisticated multi-agent orchestration framework designed to simulate
 - **Self-Organized Criticality (SOC)**: Real-time tracking of system criticality (CDP, VNE, EE, SER) to manage phase transitions and regime shifts.
 - **Molecular Hysteresis**: Obstruction handling inspired by molecular biology (Van der Waals forces, hydrophobic collapses) to manage agent spawning and group stabilization.
 - **Full-Stack Chat Interface**: React + Express interface with SSE streaming, session history, knowledge base persistence, and interactive settings.
+- **Interactive CLI**: Commander.js-based terminal REPL for quick chat interactions and system management.
 - **Dual LLM Provider Support**: Seamless switching between Ollama (local) and OpenRouter (cloud) with provider-specific configuration.
+- **Agent Skills System**: YAML-frontmatter based dynamic skill definition loaded natively into the prompt.
+- **Model Context Protocol (MCP)**: Native integration with MCP servers to equip agents with dynamic tools. See [system_use.md](system_use.md) for a full list of available tools.
 
 ## Tech Stack
 
@@ -59,6 +62,9 @@ agent-group-evolving-molecular-system-AGEM/
 │   │       └── components/   # chat/, sidebar/, settings/
 │   └── shared/               # Shared TypeScript types (FE ↔ BE contract)
 │       └── types.ts
+├── cli/                  # Interactive terminal REPL
+│   └── src/
+│       └── index.ts      # Commander.js CLI entry point
 ├── knowledge_base/           # Persistent outputs (reports, analysis)
 ├── .env.example              # Environment configuration template
 └── .env                      # Local config (git-ignored)
@@ -145,12 +151,15 @@ Tracks Self-Organized Criticality metrics to maintain system stability.
 Lifecycle Context Model for persistent memory.
 - **LCMClient**: Handles context appends and similarity search.
 
-### Interface
+### Interface & CLI
 
 The interface wraps the AGEM engine with a chat-like experience:
 
 - **Backend** serves a REST + SSE API on port 8000. Chat completions stream tokens via Server-Sent Events. Sessions persist as JSON files.
 - **Frontend** is a React SPA with a dark glassmorphism theme. It uses Zustand for state management and a typed fetch-based API client with SSE streaming support.
+- **CLI** provides a fully interactive terminal REPL for quick querying, testing, and managing the server.
+- **Agent Skills** system traverses the `skills/` directory, extracts context from YAML frontmatter in `.md` files, and exposes them as selectable knowledge areas to the agent.
+- **MCP Integration** intelligently connects to configured external Model Context Protocol servers to dynamically register external tools that the LLM agent can call natively.
 - **Shared types** in `interface/shared/types.ts` ensure type safety across the full stack.
 
 ## Available Scripts

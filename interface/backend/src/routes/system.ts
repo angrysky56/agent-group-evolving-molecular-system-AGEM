@@ -7,6 +7,7 @@
 import { Router } from "express";
 import { settings } from "../config.js";
 import { createProvider } from "../services/llm.js";
+import type { LLMProviderType } from "../../../shared/types.js";
 
 export const systemRouter = Router();
 
@@ -38,9 +39,7 @@ systemRouter.get("/models", async (req, res) => {
 
   try {
     const provider = createProvider(
-      providerParam === "ollama" || providerParam === "openrouter"
-        ? providerParam
-        : undefined
+      (providerParam as LLMProviderType) || undefined
     );
 
     const models = await (provider as { listModels: (apiKey?: string) => Promise<unknown[]> })

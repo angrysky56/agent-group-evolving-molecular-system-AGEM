@@ -23,7 +23,7 @@
  */
 
 import natural from 'natural';
-import winkLemmatizer = require('wink-lemmatizer');
+import winkLemmatizer from 'wink-lemmatizer';
 import { removeStopwords, eng } from 'stopword';
 import type { TNAConfig, PreprocessResult, DetailedPreprocessResult } from './interfaces.js';
 

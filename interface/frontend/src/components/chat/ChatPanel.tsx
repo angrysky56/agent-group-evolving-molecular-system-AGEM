@@ -71,6 +71,9 @@ export function ChatPanel() {
             // Could show thinking state
             console.log("[thinking]", text);
           },
+          onAgemState: (data) => {
+            chat.setAgemState(data as never);
+          },
           onDone: (message) => {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");

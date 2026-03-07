@@ -18,8 +18,10 @@ export type ThinkingCallback = (chunk: string) => void;
 
 /** Options for a chat completion request. */
 export interface ChatCompletionOptions {
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }>;
   model?: string;
+  tools?: any[];
+  apiKey?: string;
   onToken?: StreamCallback;
   onThinking?: ThinkingCallback;
   signal?: AbortSignal;
@@ -29,6 +31,7 @@ export interface ChatCompletionOptions {
 export interface ChatCompletionResult {
   content: string;
   thinking?: string;
+  tool_calls?: any[];
   usage: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -57,16 +60,39 @@ class OllamaProvider implements LLMProvider {
     const config = settings.getLLMConfig();
     const model = options.model ?? config.model;
 
-    const response = await fetch(`${this.#baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const buildBody = (includeTools: boolean) => {
+      const body: any = {
         model,
         messages: options.messages,
         stream: true,
-      }),
+      };
+      if (includeTools && options.tools && options.tools.length > 0) {
+        body.tools = options.tools;
+      }
+      return body;
+    };
+
+    let response = await fetch(`${this.#baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildBody(true)),
       signal: options.signal,
     });
+
+    // Handle models that don't support tools with a fallback retry
+    if (response.status === 400) {
+      const errorData = (await response.json().catch(() => ({}))) as any;
+      if (errorData.error && typeof errorData.error === "string" && errorData.error.includes("does not support tools")) {
+        console.warn(`[LLM] Model '${model}' does not support tools. Retrying without tools.`);
+
+        response = await fetch(`${this.#baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildBody(false)),
+          signal: options.signal,
+        });
+      }
+    }
 
     if (!response.ok) {
       throw new Error(
@@ -81,6 +107,7 @@ class OllamaProvider implements LLMProvider {
 
     const decoder = new TextDecoder();
     let fullContent = "";
+    let toolCalls: any[] | undefined = undefined;
     let promptTokens = 0;
     let completionTokens = 0;
 
@@ -94,7 +121,7 @@ class OllamaProvider implements LLMProvider {
       for (const line of lines) {
         try {
           const parsed = JSON.parse(line) as {
-            message?: { content?: string };
+            message?: { content?: string; tool_calls?: any[] };
             done?: boolean;
             prompt_eval_count?: number;
             eval_count?: number;
@@ -103,6 +130,11 @@ class OllamaProvider implements LLMProvider {
           if (parsed.message?.content) {
             fullContent += parsed.message.content;
             options.onToken?.(parsed.message.content);
+          }
+
+          if (parsed.message?.tool_calls) {
+            // Ollama usually sends the whole tool_call block at once
+            toolCalls = parsed.message.tool_calls;
           }
 
           if (parsed.done) {
@@ -117,6 +149,7 @@ class OllamaProvider implements LLMProvider {
 
     return {
       content: fullContent,
+      tool_calls: toolCalls,
       usage: {
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
@@ -176,6 +209,15 @@ class OpenRouterProvider implements LLMProvider {
     const model = options.model ?? config.model;
     const apiKey = this.#getApiKey(options.apiKey);
 
+    const bodyObj: any = {
+      model,
+      messages: options.messages,
+      stream: true,
+    };
+    if (options.tools && options.tools.length > 0) {
+      bodyObj.tools = options.tools;
+    }
+
     const response = await fetch(`${this.#baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -184,11 +226,7 @@ class OpenRouterProvider implements LLMProvider {
         "HTTP-Referer": "https://agem.local",
         "X-Title": "AGEM Molecular Agent System",
       },
-      body: JSON.stringify({
-        model,
-        messages: options.messages,
-        stream: true,
-      }),
+      body: JSON.stringify(bodyObj),
       signal: options.signal,
     });
 
@@ -205,6 +243,7 @@ class OpenRouterProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let fullContent = "";
     let thinking = "";
+    let toolCallsMap: Record<number, any> = {};
     let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
     while (true) {
@@ -221,13 +260,9 @@ class OpenRouterProvider implements LLMProvider {
         try {
           const parsed = JSON.parse(dataStr) as {
             choices?: Array<{
-              delta?: { content?: string; reasoning?: string };
+              delta?: { content?: string; reasoning?: string; tool_calls?: any[] };
             }>;
-            usage?: {
-              prompt_tokens?: number;
-              completion_tokens?: number;
-              total_tokens?: number;
-            };
+            usage?: any;
           };
 
           const delta = parsed.choices?.[0]?.delta;
@@ -238,6 +273,15 @@ class OpenRouterProvider implements LLMProvider {
           if (delta?.reasoning) {
             thinking += delta.reasoning;
             options.onThinking?.(delta.reasoning);
+          }
+          if (delta?.tool_calls) {
+            for (const call of delta.tool_calls) {
+              const idx = call.index ?? 0;
+              if (!toolCallsMap[idx]) toolCallsMap[idx] = { id: call.id, type: call.type, function: { name: "", arguments: "" } };
+              if (call.id) toolCallsMap[idx].id = call.id;
+              if (call.function?.name) toolCallsMap[idx].function.name += call.function.name;
+              if (call.function?.arguments) toolCallsMap[idx].function.arguments += call.function.arguments;
+            }
           }
           if (parsed.usage) {
             usage = {
@@ -252,9 +296,13 @@ class OpenRouterProvider implements LLMProvider {
       }
     }
 
+    let finalToolCalls = Object.values(toolCallsMap);
+    if (finalToolCalls.length === 0) finalToolCalls = undefined as any;
+
     return {
       content: fullContent,
       thinking: thinking || undefined,
+      tool_calls: finalToolCalls,
       usage,
     };
   }
@@ -269,27 +317,19 @@ class OpenRouterProvider implements LLMProvider {
           "HTTP-Referer": "https://agem.local",
         },
       });
-
       if (!response.ok) return [];
 
       const data = (await response.json()) as {
-        data?: Array<{
-          id: string;
-          name: string;
-          context_length: number;
-          description?: string;
-          pricing?: { prompt: string; completion: string };
-        }>;
+        data?: Array<{ id: string; name: string; context_length?: number; description?: string }>;
       };
 
       return (data.data ?? []).map((m) => ({
         id: m.id,
-        name: m.name,
+        name: m.name ?? m.id,
         provider: "openrouter" as const,
-        context_length: m.context_length,
+        context_length: m.context_length ?? 0,
         description: m.description,
-        pricing: m.pricing,
-        type: m.id.includes("embed") ? "embedding" as const : "chat" as const,
+        type: m.id.toLowerCase().includes("embed") ? "embedding" as const : "chat" as const,
       }));
     } catch (error) {
       console.error("[LLM] Failed to list OpenRouter models:", error);
@@ -298,24 +338,199 @@ class OpenRouterProvider implements LLMProvider {
   }
 }
 
+/* ─── Anthropic Provider ─── */
+
+class AnthropicProvider implements LLMProvider {
+  readonly type: LLMProviderType = "anthropic";
+  #baseUrl: string;
+
+  constructor(baseUrl: string) {
+    this.#baseUrl = baseUrl.replace(/\/$/, "");
+  }
+
+  /** Get the API key, preferring runtime header over config. */
+  #getApiKey(headerKey?: string): string {
+    return headerKey ?? settings.getLLMConfig().api_key;
+  }
+
+  async chat(
+    options: ChatCompletionOptions & { apiKey?: string }
+  ): Promise<ChatCompletionResult> {
+    const config = settings.getLLMConfig();
+    const model = options.model ?? config.model;
+    const apiKey = this.#getApiKey(options.apiKey);
+
+    // Filter out system messages since Anthropic puts it in a top-level `system` field
+    const systemMessage = options.messages.find((m) => m.role === "system");
+    const otherMessages = options.messages.filter((m) => m.role !== "system");
+
+    // Convert OpenAI style tool calls to Anthropic's style
+    const tools = options.tools?.map((t) => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters,
+    }));
+
+    // Convert tool format in messages
+    const anthropicMessages = otherMessages.map((m) => {
+      if (m.role === "assistant" && m.tool_calls) {
+        return {
+          role: "assistant",
+          content: m.tool_calls.map((tc) => ({
+            type: "tool_use",
+            id: tc.id,
+            name: tc.function.name,
+            input: typeof tc.function.arguments === "string" ? JSON.parse(tc.function.arguments || "{}") : (tc.function.arguments || {}),
+          })),
+        };
+      } else if (m.role === "tool" || m.tool_call_id) {
+        return {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: m.tool_call_id,
+              content: m.content,
+            },
+          ],
+        };
+      }
+      return {
+        role: m.role,
+        content: m.content,
+      };
+    });
+
+    const bodyObj: any = {
+      model,
+      messages: anthropicMessages,
+      max_tokens: 8192,
+      stream: true,
+    };
+    if (systemMessage) {
+      bodyObj.system = systemMessage.content;
+    }
+    if (tools && tools.length > 0) {
+      bodyObj.tools = tools;
+    }
+
+    const response = await fetch(`${this.#baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(bodyObj),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(`Anthropic chat failed: ${response.status} — ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Anthropic: No response body reader available");
+    }
+
+    const decoder = new TextDecoder();
+    let fullContent = "";
+    let toolCalls: any[] = [];
+    let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+
+      for (const line of lines) {
+        const dataStr = line.slice(6).trim();
+        if (dataStr === "[DONE]") continue;
+
+        try {
+          const evt = JSON.parse(dataStr);
+          if (evt.type === "message_start") {
+            usage.prompt_tokens = evt.message.usage.input_tokens;
+          } else if (evt.type === "content_block_delta" && evt.delta.type === "text_delta") {
+            fullContent += evt.delta.text;
+            options.onToken?.(evt.delta.text);
+          } else if (evt.type === "content_block_start" && evt.content_block.type === "tool_use") {
+            // Anthropic tool starts here...
+            toolCalls[evt.index] = {
+              id: evt.content_block.id,
+              type: "function",
+              function: {
+                name: evt.content_block.name,
+                arguments: "",
+              },
+            };
+          } else if (evt.type === "content_block_delta" && evt.delta.type === "input_json_delta") {
+            toolCalls[evt.index].function.arguments += evt.delta.partial_json;
+          } else if (evt.type === "message_delta") {
+            usage.completion_tokens = evt.usage.output_tokens;
+          }
+        } catch {
+          // Ignore incomplete/malformed chunks
+        }
+      }
+    }
+
+    usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+    let finalToolCalls = toolCalls.filter(Boolean);
+    if (finalToolCalls.length === 0) finalToolCalls = undefined as any;
+
+    return {
+      content: fullContent,
+      tool_calls: finalToolCalls,
+      usage,
+    };
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    // Anthropic API does not support dynamically listing models right now AFAIK.
+    // Hardcode some modern models.
+    return [
+      {
+        id: "claude-3-5-sonnet-20241022",
+        name: "Claude 3.5 Sonnet",
+        provider: "anthropic",
+        context_length: 200000,
+        type: "chat",
+      },
+      {
+        id: "claude-3-5-haiku-20241022",
+        name: "Claude 3.5 Haiku",
+        provider: "anthropic",
+        context_length: 200000,
+        type: "chat",
+      },
+    ];
+  }
+}
+
 /* ─── Factory ─── */
 
 /** Create the appropriate LLM provider based on configuration. */
 export function createProvider(type?: LLMProviderType): LLMProvider {
   const providerType = type ?? settings.getLLMConfig().provider;
-  const config = settings.all;
+  const config = settings.getLLMConfig();
 
   switch (providerType) {
     case "ollama":
-      return new OllamaProvider(config.OLLAMA_BASE_URL);
+      return new OllamaProvider(config.base_url || "http://localhost:11434");
     case "openrouter":
-      return new OpenRouterProvider(config.OPENROUTER_BASE_URL);
+      return new OpenRouterProvider(config.base_url || "https://openrouter.ai/api/v1");
+    case "anthropic":
+      return new AnthropicProvider(config.base_url || "https://api.anthropic.com/v1");
     default:
       throw new Error(`Unknown LLM provider: ${providerType}`);
   }
 }
 
-/** Get the currently active provider. */
 export function getActiveProvider(): LLMProvider {
   return createProvider();
 }

@@ -178,6 +178,15 @@ class SessionStore {
     }
   }
 
+  /** Update session properties (like messages). */
+  update(sessionId: string, updates: Partial<SessionFile>): void {
+    const session = this.#readSession(sessionId);
+    if (!session) return;
+    Object.assign(session, updates);
+    session.updated_at = new Date().toISOString();
+    this.#writeSession(session);
+  }
+
   /** Convert a session file to its summary representation. */
   #toSummary(session: SessionFile): ChatSession {
     return {

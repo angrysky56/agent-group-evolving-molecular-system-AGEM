@@ -5,7 +5,7 @@
  */
 
 import { create } from "zustand";
-import type { ChatMessage } from "@shared/types";
+import type { ChatMessage, AgemStateSnapshot } from "@shared/types";
 
 export interface ChatState {
   /** Messages in the active session */
@@ -18,6 +18,8 @@ export interface ChatState {
   activeSessionId: string | null;
   /** Abort controller for cancelling streams */
   abortController: AbortController | null;
+  /** Most recent AGEM state snapshot */
+  agemState: AgemStateSnapshot | null;
 
   setMessages: (messages: ChatMessage[]) => void;
   addMessage: (message: ChatMessage) => void;
@@ -26,6 +28,7 @@ export interface ChatState {
   setIsStreaming: (streaming: boolean) => void;
   setActiveSessionId: (id: string | null) => void;
   setAbortController: (controller: AbortController | null) => void;
+  setAgemState: (state: AgemStateSnapshot | null) => void;
   clearChat: () => void;
   stopStreaming: () => void;
 }
@@ -36,6 +39,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   activeSessionId: null,
   abortController: null,
+  agemState: null,
 
   setMessages: (messages) => set({ messages }),
   addMessage: (message) =>
@@ -48,12 +52,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
   setAbortController: (abortController) => set({ abortController }),
+  setAgemState: (agemState) => set({ agemState }),
   clearChat: () =>
     set({
       messages: [],
       streamingContent: "",
       isStreaming: false,
       activeSessionId: null,
+      agemState: null,
     }),
   stopStreaming: () => {
     const { abortController } = get();

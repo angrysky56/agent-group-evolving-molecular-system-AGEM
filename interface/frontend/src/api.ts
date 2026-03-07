@@ -20,19 +20,39 @@ const BASE = "/api/v1";
 
 /* ─── Generic Helpers ─── */
 
-async function json<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function json<T>(url: string, init?: RequestInit, retries = 3): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...init?.headers,
+        },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`API ${res.status}: ${body}`);
+      }
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // If it's a 4xx error, don't retry (client error)
+      if (lastError.message.includes("API 4")) {
+        throw lastError;
+      }
+
+      const backoff = Math.min(1000 * Math.pow(2, attempt), 5000);
+      await delay(backoff);
+    }
   }
-  return res.json() as Promise<T>;
+
+  throw lastError || new Error("API request failed");
 }
 
 /* ─── Sessions ─── */
@@ -64,6 +84,7 @@ export interface StreamCallbacks {
   onToken: (text: string) => void;
   onThinking?: (text: string) => void;
   onArtifact?: (data: Record<string, unknown>) => void;
+  onAgemState?: (data: Record<string, unknown>) => void;
   onDone: (message: ChatMessage) => void;
   onError: (error: string) => void;
 }
@@ -107,6 +128,7 @@ export function streamChat(
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let currentEvent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -117,31 +139,42 @@ export function streamChat(
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+            continue;
+          }
+          if (!line.startsWith("data: ")) {
+            if (line === "") currentEvent = ""; // Reset event type on empty line
+            continue;
+          }
+
           const payload = line.slice(6).trim();
           if (payload === "[DONE]") continue;
 
           try {
-            const event = JSON.parse(payload) as SSEEvent;
-            switch (event.type) {
+            const data = JSON.parse(payload);
+            const eventType = currentEvent || data.type;
+
+            switch (eventType) {
               case "token":
-                callbacks.onToken(event.content ?? "");
+                callbacks.onToken(data.content ?? "");
                 break;
               case "thinking":
-                callbacks.onThinking?.(event.content ?? "");
+                callbacks.onThinking?.(data.content ?? "");
                 break;
               case "artifact":
-                callbacks.onArtifact?.(
-                  event.metadata as Record<string, unknown>
-                );
+                callbacks.onArtifact?.(data);
+                break;
+              case "agem_state":
+                callbacks.onAgemState?.(data);
                 break;
               case "done":
-                if (event.metadata?.message) {
-                  callbacks.onDone(event.metadata.message as ChatMessage);
+                if (data.message) {
+                  callbacks.onDone(data.message);
                 }
                 break;
               case "error":
-                callbacks.onError(event.content ?? "Unknown error");
+                callbacks.onError(data.message ?? data.content ?? "Unknown error");
                 break;
             }
           } catch {
@@ -174,9 +207,14 @@ export async function updateConfig(
   });
 }
 
-export async function listModels(provider?: string): Promise<ModelInfo[]> {
+export async function listModels(provider?: string, apiKey?: string): Promise<ModelInfo[]> {
   const params = provider ? `?provider=${provider}` : "";
-  return json(`${BASE}/system/models${params}`);
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers["x-api-key"] = apiKey;
+  }
+
+  return json(`${BASE}/system/models${params}`, { headers });
 }
 
 export async function getStatus(): Promise<{
