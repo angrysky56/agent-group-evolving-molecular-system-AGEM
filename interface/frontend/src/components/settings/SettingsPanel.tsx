@@ -85,10 +85,13 @@ export function SettingsPanel({ onClose }: Props) {
           )}
 
           {/* API Key Settings (OpenRouter/Anthropic) */}
-          {(settings.provider === "openrouter" || settings.provider === "anthropic") && (
+          {(settings.provider === "openrouter" ||
+            settings.provider === "anthropic") && (
             <div className="settings-group">
               <div className="settings-group__label">
-                {settings.provider === "openrouter" ? "OpenRouter" : "Anthropic"}
+                {settings.provider === "openrouter"
+                  ? "OpenRouter"
+                  : "Anthropic"}
               </div>
               <div className="settings-field">
                 <label className="settings-field__label">API Key</label>
@@ -98,7 +101,9 @@ export function SettingsPanel({ onClose }: Props) {
                   value={settings.apiKey}
                   onChange={(e) => settings.setApiKey(e.target.value)}
                   placeholder={
-                    settings.provider === "anthropic" ? "sk-ant-..." : "sk-or-..."
+                    settings.provider === "anthropic"
+                      ? "sk-ant-..."
+                      : "sk-or-..."
                   }
                 />
               </div>
@@ -132,15 +137,11 @@ export function SettingsPanel({ onClose }: Props) {
               )}
             </div>
             <div className="settings-field">
-              <label className="settings-field__label">
-                Embedding Model
-              </label>
+              <label className="settings-field__label">Embedding Model</label>
               <input
                 className="settings-field__input settings-field__input--mono"
                 value={settings.embeddingModel}
-                onChange={(e) =>
-                  settings.setEmbeddingModel(e.target.value)
-                }
+                onChange={(e) => settings.setEmbeddingModel(e.target.value)}
                 placeholder="nomic-embed-text"
               />
             </div>

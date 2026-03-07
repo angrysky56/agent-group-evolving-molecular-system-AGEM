@@ -32,9 +32,9 @@
  * @module llm_map
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { Worker } from 'node:worker_threads';
-import type { Task, TaskResult } from './interfaces.js';
+import { AsyncLocalStorage } from "node:async_hooks";
+import { Worker } from "node:worker_threads";
+import type { Task, TaskResult } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // AsyncLocalStorage context — propagated through async boundaries
@@ -92,9 +92,9 @@ export type WorkerOutboundMessage<T = unknown> = TaskResult<T>;
  */
 export function formatTaskForWorker<T>(task: Task<T>): Task<T> {
   // Validate: functions and symbols are not serializable
-  if (typeof task.id !== 'string' || task.id.trim() === '') {
+  if (typeof task.id !== "string" || task.id.trim() === "") {
     throw new Error(
-      `Task ID must be a non-empty string; got: ${JSON.stringify(task.id)}`
+      `Task ID must be a non-empty string; got: ${JSON.stringify(task.id)}`,
     );
   }
 
@@ -105,7 +105,7 @@ export function formatTaskForWorker<T>(task: Task<T>): Task<T> {
     clonedPayload = JSON.parse(JSON.stringify(task.payload)) as T;
   } catch (err) {
     throw new Error(
-      `Task payload for task '${task.id}' is not serializable: ${String(err)}`
+      `Task payload for task '${task.id}' is not serializable: ${String(err)}`,
     );
   }
 
@@ -165,7 +165,7 @@ export function formatTaskForWorker<T>(task: Task<T>): Task<T> {
 export async function llm_map<T>(
   tasks: readonly Task<T>[],
   workerScriptPath: string,
-  poolSize: number = 4
+  poolSize: number = 4,
 ): Promise<readonly TaskResult<T>[]> {
   // Fast path: empty tasks
   if (tasks.length === 0) {
@@ -185,68 +185,66 @@ export async function llm_map<T>(
   // Spawn a fresh pool of workers for this call
   const workers = Array.from(
     { length: effectivePoolSize },
-    () => new Worker(workerScriptPath)
+    () => new Worker(workerScriptPath),
   );
 
   try {
     // Dispatch all tasks in parallel via round-robin worker assignment
     // Each task gets its own Promise that resolves when the corresponding
     // taskId message is received from the assigned worker.
-    const taskPromises = tasks.map(
-      (task, index): Promise<TaskResult<T>> => {
-        const worker = workers[index % effectivePoolSize];
+    const taskPromises = tasks.map((task, index): Promise<TaskResult<T>> => {
+      const worker = workers[index % effectivePoolSize];
 
-        return new Promise<TaskResult<T>>((resolve) => {
-          // Per-task message handler: resolves when taskId matches
-          const messageHandler = (message: WorkerOutboundMessage<T>): void => {
-            if (message.taskId === task.id) {
-              // Unsubscribe to avoid duplicate resolution
-              worker.off('message', messageHandler);
-              resolve(message);
-            }
-          };
-
-          // Worker crash handler: resolve with error (don't reject)
-          const errorHandler = (err: Error): void => {
-            worker.off('message', messageHandler);
-            resolve({
-              taskId: task.id,
-              success: false,
-              error: err,
-            });
-          };
-
-          worker.on('message', messageHandler);
-          worker.once('error', errorHandler);
-
-          // Format and dispatch: serialize payload for structured clone
-          let formattedTask: Task<T>;
-          try {
-            formattedTask = formatTaskForWorker(task);
-          } catch (formatErr) {
-            // Serialization failure — resolve with error immediately (don't dispatch)
-            worker.off('message', messageHandler);
-            worker.off('error', errorHandler);
-            resolve({
-              taskId: task.id,
-              success: false,
-              error:
-                formatErr instanceof Error
-                  ? formatErr
-                  : new Error(String(formatErr)),
-            });
-            return;
+      return new Promise<TaskResult<T>>((resolve) => {
+        // Per-task message handler: resolves when taskId matches
+        const messageHandler = (message: WorkerOutboundMessage<T>): void => {
+          if (message.taskId === task.id) {
+            // Unsubscribe to avoid duplicate resolution
+            worker.off("message", messageHandler);
+            resolve(message);
           }
+        };
 
-          const inboundMessage: WorkerInboundMessage<T> = {
-            task: formattedTask,
-            context: contextData,
-          };
+        // Worker crash handler: resolve with error (don't reject)
+        const errorHandler = (err: Error): void => {
+          worker.off("message", messageHandler);
+          resolve({
+            taskId: task.id,
+            success: false,
+            error: err,
+          });
+        };
 
-          worker.postMessage(inboundMessage);
-        });
-      }
-    );
+        worker.on("message", messageHandler);
+        worker.once("error", errorHandler);
+
+        // Format and dispatch: serialize payload for structured clone
+        let formattedTask: Task<T>;
+        try {
+          formattedTask = formatTaskForWorker(task);
+        } catch (formatErr) {
+          // Serialization failure — resolve with error immediately (don't dispatch)
+          worker.off("message", messageHandler);
+          worker.off("error", errorHandler);
+          resolve({
+            taskId: task.id,
+            success: false,
+            error:
+              formatErr instanceof Error
+                ? formatErr
+                : new Error(String(formatErr)),
+          });
+          return;
+        }
+
+        const inboundMessage: WorkerInboundMessage<T> = {
+          task: formattedTask,
+          context: contextData,
+        };
+
+        worker.postMessage(inboundMessage);
+      });
+    });
 
     // Await all tasks in parallel (may complete out of order)
     const results = await Promise.all(taskPromises);

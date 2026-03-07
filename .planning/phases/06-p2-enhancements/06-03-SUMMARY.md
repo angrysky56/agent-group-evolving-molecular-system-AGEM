@@ -2,7 +2,18 @@
 phase: 06-p2-enhancements
 plan: 03
 subsystem: tna
-tags: [tna, centrality, catalyst, time-series, EventEmitter, templates, caching, trend-detection, betweenness]
+tags:
+  [
+    tna,
+    centrality,
+    catalyst,
+    time-series,
+    EventEmitter,
+    templates,
+    caching,
+    trend-detection,
+    betweenness,
+  ]
 
 # Dependency graph
 requires:
@@ -124,6 +135,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Test T4 assumed specific node name as top centrality node**
+
 - **Found during:** Task 4 (test execution)
 - **Issue:** Test assumed 'alpha' was the highest-centrality node in community 0, but 'gamma' actually had higher betweenness centrality in the test graph
 - **Fix:** Changed test to dynamically compute which node has highest centrality (reduce over community nodes), then assert that node is the seed
@@ -132,6 +144,7 @@ Each task was committed atomically:
 - **Committed in:** f4234ff (Task 4 commit)
 
 **2. [Rule 1 - Bug] Tests T-TS-7 and T-TS-13 tried to add edges that already existed**
+
 - **Found during:** Task 4 (test execution)
 - **Issue:** `ingestTokens(['p', 'q', 'r'])` already creates p-q, q-r, p-r edges via 4-gram sliding window; subsequent `g.addEdge('p', 'q', ...)` threw UsageGraphError (duplicate edge)
 - **Fix:** T-TS-7: removed redundant addEdge calls (ingestTokens creates them automatically). T-TS-13: same fix.
@@ -140,6 +153,7 @@ Each task was committed atomically:
 - **Committed in:** f4234ff (Task 4 commit)
 
 **3. [Rule 1 - Bug] TypeScript error on topologyEvent.majorNodeSwaps in T-TS-22**
+
 - **Found during:** Task 5 (tsc --noEmit after orchestrator wiring)
 - **Issue:** `topologyEvent` typed as `Record<string, unknown> | null`; TS narrowed to `never` inside null check for property access
 - **Fix:** Explicit cast `(topologyEvent as Record<string, unknown>)['majorNodeSwaps']` with typeof check
@@ -173,6 +187,7 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 
 All created/modified files exist and all commits are present:
+
 - `src/tna/CatalystQuestionGenerator.ts` — FOUND
 - `src/tna/CatalystQuestionGenerator.test.ts` — FOUND
 - `src/tna/CentralityAnalyzer.ts` — FOUND (modified)
@@ -185,5 +200,6 @@ All created/modified files exist and all commits are present:
 - Commits d46ff47, b537c78, 5548094, f4234ff, ab1f3b7 — all present in git log
 
 ---
-*Phase: 06-p2-enhancements*
-*Completed: 2026-03-06*
+
+_Phase: 06-p2-enhancements_
+_Completed: 2026-03-06_

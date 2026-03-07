@@ -20,11 +20,11 @@
  * Tests are deterministic via fixed seeds.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { Preprocessor } from './Preprocessor.js';
-import { CooccurrenceGraph } from './CooccurrenceGraph.js';
-import { LouvainDetector } from './LouvainDetector.js';
-import { LayoutComputer } from './LayoutComputer.js';
+import { describe, it, expect, vi } from "vitest";
+import { Preprocessor } from "./Preprocessor.js";
+import { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+import { LouvainDetector } from "./LouvainDetector.js";
+import { LayoutComputer } from "./LayoutComputer.js";
 
 // ---------------------------------------------------------------------------
 // Test graph builders
@@ -38,12 +38,16 @@ import { LayoutComputer } from './LayoutComputer.js';
  * Cluster B: one, two, three, four, five (5 nodes, dense intra-edges)
  * Bridge: epsilon ↔ one (weak inter-cluster edge)
  */
-function buildTwoClusterGraph(): { graph: CooccurrenceGraph; clusterA: string[]; clusterB: string[] } {
+function buildTwoClusterGraph(): {
+  graph: CooccurrenceGraph;
+  clusterA: string[];
+  clusterB: string[];
+} {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
 
-  const clusterA = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
-  const clusterB = ['one', 'two', 'three', 'four', 'five'];
+  const clusterA = ["alpha", "beta", "gamma", "delta", "epsilon"];
+  const clusterB = ["one", "two", "three", "four", "five"];
 
   // Ingest each cluster multiple times to build dense intra-cluster edges.
   graph.ingestTokens(clusterA, 1);
@@ -54,7 +58,7 @@ function buildTwoClusterGraph(): { graph: CooccurrenceGraph; clusterA: string[];
   graph.ingestTokens(clusterB, 3);
 
   // Single weak bridge
-  graph.ingestTokens(['epsilon', 'one'], 1);
+  graph.ingestTokens(["epsilon", "one"], 1);
 
   return { graph, clusterA, clusterB };
 }
@@ -66,7 +70,7 @@ function buildLinearGraph(): CooccurrenceGraph {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
   // Path: adjacent tokens within 4-gram window create weighted edges
-  graph.ingestTokens(['a', 'b', 'c', 'd', 'e'], 1);
+  graph.ingestTokens(["a", "b", "c", "d", "e"], 1);
   return graph;
 }
 
@@ -76,7 +80,7 @@ function buildLinearGraph(): CooccurrenceGraph {
 function buildSmallGraph(): CooccurrenceGraph {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
-  graph.ingestTokens(['x', 'y'], 1);
+  graph.ingestTokens(["x", "y"], 1);
   return graph;
 }
 
@@ -94,7 +98,7 @@ function buildEmptyGraph(): CooccurrenceGraph {
 function buildSingleNodeGraph(): CooccurrenceGraph {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
-  graph.ingestTokens(['solo'], 1);
+  graph.ingestTokens(["solo"], 1);
   return graph;
 }
 
@@ -105,16 +109,19 @@ function buildCompleteGraph(): CooccurrenceGraph {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
   // Ingest all orderings to maximize edge density.
-  graph.ingestTokens(['p', 'q', 'r', 's', 't'], 1);
-  graph.ingestTokens(['t', 's', 'r', 'q', 'p'], 2);
-  graph.ingestTokens(['p', 'r', 't', 'q', 's'], 3);
+  graph.ingestTokens(["p", "q", "r", "s", "t"], 1);
+  graph.ingestTokens(["t", "s", "r", "q", "p"], 2);
+  graph.ingestTokens(["p", "r", "t", "q", "s"], 3);
   return graph;
 }
 
 /**
  * euclideanDistance — distance between two positions.
  */
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+function dist(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
@@ -122,15 +129,13 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('LayoutComputer (TNA-08)', () => {
-
+describe("LayoutComputer (TNA-08)", () => {
   // =========================================================================
   // Basic layout computation
   // =========================================================================
 
-  describe('Basic layout computation', () => {
-
-    it('T1: computeLayout() returns LayoutOutput with positions for all nodes', () => {
+  describe("Basic layout computation", () => {
+    it("T1: computeLayout() returns LayoutOutput with positions for all nodes", () => {
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
 
@@ -146,7 +151,7 @@ describe('LayoutComputer (TNA-08)', () => {
       });
     });
 
-    it('T2: All node positions are finite numbers (no NaN or Infinity in x/y)', () => {
+    it("T2: All node positions are finite numbers (no NaN or Infinity in x/y)", () => {
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
 
@@ -160,7 +165,7 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T3: Positions are cached in CooccurrenceGraph via updateNodePosition()', () => {
+    it("T3: Positions are cached in CooccurrenceGraph via updateNodePosition()", () => {
       const { graph, clusterA } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
 
@@ -175,19 +180,19 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T4: getNodePosition() on CooccurrenceGraph returns coordinates after layout', () => {
+    it("T4: getNodePosition() on CooccurrenceGraph returns coordinates after layout", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
       layoutComputer.computeLayout();
 
-      const pos = linear.getNodePosition('a');
+      const pos = linear.getNodePosition("a");
       expect(pos).toBeDefined();
-      expect(typeof pos!.x).toBe('number');
-      expect(typeof pos!.y).toBe('number');
+      expect(typeof pos!.x).toBe("number");
+      expect(typeof pos!.y).toBe("number");
     });
 
-    it('T5: LayoutOutput contains correct nodeCount and edgeCount', () => {
+    it("T5: LayoutOutput contains correct nodeCount and edgeCount", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -198,16 +203,14 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(output.nodeCount).toBeGreaterThan(0);
       expect(output.edgeCount).toBeGreaterThan(0);
     });
-
   });
 
   // =========================================================================
   // Convergence
   // =========================================================================
 
-  describe('Convergence', () => {
-
-    it('T6: Layout with more iterations has lower or equal energy on second run', () => {
+  describe("Convergence", () => {
+    it("T6: Layout with more iterations has lower or equal energy on second run", () => {
       // Run two sequential layouts; second should have lower energy (positions stabilized).
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
@@ -225,9 +228,13 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(third.energy).toBeLessThan(Infinity);
     });
 
-    it('T7: Energy transitions from Infinity (round 1) to finite (round 2+)', () => {
+    it("T7: Energy transitions from Infinity (round 1) to finite (round 2+)", () => {
       const { graph } = buildTwoClusterGraph();
-      const layoutComputer = new LayoutComputer(graph, { iterations: 100, barnesHutOptimize: false, seed: 42 });
+      const layoutComputer = new LayoutComputer(graph, {
+        iterations: 100,
+        barnesHutOptimize: false,
+        seed: 42,
+      });
 
       // Round 1: establishes baseline positions; energy = Infinity (no previous reference).
       const first = layoutComputer.computeLayout(100);
@@ -246,9 +253,13 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(third.energy).toBeLessThan(Infinity);
     });
 
-    it('T8: isConverged() returns true when energy < threshold', () => {
+    it("T8: isConverged() returns true when energy < threshold", () => {
       const linear = buildLinearGraph();
-      const layoutComputer = new LayoutComputer(linear, {}, { convergenceEnergyThreshold: 1000 });
+      const layoutComputer = new LayoutComputer(
+        linear,
+        {},
+        { convergenceEnergyThreshold: 1000 },
+      );
 
       // First run.
       layoutComputer.computeLayout(100);
@@ -261,14 +272,14 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T9: isConverged() returns false before first computation', () => {
+    it("T9: isConverged() returns false before first computation", () => {
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
 
       expect(layoutComputer.isConverged()).toBe(false);
     });
 
-    it('T10: Second computation with same graph measures finite energy (incremental convergence)', () => {
+    it("T10: Second computation with same graph measures finite energy (incremental convergence)", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear, { iterations: 100 });
 
@@ -281,21 +292,27 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(second.energy).not.toBe(Infinity);
       expect(isFinite(second.energy)).toBe(true);
     });
-
   });
 
   // =========================================================================
   // Determinism
   // =========================================================================
 
-  describe('Determinism', () => {
-
-    it('T11: Same graph produces same positions across two independent LayoutComputer instances', () => {
+  describe("Determinism", () => {
+    it("T11: Same graph produces same positions across two independent LayoutComputer instances", () => {
       const { graph: graph1, clusterA } = buildTwoClusterGraph();
       const { graph: graph2 } = buildTwoClusterGraph();
 
-      const lc1 = new LayoutComputer(graph1, { seed: 42, iterations: 50, barnesHutOptimize: false });
-      const lc2 = new LayoutComputer(graph2, { seed: 42, iterations: 50, barnesHutOptimize: false });
+      const lc1 = new LayoutComputer(graph1, {
+        seed: 42,
+        iterations: 50,
+        barnesHutOptimize: false,
+      });
+      const lc2 = new LayoutComputer(graph2, {
+        seed: 42,
+        iterations: 50,
+        barnesHutOptimize: false,
+      });
 
       const out1 = lc1.computeLayout(50);
       const out2 = lc2.computeLayout(50);
@@ -309,18 +326,26 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T12: Deterministic seeding produces reproducible initial positions for same node IDs', () => {
+    it("T12: Deterministic seeding produces reproducible initial positions for same node IDs", () => {
       const linear1 = buildLinearGraph();
       const linear2 = buildLinearGraph();
 
-      const lc1 = new LayoutComputer(linear1, { seed: 42, iterations: 1, barnesHutOptimize: false });
-      const lc2 = new LayoutComputer(linear2, { seed: 42, iterations: 1, barnesHutOptimize: false });
+      const lc1 = new LayoutComputer(linear1, {
+        seed: 42,
+        iterations: 1,
+        barnesHutOptimize: false,
+      });
+      const lc2 = new LayoutComputer(linear2, {
+        seed: 42,
+        iterations: 1,
+        barnesHutOptimize: false,
+      });
 
       const out1 = lc1.computeLayout(1);
       const out2 = lc2.computeLayout(1);
 
       // With just 1 iteration, output is almost entirely seed-dependent.
-      const nodeIds = ['a', 'b', 'c', 'd', 'e'];
+      const nodeIds = ["a", "b", "c", "d", "e"];
       for (const nodeId of nodeIds) {
         const p1 = out1.positions.get(nodeId)!;
         const p2 = out2.positions.get(nodeId)!;
@@ -329,12 +354,20 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T13: Same config + same graph → same energy value', () => {
+    it("T13: Same config + same graph → same energy value", () => {
       const { graph: graph1 } = buildTwoClusterGraph();
       const { graph: graph2 } = buildTwoClusterGraph();
 
-      const lc1 = new LayoutComputer(graph1, { seed: 42, iterations: 50, barnesHutOptimize: false });
-      const lc2 = new LayoutComputer(graph2, { seed: 42, iterations: 50, barnesHutOptimize: false });
+      const lc1 = new LayoutComputer(graph1, {
+        seed: 42,
+        iterations: 50,
+        barnesHutOptimize: false,
+      });
+      const lc2 = new LayoutComputer(graph2, {
+        seed: 42,
+        iterations: 50,
+        barnesHutOptimize: false,
+      });
 
       // Second round to get non-infinite energy.
       lc1.computeLayout(50);
@@ -344,18 +377,20 @@ describe('LayoutComputer (TNA-08)', () => {
 
       expect(e1).toBeCloseTo(e2, 2);
     });
-
   });
 
   // =========================================================================
   // Incremental updates
   // =========================================================================
 
-  describe('Incremental updates', () => {
-
-    it('T14: computeIfDue() returns false before interval has elapsed', () => {
+  describe("Incremental updates", () => {
+    it("T14: computeIfDue() returns false before interval has elapsed", () => {
       const linear = buildLinearGraph();
-      const layoutComputer = new LayoutComputer(linear, {}, { defaultComputeInterval: 15 });
+      const layoutComputer = new LayoutComputer(
+        linear,
+        {},
+        { defaultComputeInterval: 15 },
+      );
 
       // First call always computes (warm-up, hasComputedInitial=false).
       const firstComputed = layoutComputer.computeIfDue(1);
@@ -370,9 +405,13 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(stillSkipped).toBe(false);
     });
 
-    it('T15: computeIfDue() returns true and computes when interval has elapsed', () => {
+    it("T15: computeIfDue() returns true and computes when interval has elapsed", () => {
       const linear = buildLinearGraph();
-      const layoutComputer = new LayoutComputer(linear, {}, { defaultComputeInterval: 10 });
+      const layoutComputer = new LayoutComputer(
+        linear,
+        {},
+        { defaultComputeInterval: 10 },
+      );
 
       // First computation always runs regardless of iteration (warm-up).
       const first = layoutComputer.computeIfDue(0);
@@ -386,12 +425,12 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(layoutComputer.getLastLayout()).not.toBeNull();
     });
 
-    it('T16: Incremental computation uses fewer iterations (multiplier * default)', () => {
+    it("T16: Incremental computation uses fewer iterations (multiplier * default)", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(
         linear,
         { iterations: 100 },
-        { defaultComputeInterval: 5, incrementalMultiplier: 0.5 }
+        { defaultComputeInterval: 5, incrementalMultiplier: 0.5 },
       );
 
       // First run (warm-up): always computes with full iterations.
@@ -407,9 +446,13 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(secondLayout.iterations).toBe(50); // Incremental.
     });
 
-    it('T17: computeIfDue at exact interval boundary computes', () => {
+    it("T17: computeIfDue at exact interval boundary computes", () => {
       const linear = buildLinearGraph();
-      const layoutComputer = new LayoutComputer(linear, {}, { defaultComputeInterval: 7 });
+      const layoutComputer = new LayoutComputer(
+        linear,
+        {},
+        { defaultComputeInterval: 7 },
+      );
 
       layoutComputer.computeIfDue(0);
 
@@ -417,18 +460,20 @@ describe('LayoutComputer (TNA-08)', () => {
       const result = layoutComputer.computeIfDue(7);
       expect(result).toBe(true);
     });
-
   });
 
   // =========================================================================
   // Graph edge cases
   // =========================================================================
 
-  describe('Graph edge cases', () => {
-
-    it('T18: Graph with < 3 nodes → trivial layout returned with positions', () => {
+  describe("Graph edge cases", () => {
+    it("T18: Graph with < 3 nodes → trivial layout returned with positions", () => {
       const small = buildSmallGraph(); // 2 nodes
-      const layoutComputer = new LayoutComputer(small, {}, { minGraphOrder: 3 });
+      const layoutComputer = new LayoutComputer(
+        small,
+        {},
+        { minGraphOrder: 3 },
+      );
 
       const output = layoutComputer.computeLayout();
 
@@ -439,9 +484,13 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(output.positions.size).toBe(2);
     });
 
-    it('T19: Graph with 0 nodes → empty positions map', () => {
+    it("T19: Graph with 0 nodes → empty positions map", () => {
       const empty = buildEmptyGraph();
-      const layoutComputer = new LayoutComputer(empty, {}, { minGraphOrder: 3 });
+      const layoutComputer = new LayoutComputer(
+        empty,
+        {},
+        { minGraphOrder: 3 },
+      );
 
       const output = layoutComputer.computeLayout();
 
@@ -450,22 +499,29 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(output.edgeCount).toBe(0);
     });
 
-    it('T20: Single-node graph → trivial layout with one position', () => {
+    it("T20: Single-node graph → trivial layout with one position", () => {
       const single = buildSingleNodeGraph();
-      const layoutComputer = new LayoutComputer(single, {}, { minGraphOrder: 3 });
+      const layoutComputer = new LayoutComputer(
+        single,
+        {},
+        { minGraphOrder: 3 },
+      );
 
       const output = layoutComputer.computeLayout();
 
       expect(output.positions.size).toBe(1);
-      expect(output.positions.has('solo')).toBe(true);
-      const pos = output.positions.get('solo')!;
+      expect(output.positions.has("solo")).toBe(true);
+      const pos = output.positions.get("solo")!;
       expect(isFinite(pos.x)).toBe(true);
       expect(isFinite(pos.y)).toBe(true);
     });
 
-    it('T21: Complete graph → all positions are finite after layout', () => {
+    it("T21: Complete graph → all positions are finite after layout", () => {
       const complete = buildCompleteGraph();
-      const layoutComputer = new LayoutComputer(complete, { iterations: 50, barnesHutOptimize: false });
+      const layoutComputer = new LayoutComputer(complete, {
+        iterations: 50,
+        barnesHutOptimize: false,
+      });
 
       const output = layoutComputer.computeLayout();
 
@@ -476,28 +532,30 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T22: Two-node graph below minGraphOrder → trivial layout, no event emitted', () => {
+    it("T22: Two-node graph below minGraphOrder → trivial layout, no event emitted", () => {
       const small = buildSmallGraph();
-      const layoutComputer = new LayoutComputer(small, {}, { minGraphOrder: 3 });
+      const layoutComputer = new LayoutComputer(
+        small,
+        {},
+        { minGraphOrder: 3 },
+      );
 
       const events: unknown[] = [];
-      layoutComputer.on('tna:layout-updated', (e) => events.push(e));
+      layoutComputer.on("tna:layout-updated", (e) => events.push(e));
 
       layoutComputer.computeLayout();
 
       // No event for trivial layout (< minGraphOrder nodes).
       expect(events).toHaveLength(0);
     });
-
   });
 
   // =========================================================================
   // Community clustering
   // =========================================================================
 
-  describe('Community clustering', () => {
-
-    it('T23: Community detection assigns different IDs to the two clusters', () => {
+  describe("Community clustering", () => {
+    it("T23: Community detection assigns different IDs to the two clusters", () => {
       const { graph } = buildTwoClusterGraph();
       const louvain = new LouvainDetector(graph);
       const result = louvain.detect(42);
@@ -508,15 +566,15 @@ describe('LayoutComputer (TNA-08)', () => {
       }
 
       // Each cluster should have nodes in the same community.
-      const nodeA = graph.getNode('alpha');
-      const nodeB = graph.getNode('one');
+      const nodeA = graph.getNode("alpha");
+      const nodeB = graph.getNode("one");
       expect(nodeA?.communityId).toBeDefined();
       expect(nodeB?.communityId).toBeDefined();
       // The two clusters should be in different communities.
       expect(nodeA!.communityId).not.toBe(nodeB!.communityId);
     });
 
-    it('T24: Average intra-cluster distance < average inter-cluster distance after layout', () => {
+    it("T24: Average intra-cluster distance < average inter-cluster distance after layout", () => {
       const { graph, clusterA, clusterB } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph, {
         iterations: 150,
@@ -569,7 +627,7 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(avgIntra).toBeLessThan(avgInter);
     });
 
-    it('T25: Linear graph: endpoint nodes (a, e) are farther apart than adjacent nodes (a, b)', () => {
+    it("T25: Linear graph: endpoint nodes (a, e) are farther apart than adjacent nodes (a, b)", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear, {
         iterations: 100,
@@ -580,9 +638,9 @@ describe('LayoutComputer (TNA-08)', () => {
       layoutComputer.computeLayout(100);
       layoutComputer.computeLayout(100); // second pass for more stability
 
-      const posA = linear.getNodePosition('a')!;
-      const posB = linear.getNodePosition('b')!;
-      const posE = linear.getNodePosition('e')!;
+      const posA = linear.getNodePosition("a")!;
+      const posB = linear.getNodePosition("b")!;
+      const posE = linear.getNodePosition("e")!;
 
       expect(posA).toBeDefined();
       expect(posB).toBeDefined();
@@ -594,16 +652,14 @@ describe('LayoutComputer (TNA-08)', () => {
       // In a path graph, endpoints should be farther apart than adjacent nodes.
       expect(distAE).toBeGreaterThan(distAB);
     });
-
   });
 
   // =========================================================================
   // JSON export
   // =========================================================================
 
-  describe('JSON export', () => {
-
-    it('T26: exportJSON() returns a valid LayoutExportJSON structure', () => {
+  describe("JSON export", () => {
+    it("T26: exportJSON() returns a valid LayoutExportJSON structure", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -615,7 +671,7 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(json.metadata).toBeDefined();
     });
 
-    it('T27: JSON nodes have id, x, y, label; communityId and betweennessCentrality optional', () => {
+    it("T27: JSON nodes have id, x, y, label; communityId and betweennessCentrality optional", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -625,14 +681,14 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(json.nodes.length).toBe(linear.order);
       for (const node of json.nodes) {
         expect(node.id).toBeDefined();
-        expect(typeof node.x).toBe('number');
-        expect(typeof node.y).toBe('number');
+        expect(typeof node.x).toBe("number");
+        expect(typeof node.y).toBe("number");
         expect(node.label).toBeDefined();
         // communityId and betweennessCentrality are optional.
       }
     });
 
-    it('T28: JSON edges have source, target, weight', () => {
+    it("T28: JSON edges have source, target, weight", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -643,12 +699,12 @@ describe('LayoutComputer (TNA-08)', () => {
       for (const edge of json.edges) {
         expect(edge.source).toBeDefined();
         expect(edge.target).toBeDefined();
-        expect(typeof edge.weight).toBe('number');
+        expect(typeof edge.weight).toBe("number");
         expect(edge.weight).toBeGreaterThan(0);
       }
     });
 
-    it('T29: JSON metadata has nodeCount, edgeCount, energy, iterations, timestamp', () => {
+    it("T29: JSON metadata has nodeCount, edgeCount, energy, iterations, timestamp", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear, { iterations: 50 });
 
@@ -657,13 +713,13 @@ describe('LayoutComputer (TNA-08)', () => {
 
       expect(json.metadata.nodeCount).toBe(linear.order);
       expect(json.metadata.edgeCount).toBe(linear.size);
-      expect(typeof json.metadata.energy).toBe('number');
+      expect(typeof json.metadata.energy).toBe("number");
       expect(json.metadata.iterations).toBe(50);
       expect(json.metadata.timestamp).toBeGreaterThan(0);
       expect(json.metadata.timestamp).toBeLessThanOrEqual(Date.now() + 100);
     });
 
-    it('T30: JSON is fully serializable via JSON.stringify (no circular refs)', () => {
+    it("T30: JSON is fully serializable via JSON.stringify (no circular refs)", () => {
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph);
 
@@ -676,24 +732,26 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(parsed.nodes.length).toBe(10);
       expect(parsed.edges.length).toBeGreaterThan(0);
     });
-
   });
 
   // =========================================================================
   // Regime-adaptive interval
   // =========================================================================
 
-  describe('Regime-adaptive interval', () => {
-
+  describe("Regime-adaptive interval", () => {
     it('T31: adjustInterval("critical") sets interval to urgentComputeInterval', () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(
         linear,
         {},
-        { defaultComputeInterval: 15, urgentComputeInterval: 10, relaxedComputeInterval: 20 }
+        {
+          defaultComputeInterval: 15,
+          urgentComputeInterval: 10,
+          relaxedComputeInterval: 20,
+        },
       );
 
-      layoutComputer.adjustInterval('critical');
+      layoutComputer.adjustInterval("critical");
 
       // Compute at 0, then at 5 — below default (15) but above urgent (10).
       layoutComputer.computeIfDue(0);
@@ -709,10 +767,14 @@ describe('LayoutComputer (TNA-08)', () => {
       const layoutComputer = new LayoutComputer(
         linear,
         {},
-        { defaultComputeInterval: 15, urgentComputeInterval: 10, relaxedComputeInterval: 20 }
+        {
+          defaultComputeInterval: 15,
+          urgentComputeInterval: 10,
+          relaxedComputeInterval: 20,
+        },
       );
 
-      layoutComputer.adjustInterval('stable');
+      layoutComputer.adjustInterval("stable");
 
       // Compute at 0, then at 15 — above default but below relaxed.
       layoutComputer.computeIfDue(0);
@@ -728,11 +790,15 @@ describe('LayoutComputer (TNA-08)', () => {
       const layoutComputer = new LayoutComputer(
         linear,
         {},
-        { defaultComputeInterval: 15, urgentComputeInterval: 10, relaxedComputeInterval: 20 }
+        {
+          defaultComputeInterval: 15,
+          urgentComputeInterval: 10,
+          relaxedComputeInterval: 20,
+        },
       );
 
-      layoutComputer.adjustInterval('stable'); // First set to relaxed.
-      layoutComputer.adjustInterval('nascent'); // Then reset to default.
+      layoutComputer.adjustInterval("stable"); // First set to relaxed.
+      layoutComputer.adjustInterval("nascent"); // Then reset to default.
 
       layoutComputer.computeIfDue(0);
       const skipped = layoutComputer.computeIfDue(10);
@@ -747,10 +813,14 @@ describe('LayoutComputer (TNA-08)', () => {
       const layoutComputer = new LayoutComputer(
         linear,
         {},
-        { defaultComputeInterval: 15, urgentComputeInterval: 10, relaxedComputeInterval: 20 }
+        {
+          defaultComputeInterval: 15,
+          urgentComputeInterval: 10,
+          relaxedComputeInterval: 20,
+        },
       );
 
-      layoutComputer.adjustInterval('transitioning');
+      layoutComputer.adjustInterval("transitioning");
 
       layoutComputer.computeIfDue(0);
       const skipped = layoutComputer.computeIfDue(5);
@@ -759,16 +829,14 @@ describe('LayoutComputer (TNA-08)', () => {
       const computed = layoutComputer.computeIfDue(10);
       expect(computed).toBe(true); // At urgent interval.
     });
-
   });
 
   // =========================================================================
   // Event emission
   // =========================================================================
 
-  describe('Event emission', () => {
-
-    it('T34: tna:layout-updated is emitted after computeLayout() on a normal graph', () => {
+  describe("Event emission", () => {
+    it("T34: tna:layout-updated is emitted after computeLayout() on a normal graph", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -780,15 +848,17 @@ describe('LayoutComputer (TNA-08)', () => {
         physicsIterations: number;
       }> = [];
 
-      layoutComputer.on('tna:layout-updated', (e) => events.push(e as typeof events[0]));
+      layoutComputer.on("tna:layout-updated", (e) =>
+        events.push(e as (typeof events)[0]),
+      );
 
       layoutComputer.computeLayout();
 
       expect(events).toHaveLength(1);
-      expect(events[0]!.type).toBe('tna:layout-updated');
+      expect(events[0]!.type).toBe("tna:layout-updated");
     });
 
-    it('T35: Event payload contains energy, nodeCount, physicsIterations', () => {
+    it("T35: Event payload contains energy, nodeCount, physicsIterations", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear, { iterations: 75 });
 
@@ -800,51 +870,59 @@ describe('LayoutComputer (TNA-08)', () => {
         physicsIterations: number;
       }> = [];
 
-      layoutComputer.on('tna:layout-updated', (e) => events.push(e as typeof events[0]));
+      layoutComputer.on("tna:layout-updated", (e) =>
+        events.push(e as (typeof events)[0]),
+      );
 
       layoutComputer.computeLayout(75);
 
       const event = events[0]!;
-      expect(typeof event.energy).toBe('number');
+      expect(typeof event.energy).toBe("number");
       expect(event.nodeCount).toBe(linear.order);
       expect(event.physicsIterations).toBe(75);
     });
 
-    it('T36: tna:layout-updated NOT emitted for trivial layouts (< minGraphOrder)', () => {
+    it("T36: tna:layout-updated NOT emitted for trivial layouts (< minGraphOrder)", () => {
       const small = buildSmallGraph(); // 2 nodes
-      const layoutComputer = new LayoutComputer(small, {}, { minGraphOrder: 3 });
+      const layoutComputer = new LayoutComputer(
+        small,
+        {},
+        { minGraphOrder: 3 },
+      );
 
       const events: unknown[] = [];
-      layoutComputer.on('tna:layout-updated', (e) => events.push(e));
+      layoutComputer.on("tna:layout-updated", (e) => events.push(e));
 
       layoutComputer.computeLayout();
 
       expect(events).toHaveLength(0);
     });
 
-    it('T37b: computeIfDue emits event when computation runs', () => {
+    it("T37b: computeIfDue emits event when computation runs", () => {
       const linear = buildLinearGraph();
-      const layoutComputer = new LayoutComputer(linear, {}, { defaultComputeInterval: 5 });
+      const layoutComputer = new LayoutComputer(
+        linear,
+        {},
+        { defaultComputeInterval: 5 },
+      );
 
       const events: unknown[] = [];
-      layoutComputer.on('tna:layout-updated', (e) => events.push(e));
+      layoutComputer.on("tna:layout-updated", (e) => events.push(e));
 
-      layoutComputer.computeIfDue(0);  // computes
-      layoutComputer.computeIfDue(3);  // skips
-      layoutComputer.computeIfDue(5);  // computes
+      layoutComputer.computeIfDue(0); // computes
+      layoutComputer.computeIfDue(3); // skips
+      layoutComputer.computeIfDue(5); // computes
 
       expect(events).toHaveLength(2);
     });
-
   });
 
   // =========================================================================
   // Configuration
   // =========================================================================
 
-  describe('Configuration', () => {
-
-    it('T37: Custom iterations count is respected in LayoutOutput', () => {
+  describe("Configuration", () => {
+    it("T37: Custom iterations count is respected in LayoutOutput", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear, { iterations: 200 });
 
@@ -853,7 +931,7 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(output.iterations).toBe(200);
     });
 
-    it('T38: barnesHutOptimize: false produces valid layout', () => {
+    it("T38: barnesHutOptimize: false produces valid layout", () => {
       const { graph } = buildTwoClusterGraph();
       const layoutComputer = new LayoutComputer(graph, {
         iterations: 50,
@@ -869,12 +947,22 @@ describe('LayoutComputer (TNA-08)', () => {
       }
     });
 
-    it('T39: Custom scalingRatio changes position spread (higher ratio = more spread)', () => {
+    it("T39: Custom scalingRatio changes position spread (higher ratio = more spread)", () => {
       const { graph: graph1 } = buildTwoClusterGraph();
       const { graph: graph2 } = buildTwoClusterGraph();
 
-      const lc1 = new LayoutComputer(graph1, { iterations: 100, scalingRatio: 1.0, barnesHutOptimize: false, seed: 42 });
-      const lc2 = new LayoutComputer(graph2, { iterations: 100, scalingRatio: 5.0, barnesHutOptimize: false, seed: 42 });
+      const lc1 = new LayoutComputer(graph1, {
+        iterations: 100,
+        scalingRatio: 1.0,
+        barnesHutOptimize: false,
+        seed: 42,
+      });
+      const lc2 = new LayoutComputer(graph2, {
+        iterations: 100,
+        scalingRatio: 5.0,
+        barnesHutOptimize: false,
+        seed: 42,
+      });
 
       lc1.computeLayout(100);
       lc2.computeLayout(100);
@@ -882,7 +970,10 @@ describe('LayoutComputer (TNA-08)', () => {
       // Measure total spread (sum of distances from origin) — higher scalingRatio should give larger spread.
       let spread1 = 0;
       let spread2 = 0;
-      for (const [nodeId] of graph1.getGraph().nodes().map((n: string) => [n])) {
+      for (const [nodeId] of graph1
+        .getGraph()
+        .nodes()
+        .map((n: string) => [n])) {
         const pos1 = graph1.getNodePosition(nodeId as string);
         const pos2 = graph2.getNodePosition(nodeId as string);
         if (pos1) spread1 += Math.sqrt(pos1.x ** 2 + pos1.y ** 2);
@@ -893,7 +984,7 @@ describe('LayoutComputer (TNA-08)', () => {
       expect(spread2).toBeGreaterThan(spread1);
     });
 
-    it('T40: Default config matches documented LayoutConfig values', () => {
+    it("T40: Default config matches documented LayoutConfig values", () => {
       const linear = buildLinearGraph();
       const layoutComputer = new LayoutComputer(linear);
 
@@ -902,7 +993,5 @@ describe('LayoutComputer (TNA-08)', () => {
       // Default iterations is 100.
       expect(output.iterations).toBe(100);
     });
-
   });
-
 });

@@ -21,9 +21,9 @@
  *   All SOC inputs are inline synthetic data structures.
  */
 
-import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync } from "fs";
+import { join, resolve } from "path";
 
 // ---------------------------------------------------------------------------
 // Utility: collect all non-test .ts files in a directory (non-recursive for src/soc/).
@@ -33,13 +33,13 @@ function getAllTsSourceFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules') {
+    if (entry.isDirectory() && entry.name !== "node_modules") {
       files.push(...getAllTsSourceFiles(fullPath));
     } else if (
       entry.isFile() &&
-      entry.name.endsWith('.ts') &&
-      !entry.name.endsWith('.test.ts') &&
-      !entry.name.endsWith('.d.ts')
+      entry.name.endsWith(".ts") &&
+      !entry.name.endsWith(".test.ts") &&
+      !entry.name.endsWith(".d.ts")
     ) {
       files.push(fullPath);
     }
@@ -51,31 +51,31 @@ function getAllTsSourceFiles(dir: string): string[] {
 // T-ISO-01: SOC production files have zero imports from lcm or orchestrator
 // ---------------------------------------------------------------------------
 
-describe('SOC Module isolation', () => {
-  it('T-ISO-01: src/soc/ production files have zero imports from src/lcm/ or src/orchestrator/ (ROADMAP SC-5)', () => {
-    const socDir = resolve(__dirname, '.');
+describe("SOC Module isolation", () => {
+  it("T-ISO-01: src/soc/ production files have zero imports from src/lcm/ or src/orchestrator/ (ROADMAP SC-5)", () => {
+    const socDir = resolve(__dirname, ".");
     const tsFiles = getAllTsSourceFiles(socDir);
 
     // Forbidden import patterns — only inter-module imports are checked.
     // SOC is allowed to import from src/types/ (shared event types).
-    const forbidden = ['/lcm/', '/orchestrator/', '/tna/', '/sheaf/'];
+    const forbidden = ["/lcm/", "/orchestrator/", "/tna/", "/sheaf/"];
 
     const violations: string[] = [];
 
     for (const file of tsFiles) {
-      const content = readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
 
       // Extract all import/export ... from lines.
       const importLines = lines.filter((line) =>
-        line.match(/^\s*(import|export)\s.*from\s/)
+        line.match(/^\s*(import|export)\s.*from\s/),
       );
 
       for (const line of importLines) {
         for (const pattern of forbidden) {
           if (line.includes(pattern)) {
             violations.push(
-              `VIOLATION in ${file.replace(socDir, 'src/soc')}: ${line.trim()}`
+              `VIOLATION in ${file.replace(socDir, "src/soc")}: ${line.trim()}`,
             );
           }
         }
@@ -85,7 +85,7 @@ describe('SOC Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `Module isolation violation — src/soc/ imports from forbidden modules:\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
 
@@ -97,23 +97,23 @@ describe('SOC Module isolation', () => {
   // T-ISO-02: SOC production files do not import from test files
   // ---------------------------------------------------------------------------
 
-  it('T-ISO-02: src/soc/ production files do not import from test helper files', () => {
-    const socDir = resolve(__dirname, '.');
+  it("T-ISO-02: src/soc/ production files do not import from test helper files", () => {
+    const socDir = resolve(__dirname, ".");
     const tsFiles = getAllTsSourceFiles(socDir);
 
     const violations: string[] = [];
 
     for (const file of tsFiles) {
-      const content = readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
       const importLines = lines.filter((line) =>
-        line.match(/^\s*(import|export)\s.*from\s/)
+        line.match(/^\s*(import|export)\s.*from\s/),
       );
 
       for (const line of importLines) {
-        if (line.includes('.test.js') || line.includes('.test.ts')) {
+        if (line.includes(".test.js") || line.includes(".test.ts")) {
           violations.push(
-            `VIOLATION in ${file.replace(socDir, 'src/soc')}: production file imports test file: ${line.trim()}`
+            `VIOLATION in ${file.replace(socDir, "src/soc")}: production file imports test file: ${line.trim()}`,
           );
         }
       }
@@ -122,7 +122,7 @@ describe('SOC Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `Isolation violation — production file imports test files:\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
   });
@@ -131,8 +131,8 @@ describe('SOC Module isolation', () => {
   // T-ISO-03: No hard-coded iteration 400 in production SOC files (ROADMAP SC-4)
   // ---------------------------------------------------------------------------
 
-  it('T-ISO-03: No hard-coded iteration 400 in production SOC files (ROADMAP SC-4)', () => {
-    const socDir = resolve(__dirname, '.');
+  it("T-ISO-03: No hard-coded iteration 400 in production SOC files (ROADMAP SC-4)", () => {
+    const socDir = resolve(__dirname, ".");
     const tsFiles = getAllTsSourceFiles(socDir);
 
     // Match the literal number 400 as a standalone value (word boundary).
@@ -141,23 +141,27 @@ describe('SOC Module isolation', () => {
     const violations: string[] = [];
 
     for (const file of tsFiles) {
-      const content = readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
 
       lines.forEach((line, lineIndex) => {
         // Skip pure comment lines (lines starting with // or * after whitespace)
         const trimmed = line.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+        if (
+          trimmed.startsWith("//") ||
+          trimmed.startsWith("*") ||
+          trimmed.startsWith("/*")
+        ) {
           return;
         }
 
         // Also strip inline comments before checking
-        const withoutInlineComment = line.replace(/\/\/.*$/, '');
+        const withoutInlineComment = line.replace(/\/\/.*$/, "");
 
         if (/\b400\b/.test(withoutInlineComment)) {
           violations.push(
-            `VIOLATION in ${file.replace(socDir, 'src/soc')} line ${lineIndex + 1}: ` +
-            `hard-coded 400 found: ${line.trim()}`
+            `VIOLATION in ${file.replace(socDir, "src/soc")} line ${lineIndex + 1}: ` +
+              `hard-coded 400 found: ${line.trim()}`,
           );
         }
       });
@@ -166,7 +170,7 @@ describe('SOC Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `Hard-coded 400 violation — phase transition must be dynamic (ROADMAP SC-4):\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
 
@@ -178,10 +182,10 @@ describe('SOC Module isolation', () => {
   // T-ISO-04: All SOC tests use synthetic data only (no external data dependencies)
   // ---------------------------------------------------------------------------
 
-  it('T-ISO-04: All SOC tests pass with synthetic data only (no external data loading)', () => {
-    const socDir = resolve(__dirname, '.');
+  it("T-ISO-04: All SOC tests pass with synthetic data only (no external data loading)", () => {
+    const socDir = resolve(__dirname, ".");
     const testFiles = readdirSync(socDir).filter(
-      (f) => f.endsWith('.test.ts') && f !== 'isolation.test.ts'
+      (f) => f.endsWith(".test.ts") && f !== "isolation.test.ts",
     );
 
     const violations: string[] = [];
@@ -199,12 +203,12 @@ describe('SOC Module isolation', () => {
 
     for (const testFile of testFiles) {
       const fullPath = join(socDir, testFile);
-      const content = readFileSync(fullPath, 'utf-8');
+      const content = readFileSync(fullPath, "utf-8");
 
       for (const pattern of forbiddenPatterns) {
         if (pattern.test(content)) {
           violations.push(
-            `VIOLATION in ${testFile}: uses external data loading: ${pattern.source}`
+            `VIOLATION in ${testFile}: uses external data loading: ${pattern.source}`,
           );
         }
       }
@@ -213,7 +217,7 @@ describe('SOC Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `Test data violation — SOC tests depend on external data:\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
 

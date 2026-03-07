@@ -24,7 +24,7 @@
  *   lemmatizer.noun('cats')      // 'cat'
  *   lemmatizer.adjective('bigger') // 'big'
  */
-declare module 'wink-lemmatizer' {
+declare module "wink-lemmatizer" {
   interface WinkLemmatizer {
     /** Returns the canonical verb form (infinitive) of the input word. */
     verb(word: string): string;
@@ -62,7 +62,7 @@ declare module 'wink-lemmatizer' {
  * CentralityAnalyzer.ts). skipLibCheck:true in tsconfig prevents bundled types from
  * causing compiler errors.
  */
-declare module 'graphology-layout-forceatlas2' {
+declare module "graphology-layout-forceatlas2" {
   interface ForceAtlas2Settings {
     /** Use linLog mode (logarithmic attraction). Default: false */
     linLogMode?: boolean;
@@ -119,7 +119,7 @@ declare module 'graphology-layout-forceatlas2' {
  *
  * Provides removeStopwords() function and language-specific word arrays.
  */
-declare module 'stopword' {
+declare module "stopword" {
   /**
    * Removes stopwords from an array of tokens.
    *
@@ -127,7 +127,10 @@ declare module 'stopword' {
    * @param stopwords - Optional stopword array (defaults to English).
    * @returns New array with stopwords removed, preserving order.
    */
-  export function removeStopwords(tokens: string[], stopwords?: string[]): string[];
+  export function removeStopwords(
+    tokens: string[],
+    stopwords?: string[],
+  ): string[];
 
   /** English stopword corpus. */
   export const eng: string[];

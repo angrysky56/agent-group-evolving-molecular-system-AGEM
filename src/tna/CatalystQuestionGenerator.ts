@@ -28,9 +28,9 @@
  * NO imports from lcm/, sheaf/, soc/, or orchestrator/.
  */
 
-import type { CooccurrenceGraph } from './CooccurrenceGraph.js';
-import type { CentralityAnalyzer } from './CentralityAnalyzer.js';
-import type { GapMetrics, CatalystQuestion, TextNode } from './interfaces.js';
+import type { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+import type { CentralityAnalyzer } from "./CentralityAnalyzer.js";
+import type { GapMetrics, CatalystQuestion, TextNode } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Template patterns
@@ -89,7 +89,7 @@ export class CatalystQuestionGenerator {
   constructor(
     cooccurrenceGraph: CooccurrenceGraph,
     centralityAnalyzer: CentralityAnalyzer,
-    config?: { maxRepresentativeNodes?: number; maxQuestionsPerGap?: number }
+    config?: { maxRepresentativeNodes?: number; maxQuestionsPerGap?: number },
   ) {
     this.#cooccurrenceGraph = cooccurrenceGraph;
     this.#centralityAnalyzer = centralityAnalyzer;
@@ -120,8 +120,14 @@ export class CatalystQuestionGenerator {
     }
 
     // Extract representative nodes from each community.
-    const nodesA = this.#getRepresentativeNodes(gap.communityA, this.#maxRepresentativeNodes);
-    const nodesB = this.#getRepresentativeNodes(gap.communityB, this.#maxRepresentativeNodes);
+    const nodesA = this.#getRepresentativeNodes(
+      gap.communityA,
+      this.#maxRepresentativeNodes,
+    );
+    const nodesB = this.#getRepresentativeNodes(
+      gap.communityB,
+      this.#maxRepresentativeNodes,
+    );
 
     // If either community has no nodes, return empty (edge case: orphan community).
     if (nodesA.length === 0 || nodesB.length === 0) {
@@ -133,7 +139,12 @@ export class CatalystQuestionGenerator {
     const distance = this.#computeSemanticDistance(nodesA, nodesB);
 
     // Generate questions from templates.
-    const questions = this.#generateFromTemplates(nodesA, nodesB, gap, distance);
+    const questions = this.#generateFromTemplates(
+      nodesA,
+      nodesB,
+      gap,
+      distance,
+    );
 
     // Cache and return.
     this.#questionCache.set(gapId, questions);
@@ -153,7 +164,9 @@ export class CatalystQuestionGenerator {
    * @param gaps - Array of structural gaps.
    * @returns Map of gapId → CatalystQuestion array.
    */
-  generateBatchQuestions(gaps: ReadonlyArray<GapMetrics>): Map<string, CatalystQuestion[]> {
+  generateBatchQuestions(
+    gaps: ReadonlyArray<GapMetrics>,
+  ): Map<string, CatalystQuestion[]> {
     const result = new Map<string, CatalystQuestion[]>();
 
     for (const gap of gaps) {
@@ -225,7 +238,9 @@ export class CatalystQuestionGenerator {
     const allNodes = this.#cooccurrenceGraph.getNodes();
 
     // Filter nodes belonging to this community.
-    const communityNodes = allNodes.filter(node => node.communityId === communityId);
+    const communityNodes = allNodes.filter(
+      (node) => node.communityId === communityId,
+    );
 
     if (communityNodes.length === 0) {
       return [];
@@ -235,7 +250,7 @@ export class CatalystQuestionGenerator {
     // Use CentralityAnalyzer scores as the authoritative source;
     // TextNode.betweennessCentrality may be stale if compute() was called before
     // community assignment.
-    const withScores = communityNodes.map(node => ({
+    const withScores = communityNodes.map((node) => ({
       node,
       score: this.#centralityAnalyzer.getScore(node.lemma),
     }));
@@ -243,7 +258,7 @@ export class CatalystQuestionGenerator {
     withScores.sort((a, b) => b.score - a.score);
 
     // Return top N (or all if fewer than N exist).
-    return withScores.slice(0, count).map(entry => entry.node);
+    return withScores.slice(0, count).map((entry) => entry.node);
   }
 
   // --------------------------------------------------------------------------
@@ -276,21 +291,28 @@ export class CatalystQuestionGenerator {
       return 1.0; // maximum distance = maximum void
     }
 
-    const avgWeightA = nodesA.reduce((sum, n) => sum + n.tfidfWeight, 0) / nodesA.length;
-    const avgWeightB = nodesB.reduce((sum, n) => sum + n.tfidfWeight, 0) / nodesB.length;
+    const avgWeightA =
+      nodesA.reduce((sum, n) => sum + n.tfidfWeight, 0) / nodesA.length;
+    const avgWeightB =
+      nodesB.reduce((sum, n) => sum + n.tfidfWeight, 0) / nodesB.length;
 
     // If both communities have zero weight (e.g., ingestTokens() without TF-IDF),
     // use centrality difference as the proxy instead.
     if (avgWeightA === 0 && avgWeightB === 0) {
-      const avgCentralityA = nodesA.reduce(
-        (sum, n) => sum + this.#centralityAnalyzer.getScore(n.lemma), 0
-      ) / nodesA.length;
-      const avgCentralityB = nodesB.reduce(
-        (sum, n) => sum + this.#centralityAnalyzer.getScore(n.lemma), 0
-      ) / nodesB.length;
+      const avgCentralityA =
+        nodesA.reduce(
+          (sum, n) => sum + this.#centralityAnalyzer.getScore(n.lemma),
+          0,
+        ) / nodesA.length;
+      const avgCentralityB =
+        nodesB.reduce(
+          (sum, n) => sum + this.#centralityAnalyzer.getScore(n.lemma),
+          0,
+        ) / nodesB.length;
 
       const maxCentrality = Math.max(avgCentralityA, avgCentralityB, 0.001);
-      const rawDistance = Math.abs(avgCentralityA - avgCentralityB) / maxCentrality;
+      const rawDistance =
+        Math.abs(avgCentralityA - avgCentralityB) / maxCentrality;
       return Math.min(1, Math.max(0, rawDistance));
     }
 
@@ -329,7 +351,7 @@ export class CatalystQuestionGenerator {
     nodesA: TextNode[],
     nodesB: TextNode[],
     gap: GapMetrics,
-    distance: number
+    distance: number,
   ): CatalystQuestion[] {
     const gapId = `${gap.communityA}_${gap.communityB}`;
     const questions: CatalystQuestion[] = [];
@@ -338,7 +360,7 @@ export class CatalystQuestionGenerator {
       this.#maxQuestionsPerGap,
       nodesA.length,
       nodesB.length,
-      QUESTION_TEMPLATES.length
+      QUESTION_TEMPLATES.length,
     );
 
     for (let i = 0; i < pairCount; i++) {

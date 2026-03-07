@@ -15,21 +15,25 @@
  */
 
 // Core sheaf data structure
-export { CellularSheaf } from './CellularSheaf.js';
+export { CellularSheaf } from "./CellularSheaf.js";
 
 // Laplacian computation
-export { SheafLaplacian } from './SheafLaplacian.js';
+export { SheafLaplacian } from "./SheafLaplacian.js";
 
 // Coboundary operator (used by ADMM in future phases)
-export { buildCoboundaryMatrix } from './CoboundaryOperator.js';
+export { buildCoboundaryMatrix } from "./CoboundaryOperator.js";
 
 // Cohomology analysis (SVD-based H^0/H^1 computation + event emission)
-export { CohomologyAnalyzer, computeCohomology } from './CohomologyAnalyzer.js';
+export { CohomologyAnalyzer, computeCohomology } from "./CohomologyAnalyzer.js";
 
 // ADMM solver (Phase 1 stub: gradient descent; Phase 5+ full ADMM)
-export { ADMMSolver } from './ADMMSolver.js';
-export type { ADMMStepResult, ConvergenceResult, ConsensusResult } from './ADMMSolver.js';
+export { ADMMSolver } from "./ADMMSolver.js";
+export type {
+  ADMMStepResult,
+  ConvergenceResult,
+  ConsensusResult,
+} from "./ADMMSolver.js";
 
 // Test helper factories (re-exported for integration tests in Phase 5)
-export { buildFlatSheaf } from './helpers/flatSheafFactory.js';
-export { buildThreeCycleInconsistentSheaf } from './helpers/threeCycleFactory.js';
+export { buildFlatSheaf } from "./helpers/flatSheafFactory.js";
+export { buildThreeCycleInconsistentSheaf } from "./helpers/threeCycleFactory.js";

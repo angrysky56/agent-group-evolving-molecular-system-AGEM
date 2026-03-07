@@ -7,6 +7,7 @@
 ## Phase Boundary
 
 Implement the Lossless Context Management (LCM) system — a deterministic, append-only context storage and retrieval framework that preserves information without loss across multi-agent interactions. This includes:
+
 - Immutable append-only store with time-sequenced entry IDs
 - Context DAG structure with pointer-based summary nodes
 - Three-level escalation protocol (nuanced → compressed → chunked/truncated)
@@ -21,12 +22,14 @@ Determinism and zero LLM inference in the store itself are foundational constrai
 ## Implementation Decisions
 
 ### Immutability Enforcement
+
 - **Enforcement:** Both compile-time (TypeScript readonly) and runtime (Object.freeze) for defense-in-depth
 - **Test isolation:** Claude's discretion — fresh instances per test OR reset() method. Both approaches work.
 - **Integrity verification:** Claude's discretion — SHA-256 hashing OR lightweight checksum. Choose most practical for the use case.
 - **API surface:** Claude's discretion — expose readonly array directly OR only accessor methods (get, getAll, getRange). Either works.
 
 ### Escalation Protocol
+
 - **Level 1 → Level 2 trigger:** Event-driven escalation with **variable compression % based on token count**
   - Uses **multi-compression indexing** — compress at strategic points in the hierarchy, not all entries at once
   - Verify coherence by chunking through original entries and checking information containment
@@ -38,12 +41,14 @@ Determinism and zero LLM inference in the store itself are foundational constrai
 - **LLM usage:** Levels 1-2 can use LLM for smart compression/summarization; Level 3 is guaranteed deterministic
 
 ### Summary Node Design
+
 - **Purpose:** Both lineage tracking (pointers to original entries) AND optimization metrics (compression stats)
 - **Metadata:** Creation timestamp + version tracking (for debugging drift over time)
 - **Mutability:** Mutable but tracked — summary content is immutable, but metrics/tags can be updated and changes are auditable
 - **Storage location:** Separate SummaryIndex structure (not appended to ImmutableStore)
 
 ### Grep/Expand Interface
+
 - **lcm_grep query method:** Semantic search via embedding-based similarity (not keyword matching or regex)
   - Embedding caching strategy: Hybrid — precomputed and cached at append time, but recomputation can be forced
 - **lcm_expand return value:** Hierarchical table of contents structure: Summary → Intermediate Compressions → Original Entries
@@ -56,6 +61,7 @@ Determinism and zero LLM inference in the store itself are foundational constrai
   - No need to eagerly load the entire table of contents
 
 ### Claude's Discretion
+
 - Test isolation strategy for ImmutableStore (fresh instances vs. reset())
 - Hash integrity verification approach and algorithm choice
 - API surface for store access (direct readonly array vs. accessor methods only)
@@ -82,5 +88,5 @@ None — discussion stayed within Phase 2 scope. (LLM inference models for TNA/S
 
 ---
 
-*Phase: 02-lcm*
-*Context gathered: 2026-02-27*
+_Phase: 02-lcm_
+_Context gathered: 2026-02-27_

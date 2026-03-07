@@ -26,7 +26,7 @@
  *
  * Matches the VertexId/EdgeId pattern from GraphTypes.ts for consistency.
  */
-export type TextNodeId = string & { readonly __brand: 'TextNodeId' };
+export type TextNodeId = string & { readonly __brand: "TextNodeId" };
 
 // ---------------------------------------------------------------------------
 // Core graph types
@@ -158,7 +158,7 @@ export interface CatalystQuestion {
 /**
  * CentralityTrend — direction of centrality change over time.
  */
-export type CentralityTrend = 'rising' | 'falling' | 'stable' | 'oscillating';
+export type CentralityTrend = "rising" | "falling" | "stable" | "oscillating";
 
 /**
  * CentralityTimeSeries — time-series centrality data for a single node.

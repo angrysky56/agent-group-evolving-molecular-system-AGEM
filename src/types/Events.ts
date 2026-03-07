@@ -10,7 +10,7 @@
  * separate from SheafEventType. They are NOT added to SheafEventType.
  */
 
-import type { VertexId } from './GraphTypes.js';
+import type { VertexId } from "./GraphTypes.js";
 
 // ---------------------------------------------------------------------------
 // Sheaf event type discriminant
@@ -21,9 +21,9 @@ import type { VertexId } from './GraphTypes.js';
  * SOC events are NOT included here — see SOCEventType below.
  */
 export type SheafEventType =
-  | 'sheaf:consensus-reached'
-  | 'sheaf:h1-obstruction-detected'
-  | 'sheaf:iteration-complete';
+  | "sheaf:consensus-reached"
+  | "sheaf:h1-obstruction-detected"
+  | "sheaf:iteration-complete";
 
 // ---------------------------------------------------------------------------
 // Sheaf concrete event types
@@ -36,7 +36,7 @@ export type SheafEventType =
  * and the Dirichlet energy (sum of squared coboundary residuals) is below threshold.
  */
 export interface SheafConsensusReachedEvent {
-  readonly type: 'sheaf:consensus-reached';
+  readonly type: "sheaf:consensus-reached";
   readonly iteration: number;
   readonly h0Dimension: number;
   readonly dirichletEnergy: number;
@@ -49,7 +49,7 @@ export interface SheafConsensusReachedEvent {
  * `affectedVertices` lists the vertex IDs whose stalks contribute to the obstruction.
  */
 export interface SheafH1ObstructionEvent {
-  readonly type: 'sheaf:h1-obstruction-detected';
+  readonly type: "sheaf:h1-obstruction-detected";
   readonly iteration: number;
   readonly h1Dimension: number;
   readonly h1Basis: readonly Float64Array[];
@@ -75,10 +75,10 @@ export type SheafEvent = SheafConsensusReachedEvent | SheafH1ObstructionEvent;
  * These are emitted by SOCTracker (Phase 4), not by CohomologyAnalyzer.
  */
 export type SOCEventType =
-  | 'soc:metrics'
-  | 'phase:transition'
-  | 'phase:transition-confirmed'
-  | 'regime:classification';
+  | "soc:metrics"
+  | "phase:transition"
+  | "phase:transition-confirmed"
+  | "regime:classification";
 
 // ---------------------------------------------------------------------------
 // SOC concrete event types
@@ -100,7 +100,7 @@ export type SOCEventType =
  *   - isPhaseTransition: true if correlationCoefficient sign changed since previous iteration
  */
 export interface SOCMetricsEvent {
-  readonly type: 'soc:metrics';
+  readonly type: "soc:metrics";
   readonly iteration: number;
   readonly timestamp: number;
   readonly vonNeumannEntropy: number;
@@ -127,7 +127,7 @@ export interface SOCMetricsEvent {
  *   - previousCorrelation: Pearson r from the previous iteration (the old value, before sign change)
  */
 export interface SOCPhaseTransitionEvent {
-  readonly type: 'phase:transition';
+  readonly type: "phase:transition";
   readonly iteration: number;
   readonly centeredAtIteration: number;
   readonly correlationCoefficient: number;
@@ -146,7 +146,7 @@ export interface SOCPhaseTransitionEvent {
  * after the transition has been confirmed over multiple iterations.
  */
 export interface PhaseTransitionConfirmedEvent {
-  readonly type: 'phase:transition-confirmed';
+  readonly type: "phase:transition-confirmed";
   readonly iteration: number;
   readonly centeredAtIteration: number;
   readonly coherence: number;
@@ -162,9 +162,9 @@ export interface PhaseTransitionConfirmedEvent {
  * Consumed by ORCH-06 (agent spawning decisions) and TNA-09 (centrality frequency).
  */
 export interface RegimeClassificationEvent {
-  readonly type: 'regime:classification';
+  readonly type: "regime:classification";
   readonly iteration: number;
-  readonly regime: import('../soc/interfaces.js').RegimeStability;
+  readonly regime: import("../soc/interfaces.js").RegimeStability;
   readonly cdpVariance: number;
   readonly correlationConsistency: number;
   readonly persistenceIterations: number;
@@ -193,14 +193,14 @@ export type SOCEvent =
  * These are emitted by orchestrator components, not by Phase 1-4 modules.
  */
 export type OrchestratorEventType =
-  | 'orch:vdw-agent-spawned'
-  | 'orch:vdw-agent-complete';
+  | "orch:vdw-agent-spawned"
+  | "orch:vdw-agent-complete";
 
 /**
  * VdWAgentSpawnedEvent — emitted when a Van der Waals agent is spawned.
  */
 export interface VdWAgentSpawnedEvent {
-  readonly type: 'orch:vdw-agent-spawned';
+  readonly type: "orch:vdw-agent-spawned";
   readonly agentId: string;
   readonly iteration: number;
   readonly h1Dimension: number;
@@ -214,12 +214,16 @@ export interface VdWAgentSpawnedEvent {
  * VdWAgentCompleteEvent — emitted when a Van der Waals agent finishes its lifecycle.
  */
 export interface VdWAgentCompleteEvent {
-  readonly type: 'orch:vdw-agent-complete';
+  readonly type: "orch:vdw-agent-complete";
   readonly agentId: string;
   readonly iteration: number;
   readonly synthQueries: readonly string[];
   readonly entitiesAdded: readonly string[];
-  readonly relationsAdded: ReadonlyArray<{ from: string; to: string; type: string }>;
+  readonly relationsAdded: ReadonlyArray<{
+    from: string;
+    to: string;
+    type: string;
+  }>;
   readonly stepsExecuted: number;
   readonly success: boolean;
 }
@@ -237,16 +241,16 @@ export type OrchestratorEvent = VdWAgentSpawnedEvent | VdWAgentCompleteEvent;
  * TNAEventType — string literal union of TNA event types.
  */
 export type TNAEventType =
-  | 'tna:catalyst-questions-generated'
-  | 'tna:centrality-change-detected'
-  | 'tna:topology-reorganized'
-  | 'tna:layout-updated';
+  | "tna:catalyst-questions-generated"
+  | "tna:centrality-change-detected"
+  | "tna:topology-reorganized"
+  | "tna:layout-updated";
 
 /**
  * CatalystQuestionsGeneratedEvent — emitted when catalyst questions are generated for a gap.
  */
 export interface CatalystQuestionsGeneratedEvent {
-  readonly type: 'tna:catalyst-questions-generated';
+  readonly type: "tna:catalyst-questions-generated";
   readonly gapId: string;
   readonly questionCount: number;
   readonly semanticDistance: number;
@@ -257,9 +261,9 @@ export interface CatalystQuestionsGeneratedEvent {
  * CentralityChangeDetectedEvent — emitted when a node's centrality changes rapidly.
  */
 export interface CentralityChangeDetectedEvent {
-  readonly type: 'tna:centrality-change-detected';
+  readonly type: "tna:centrality-change-detected";
   readonly nodeId: string;
-  readonly trend: import('../tna/interfaces.js').CentralityTrend;
+  readonly trend: import("../tna/interfaces.js").CentralityTrend;
   readonly previousScore: number;
   readonly currentScore: number;
   readonly iteration: number;
@@ -269,7 +273,7 @@ export interface CentralityChangeDetectedEvent {
  * TopologyReorganizedEvent — emitted when major centrality swaps detected.
  */
 export interface TopologyReorganizedEvent {
-  readonly type: 'tna:topology-reorganized';
+  readonly type: "tna:topology-reorganized";
   readonly majorNodeSwaps: number;
   readonly iteration: number;
 }
@@ -281,7 +285,7 @@ export interface TopologyReorganizedEvent {
  * Energy indicates convergence quality (lower = more settled layout).
  */
 export interface LayoutUpdatedEvent {
-  readonly type: 'tna:layout-updated';
+  readonly type: "tna:layout-updated";
   /** Current reasoning iteration at layout time. */
   readonly iteration: number;
   /** Convergence energy (mean squared displacement from previous layout). */

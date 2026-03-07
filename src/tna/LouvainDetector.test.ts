@@ -16,10 +16,10 @@
  * RED phase: all tests fail until LouvainDetector.ts is implemented.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Preprocessor } from './Preprocessor.js';
-import { CooccurrenceGraph } from './CooccurrenceGraph.js';
-import { LouvainDetector } from './LouvainDetector.js';
+import { describe, it, expect, beforeEach } from "vitest";
+import { Preprocessor } from "./Preprocessor.js";
+import { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+import { LouvainDetector } from "./LouvainDetector.js";
 
 // ---------------------------------------------------------------------------
 // Test helper: buildTwoCliqueGraph()
@@ -36,12 +36,16 @@ import { LouvainDetector } from './LouvainDetector.js';
 // within each clique sharing the same community label.
 // ---------------------------------------------------------------------------
 
-function buildTwoCliqueGraph(): { graph: CooccurrenceGraph; cliqueA: string[]; cliqueB: string[] } {
+function buildTwoCliqueGraph(): {
+  graph: CooccurrenceGraph;
+  cliqueA: string[];
+  cliqueB: string[];
+} {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
 
-  const cliqueA = ['a1', 'a2', 'a3', 'a4', 'a5'];
-  const cliqueB = ['b1', 'b2', 'b3', 'b4', 'b5'];
+  const cliqueA = ["a1", "a2", "a3", "a4", "a5"];
+  const cliqueB = ["b1", "b2", "b3", "b4", "b5"];
 
   // Get the underlying graphology graph to add edges directly.
   // CooccurrenceGraph.ingestTokens() uses a 4-gram sliding window which doesn't
@@ -64,7 +68,7 @@ function buildTwoCliqueGraph(): { graph: CooccurrenceGraph; cliqueA: string[]; c
       } else {
         // Boost weight to make clique edges much stronger than inter-clique edges.
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 10);
+        g.setEdgeAttribute(edge, "weight", 10);
       }
     }
   }
@@ -78,7 +82,7 @@ function buildTwoCliqueGraph(): { graph: CooccurrenceGraph; cliqueA: string[]; c
         g.addEdge(src, dst, { weight: 10, createdAtIteration: 0 });
       } else {
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 10);
+        g.setEdgeAttribute(edge, "weight", 10);
       }
     }
   }
@@ -97,18 +101,20 @@ function buildTwoCliqueGraph(): { graph: CooccurrenceGraph; cliqueA: string[]; c
     if (!isInterClique) return;
 
     // Allow only a1--b1 bridge edge; drop all others.
-    const isBridge = (source === 'a1' && target === 'b1') || (source === 'b1' && target === 'a1');
+    const isBridge =
+      (source === "a1" && target === "b1") ||
+      (source === "b1" && target === "a1");
     if (!isBridge) {
       g.dropEdge(edge);
     } else {
       // Make the bridge edge weak (weight 1) relative to intra-clique edges (weight 10).
-      g.setEdgeAttribute(edge, 'weight', 1);
+      g.setEdgeAttribute(edge, "weight", 1);
     }
   });
 
   // If the bridge edge a1--b1 doesn't exist, add it.
-  if (!g.hasEdge('a1', 'b1')) {
-    g.addEdge('a1', 'b1', { weight: 1, createdAtIteration: 0 });
+  if (!g.hasEdge("a1", "b1")) {
+    g.addEdge("a1", "b1", { weight: 1, createdAtIteration: 0 });
   }
 
   return { graph, cliqueA, cliqueB };
@@ -140,7 +146,7 @@ function buildFullyConnectedGraph(n: number): CooccurrenceGraph {
         g.addEdge(src, dst, { weight: 5, createdAtIteration: 0 });
       } else {
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 5);
+        g.setEdgeAttribute(edge, "weight", 5);
       }
     }
   }
@@ -152,7 +158,7 @@ function buildFullyConnectedGraph(n: number): CooccurrenceGraph {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('LouvainDetector', () => {
+describe("LouvainDetector", () => {
   let twoCliqueGraph: CooccurrenceGraph;
   let cliqueA: string[];
   let cliqueB: string[];
@@ -169,7 +175,7 @@ describe('LouvainDetector', () => {
   // PRIMARY Louvain determinism test from ROADMAP success criterion 2.
   // --------------------------------------------------------------------------
 
-  it('T9: 10 runs with same seed produce identical community assignments', () => {
+  it("T9: 10 runs with same seed produce identical community assignments", () => {
     const detector = new LouvainDetector(twoCliqueGraph);
 
     const results: Map<string, number>[] = [];
@@ -194,7 +200,7 @@ describe('LouvainDetector', () => {
   // Confirms the seed actually controls behavior, not just ignored.
   // --------------------------------------------------------------------------
 
-  it('T9b: different seeds produce different community assignments', () => {
+  it("T9b: different seeds produce different community assignments", () => {
     // Use a fresh two-clique graph to ensure different seed ordering matters.
     // We'll run multiple times to get a statistically reliable result.
     // Note: for structured graphs with clear community structure, both seeds
@@ -246,7 +252,7 @@ describe('LouvainDetector', () => {
   // T10: Two-clique graph produces exactly 2 communities
   // --------------------------------------------------------------------------
 
-  it('T10: two-clique graph produces exactly 2 distinct communities', () => {
+  it("T10: two-clique graph produces exactly 2 distinct communities", () => {
     const detector = new LouvainDetector(twoCliqueGraph);
     const result = detector.detect(42);
 
@@ -257,7 +263,7 @@ describe('LouvainDetector', () => {
   // T10b: Nodes within the same clique share a community
   // --------------------------------------------------------------------------
 
-  it('T10b: all nodes in clique A share one community, all in clique B share another', () => {
+  it("T10b: all nodes in clique A share one community, all in clique B share another", () => {
     const detector = new LouvainDetector(twoCliqueGraph);
     const result = detector.detect(42);
 
@@ -285,7 +291,7 @@ describe('LouvainDetector', () => {
   // T11: Fully connected graph produces exactly 1 community
   // --------------------------------------------------------------------------
 
-  it('T11: fully connected graph (no modularity gain from splitting) produces 1 community', () => {
+  it("T11: fully connected graph (no modularity gain from splitting) produces 1 community", () => {
     const fullyConnected = buildFullyConnectedGraph(6);
     const detector = new LouvainDetector(fullyConnected);
     const result = detector.detect(42);
@@ -297,7 +303,7 @@ describe('LouvainDetector', () => {
   // T11b: Modularity score is returned
   // --------------------------------------------------------------------------
 
-  it('T11b: detect() returns a modularity score Q; two-clique Q > 0, fully-connected Q ≈ 0', () => {
+  it("T11b: detect() returns a modularity score Q; two-clique Q > 0, fully-connected Q ≈ 0", () => {
     // Two-clique graph: clear community structure → modularity > 0.
     const detector = new LouvainDetector(twoCliqueGraph);
     const result = detector.detect(42);
@@ -315,14 +321,14 @@ describe('LouvainDetector', () => {
   // T12: getAssignment() returns community for a given node
   // --------------------------------------------------------------------------
 
-  it('T12: getAssignment() returns the correct community ID for a node', () => {
+  it("T12: getAssignment() returns the correct community ID for a node", () => {
     const detector = new LouvainDetector(twoCliqueGraph);
     detector.detect(42);
 
     // After detection, getAssignment() should return the stored community.
-    const commA1 = detector.getAssignment('a1');
+    const commA1 = detector.getAssignment("a1");
     expect(commA1).toBeDefined();
-    expect(typeof commA1).toBe('number');
+    expect(typeof commA1).toBe("number");
 
     // All clique A nodes should have the same community.
     for (const node of cliqueA) {
@@ -330,14 +336,14 @@ describe('LouvainDetector', () => {
     }
 
     // Unknown node returns undefined.
-    expect(detector.getAssignment('nonexistent')).toBeUndefined();
+    expect(detector.getAssignment("nonexistent")).toBeUndefined();
   });
 
   // --------------------------------------------------------------------------
   // T12b: getCommunityMembers() returns all nodes in a community
   // --------------------------------------------------------------------------
 
-  it('T12b: getCommunityMembers() returns exactly the 5 nodes of a clique', () => {
+  it("T12b: getCommunityMembers() returns exactly the 5 nodes of a clique", () => {
     const detector = new LouvainDetector(twoCliqueGraph);
     const result = detector.detect(42);
 

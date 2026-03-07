@@ -16,16 +16,20 @@
  * calling ImmutableStore.append() directly, so embedding caching is guaranteed.
  */
 
-import type { IEmbedder } from './interfaces.js';
-import { ImmutableStore } from './ImmutableStore.js';
-import { EmbeddingCache } from './EmbeddingCache.js';
+import type { IEmbedder } from "./interfaces.js";
+import { ImmutableStore } from "./ImmutableStore.js";
+import { EmbeddingCache } from "./EmbeddingCache.js";
 
 export class LCMClient {
   readonly #store: ImmutableStore;
   readonly #cache: EmbeddingCache;
   readonly #embedder: IEmbedder;
 
-  constructor(store: ImmutableStore, cache: EmbeddingCache, embedder: IEmbedder) {
+  constructor(
+    store: ImmutableStore,
+    cache: EmbeddingCache,
+    embedder: IEmbedder,
+  ) {
     this.#store = store;
     this.#cache = cache;
     this.#embedder = embedder;

@@ -25,7 +25,7 @@
  * Imports: EventBus from ./EventBus.js. No external npm dependencies.
  */
 
-import type { EventBus } from './EventBus.js';
+import type { EventBus } from "./EventBus.js";
 
 // ---------------------------------------------------------------------------
 // State enum
@@ -40,13 +40,13 @@ import type { EventBus } from './EventBus.js';
  */
 export enum OrchestratorState {
   /** Default mode: H^1 below threshold; agents coordinate normally. */
-  NORMAL = 'NORMAL',
+  NORMAL = "NORMAL",
 
   /** H^1 crossed obstruction threshold; increased monitoring activated. */
-  OBSTRUCTED = 'OBSTRUCTED',
+  OBSTRUCTED = "OBSTRUCTED",
 
   /** H^1 exceeds critical threshold; emergency consensus protocols active. */
-  CRITICAL = 'CRITICAL',
+  CRITICAL = "CRITICAL",
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ export enum OrchestratorState {
  */
 export interface StateChangeEvent {
   /** Event type discriminant. */
-  readonly type: 'orch:state-changed';
+  readonly type: "orch:state-changed";
 
   /** Previous operational state before this transition. */
   readonly oldState: OrchestratorState;
@@ -125,7 +125,7 @@ export class OrchestratorStateManager {
   constructor(
     eventBus: EventBus,
     h1ObstructionThreshold: number = 2,
-    h1CriticalThreshold: number = 5
+    h1CriticalThreshold: number = 5,
   ) {
     this.#eventBus = eventBus;
     this.#h1ObstructionThreshold = h1ObstructionThreshold;
@@ -158,13 +158,13 @@ export class OrchestratorStateManager {
         this.#setState(
           OrchestratorState.CRITICAL,
           `H^1=${h1Dimension} exceeds critical threshold ${crit}`,
-          h1Dimension
+          h1Dimension,
         );
       } else if (h1Dimension >= obs) {
         this.#setState(
           OrchestratorState.OBSTRUCTED,
           `H^1=${h1Dimension} crosses obstruction threshold ${obs}`,
-          h1Dimension
+          h1Dimension,
         );
       }
       // else: no transition
@@ -173,13 +173,13 @@ export class OrchestratorStateManager {
         this.#setState(
           OrchestratorState.CRITICAL,
           `H^1=${h1Dimension} escalates to critical`,
-          h1Dimension
+          h1Dimension,
         );
       } else if (h1Dimension < obs) {
         this.#setState(
           OrchestratorState.NORMAL,
           `H^1=${h1Dimension} returns below obstruction threshold ${obs}`,
-          h1Dimension
+          h1Dimension,
         );
       }
       // else: still obstructed, no transition
@@ -188,7 +188,7 @@ export class OrchestratorStateManager {
         this.#setState(
           OrchestratorState.NORMAL,
           `H^1=${h1Dimension} returns below obstruction threshold ${obs}`,
-          h1Dimension
+          h1Dimension,
         );
       }
       // else: still critical, no transition
@@ -204,7 +204,11 @@ export class OrchestratorStateManager {
    * @param reason    - Human-readable explanation of the transition trigger.
    * @param h1Metric  - H^1 dimension that triggered the transition.
    */
-  #setState(newState: OrchestratorState, reason: string, h1Metric?: number): void {
+  #setState(
+    newState: OrchestratorState,
+    reason: string,
+    h1Metric?: number,
+  ): void {
     if (newState === this.#currentState) return;
 
     const oldState = this.#currentState;
@@ -214,7 +218,7 @@ export class OrchestratorStateManager {
     console.log(`[ORCH-STATE] ${oldState} → ${newState}: ${reason}`);
 
     const event: StateChangeEvent = {
-      type: 'orch:state-changed',
+      type: "orch:state-changed",
       oldState,
       newState,
       timestamp: this.#lastStateChangeTime,

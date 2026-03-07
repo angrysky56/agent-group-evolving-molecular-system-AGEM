@@ -56,6 +56,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     - `include: ['src/**/*.test.ts']`
 
     Run `npm install` and verify `npx vitest --version` succeeds.
+
   </description>
   <acceptance>
     - `npm install` exits 0 with no peer dependency warnings for mathjs or ml-matrix.
@@ -86,6 +87,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     All fields must be `readonly`. This enforces immutability at the type level.
 
     CRITICAL: This file must have ZERO imports from any module outside `src/types/`. No `import { Matrix } from 'mathjs'`. No `import { EventEmitter } from 'events'`. Types only.
+
   </description>
   <acceptance>
     - `npx tsc --noEmit` passes with GraphTypes.ts in place.
@@ -109,6 +111,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     4. `SheafEvent` -- discriminated union of the above two.
 
     Import `VertexId` from `./GraphTypes`. This is the only allowed import.
+
   </description>
   <acceptance>
     - `npx tsc --noEmit` passes.
@@ -128,6 +131,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     ```
 
     Note the `.js` extension for NodeNext module resolution.
+
   </description>
   <acceptance>
     - `import { VertexId, SheafEvent, CohomologyResult } from '../types/index.js'` resolves without error.
@@ -168,6 +172,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     - Store vertex insertion order as an array (Map iteration order in JS is insertion order, but be explicit).
 
     ADMM forward-compatibility note: The Laplacian and coboundary methods will be added in Wave 2. The class is designed to be extended, not replaced. Do NOT make vertex/edge maps private -- use `protected` or expose via getters, so Wave 2 can access internals without rewriting.
+
   </description>
   <acceptance>
     - Construction with valid vertices and edges succeeds.
@@ -202,6 +207,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     This factory produces FLAT sheaves only. H^1 is always 0 for flat sheaves on trees. H^1 = `d * (|E| - |V| + 1)` for flat sheaves on graphs with cycles (where d = stalkDim).
 
     IMPORTANT: This factory is used for the FLAT side of the mandatory dual-config test. It must NOT be the only test factory. The three-cycle factory (task w1-t7) provides the non-flat counterpart.
+
   </description>
   <acceptance>
     - `buildFlatSheaf(2, 2)` returns a CellularSheaf with 2 vertices, 1 edge, all identity restriction maps.
@@ -241,6 +247,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     This configuration is designed so that traveling around the triangle accumulates a non-trivial "holonomy" -- each edge projects onto a DIFFERENT axis, making it impossible for all three edge consistency conditions to be satisfied simultaneously. This guarantees dim(H^1) > 0.
 
     CRITICAL: This factory MUST exist before any cohomology test is written. It is the non-flat half of the mandatory dual-config test. Without it, the flat sheaf test alone cannot distinguish correct from incorrect Sheaf Laplacian implementations.
+
   </description>
   <acceptance>
     - Returns a CellularSheaf with 3 vertices (all dim=2), 3 edges (all dim=1).
@@ -280,6 +287,7 @@ Before any task in this wave, the project must have a working TypeScript + vites
     - Verify `c0Dimension` and `c1Dimension` on each factory output.
 
     Run: `npx vitest run src/sheaf/CellularSheaf.test.ts` -- all tests pass.
+
   </description>
   <acceptance>
     - All tests pass with `npx vitest run`.

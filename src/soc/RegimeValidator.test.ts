@@ -11,9 +11,9 @@
  * Tests are fully deterministic: no random inputs, no timing dependencies.
  */
 
-import { describe, it, expect } from 'vitest';
-import { RegimeValidator, RegimeAnalyzer } from './RegimeValidator.js';
-import type { SOCMetrics } from './interfaces.js';
+import { describe, it, expect } from "vitest";
+import { RegimeValidator, RegimeAnalyzer } from "./RegimeValidator.js";
+import type { SOCMetrics } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Test Helpers
@@ -25,7 +25,9 @@ import type { SOCMetrics } from './interfaces.js';
  * Defaults produce a neutral "stable" scenario with cdp=0.1, correlationCoefficient=0.5.
  * Override specific fields for targeted scenarios.
  */
-function makeSocMetrics(overrides: Partial<SOCMetrics> & { iteration: number }): SOCMetrics {
+function makeSocMetrics(
+  overrides: Partial<SOCMetrics> & { iteration: number },
+): SOCMetrics {
   return {
     iteration: overrides.iteration,
     timestamp: Date.now(),
@@ -46,7 +48,7 @@ function feedPositiveCorrelations(
   validator: RegimeValidator,
   count: number,
   startIteration: number,
-  corrValue = 0.7
+  corrValue = 0.7,
 ): void {
   for (let i = 0; i < count; i++) {
     validator.trackCorrelation(corrValue, startIteration + i);
@@ -60,7 +62,7 @@ function feedNegativeCorrelations(
   validator: RegimeValidator,
   count: number,
   startIteration: number,
-  corrValue = -0.7
+  corrValue = -0.7,
 ): void {
   for (let i = 0; i < count; i++) {
     validator.trackCorrelation(corrValue, startIteration + i);
@@ -73,7 +75,11 @@ function feedNegativeCorrelations(
  */
 function buildStableMetrics(count: number, startIteration = 1): SOCMetrics[] {
   return Array.from({ length: count }, (_, i) =>
-    makeSocMetrics({ iteration: startIteration + i, cdp: 0.1, correlationCoefficient: 0.5 })
+    makeSocMetrics({
+      iteration: startIteration + i,
+      cdp: 0.1,
+      correlationCoefficient: 0.5,
+    }),
   );
 }
 
@@ -81,13 +87,16 @@ function buildStableMetrics(count: number, startIteration = 1): SOCMetrics[] {
  * buildHighVarianceMetrics — creates a list of SOCMetrics with high CDP variance.
  * CDP alternates between +1.5 and -1.5 (variance > 0.5 threshold).
  */
-function buildHighVarianceMetrics(count: number, startIteration = 1): SOCMetrics[] {
+function buildHighVarianceMetrics(
+  count: number,
+  startIteration = 1,
+): SOCMetrics[] {
   return Array.from({ length: count }, (_, i) =>
     makeSocMetrics({
       iteration: startIteration + i,
       cdp: i % 2 === 0 ? 1.5 : -1.5, // alternating wildly
       correlationCoefficient: 0.5,
-    })
+    }),
   );
 }
 
@@ -95,14 +104,13 @@ function buildHighVarianceMetrics(count: number, startIteration = 1): SOCMetrics
 // RegimeValidator Tests (SOC-06)
 // ---------------------------------------------------------------------------
 
-describe('RegimeValidator (SOC-06)', () => {
-
+describe("RegimeValidator (SOC-06)", () => {
   // -------------------------------------------------------------------------
   // Sign tracking
   // -------------------------------------------------------------------------
 
-  describe('Sign tracking', () => {
-    it('T1: trackCorrelation records positive sign (+1) for positive correlation', () => {
+  describe("Sign tracking", () => {
+    it("T1: trackCorrelation records positive sign (+1) for positive correlation", () => {
       const validator = new RegimeValidator();
       validator.trackCorrelation(0.8, 1);
       const history = validator.getSignHistory();
@@ -110,7 +118,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(history[0]).toBe(1);
     });
 
-    it('T2: trackCorrelation records negative sign (-1) for negative correlation', () => {
+    it("T2: trackCorrelation records negative sign (-1) for negative correlation", () => {
       const validator = new RegimeValidator();
       validator.trackCorrelation(-0.6, 1);
       const history = validator.getSignHistory();
@@ -118,7 +126,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(history[0]).toBe(-1);
     });
 
-    it('T3: trackCorrelation records zero sign (0) for zero correlation', () => {
+    it("T3: trackCorrelation records zero sign (0) for zero correlation", () => {
       const validator = new RegimeValidator();
       validator.trackCorrelation(0, 1);
       const history = validator.getSignHistory();
@@ -126,7 +134,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(history[0]).toBe(0);
     });
 
-    it('T4: Sign history is trimmed to 2x persistenceWindow after excess entries', () => {
+    it("T4: Sign history is trimmed to 2x persistenceWindow after excess entries", () => {
       // Default persistenceWindow = 3, so max history = 6
       const validator = new RegimeValidator({ persistenceWindow: 3 });
 
@@ -139,7 +147,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(history.length).toBeLessThanOrEqual(6);
     });
 
-    it('T5: Sign history with custom persistenceWindow trims correctly', () => {
+    it("T5: Sign history with custom persistenceWindow trims correctly", () => {
       const validator = new RegimeValidator({ persistenceWindow: 5 });
       // max history = 10
 
@@ -151,7 +159,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(history.length).toBeLessThanOrEqual(10);
     });
 
-    it('T6: getSignHistory() returns defensive copy (mutation does not affect state)', () => {
+    it("T6: getSignHistory() returns defensive copy (mutation does not affect state)", () => {
       const validator = new RegimeValidator();
       validator.trackCorrelation(0.5, 1);
       validator.trackCorrelation(0.6, 2);
@@ -169,9 +177,13 @@ describe('RegimeValidator (SOC-06)', () => {
   // Transition confirmation
   // -------------------------------------------------------------------------
 
-  describe('Transition confirmation', () => {
-    it('T7: Transition NOT confirmed before persistence window iterations elapsed', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 3, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+  describe("Transition confirmation", () => {
+    it("T7: Transition NOT confirmed before persistence window iterations elapsed", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 3,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Establish positive correlation baseline
       feedPositiveCorrelations(validator, 5, 1);
@@ -184,8 +196,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(false);
     });
 
-    it('T8: Transition NOT confirmed after N-1 same-sign iterations (one short)', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 3, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T8: Transition NOT confirmed after N-1 same-sign iterations (one short)", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 3,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 3, 1);
@@ -200,8 +216,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(false);
     });
 
-    it('T9: Transition confirmed after N consecutive same-sign iterations with H^1 >= threshold', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 3, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T9: Transition confirmed after N consecutive same-sign iterations with H^1 >= threshold", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 3,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline — establish #lastSign as positive
       feedPositiveCorrelations(validator, 5, 1);
@@ -219,8 +239,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.coherence).toBeGreaterThanOrEqual(0.6);
     });
 
-    it('T10: Transition NOT confirmed when coherence < 0.6 (signs flip back and forth)', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 4, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T10: Transition NOT confirmed when coherence < 0.6 (signs flip back and forth)", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 4,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 3, 1);
@@ -241,8 +265,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.coherence).toBeLessThan(0.6);
     });
 
-    it('T11: Transition NOT confirmed when H^1 < threshold even with good coherence', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 3, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T11: Transition NOT confirmed when H^1 < threshold even with good coherence", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 3,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 3, 1);
@@ -260,9 +288,13 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.coherence).toBeGreaterThanOrEqual(0.6);
     });
 
-    it('T12: Transition confirmed at exact threshold values (coherence=0.6, H^1=2)', () => {
+    it("T12: Transition confirmed at exact threshold values (coherence=0.6, H^1=2)", () => {
       // persistenceWindow=5, coherenceThreshold=0.6 → need 3/5 same signs
-      const validator = new RegimeValidator({ persistenceWindow: 5, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+      const validator = new RegimeValidator({
+        persistenceWindow: 5,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 5, 1);
@@ -290,8 +322,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.coherence).toBeGreaterThanOrEqual(0.6);
     });
 
-    it('T13: Duplicate suppression — same transition not confirmed twice at same iteration', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 2, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T13: Duplicate suppression — same transition not confirmed twice at same iteration", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 2,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 3, 1);
@@ -311,8 +347,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(second.confirmed).toBe(false);
     });
 
-    it('T14: After confirmation, candidate is reset and new candidate can begin', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 2, coherenceThreshold: 0.5, h1DimensionThreshold: 1 });
+    it("T14: After confirmation, candidate is reset and new candidate can begin", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 2,
+        coherenceThreshold: 0.5,
+        h1DimensionThreshold: 1,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 3, 1);
@@ -347,8 +387,8 @@ describe('RegimeValidator (SOC-06)', () => {
   // Edge cases
   // -------------------------------------------------------------------------
 
-  describe('Edge cases', () => {
-    it('T15: No sign change ever — no confirmation possible', () => {
+  describe("Edge cases", () => {
+    it("T15: No sign change ever — no confirmation possible", () => {
       const validator = new RegimeValidator();
 
       // Feed 20 positive correlations — no sign change
@@ -359,7 +399,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(validator.getCurrentCandidate().startIteration).toBeNull();
     });
 
-    it('T16: Single iteration — no confirmation possible', () => {
+    it("T16: Single iteration — no confirmation possible", () => {
       const validator = new RegimeValidator();
       validator.trackCorrelation(-0.5, 1);
 
@@ -367,8 +407,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(false);
     });
 
-    it('T17: persistenceWindow=1 — confirms immediately if H^1 OK and coherence OK', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 1, coherenceThreshold: 0.5, h1DimensionThreshold: 2 });
+    it("T17: persistenceWindow=1 — confirms immediately if H^1 OK and coherence OK", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 1,
+        coherenceThreshold: 0.5,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       validator.trackCorrelation(0.8, 1);
@@ -387,8 +431,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(true);
     });
 
-    it('T18: Very large persistence window (10) requires 10 elapsed iterations', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 10, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T18: Very large persistence window (10) requires 10 elapsed iterations", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 10,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Positive baseline
       feedPositiveCorrelations(validator, 5, 1);
@@ -411,8 +459,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(true);
     });
 
-    it('T19: Rapid oscillation (sign changes every iteration) — coherence < 0.6 — never confirms', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 5, coherenceThreshold: 0.6, h1DimensionThreshold: 2 });
+    it("T19: Rapid oscillation (sign changes every iteration) — coherence < 0.6 — never confirms", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 5,
+        coherenceThreshold: 0.6,
+        h1DimensionThreshold: 2,
+      });
 
       // Feed alternating signs: +1, -1, +1, -1, +1, -1, ...
       for (let i = 1; i <= 20; i++) {
@@ -423,7 +475,7 @@ describe('RegimeValidator (SOC-06)', () => {
       }
     });
 
-    it('T20: validateTransition with no active candidate returns { confirmed: false, coherence: 0 }', () => {
+    it("T20: validateTransition with no active candidate returns { confirmed: false, coherence: 0 }", () => {
       const validator = new RegimeValidator();
       const result = validator.validateTransition(5, 1);
       expect(result.confirmed).toBe(false);
@@ -435,8 +487,8 @@ describe('RegimeValidator (SOC-06)', () => {
   // Configuration
   // -------------------------------------------------------------------------
 
-  describe('Configuration', () => {
-    it('T21: Custom persistenceWindow is respected', () => {
+  describe("Configuration", () => {
+    it("T21: Custom persistenceWindow is respected", () => {
       const validator = new RegimeValidator({ persistenceWindow: 2 });
 
       // Feed positive baseline
@@ -452,9 +504,13 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(true);
     });
 
-    it('T22: Custom coherenceThreshold is respected', () => {
+    it("T22: Custom coherenceThreshold is respected", () => {
       // Very high threshold: 0.9 = need 90% of signs to match
-      const validator = new RegimeValidator({ persistenceWindow: 3, coherenceThreshold: 0.9, h1DimensionThreshold: 2 });
+      const validator = new RegimeValidator({
+        persistenceWindow: 3,
+        coherenceThreshold: 0.9,
+        h1DimensionThreshold: 2,
+      });
 
       feedPositiveCorrelations(validator, 3, 1);
 
@@ -469,8 +525,12 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result.confirmed).toBe(false);
     });
 
-    it('T23: Custom h1DimensionThreshold is respected (threshold=3, h1=2 rejected)', () => {
-      const validator = new RegimeValidator({ persistenceWindow: 2, coherenceThreshold: 0.5, h1DimensionThreshold: 3 });
+    it("T23: Custom h1DimensionThreshold is respected (threshold=3, h1=2 rejected)", () => {
+      const validator = new RegimeValidator({
+        persistenceWindow: 2,
+        coherenceThreshold: 0.5,
+        h1DimensionThreshold: 3,
+      });
 
       feedPositiveCorrelations(validator, 3, 1);
       validator.trackCorrelation(-0.7, 4);
@@ -486,7 +546,7 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(result2.confirmed).toBe(true);
     });
 
-    it('T24: Default config matches documented values (persistenceWindow=3, coherenceThreshold=0.6, h1DimensionThreshold=2)', () => {
+    it("T24: Default config matches documented values (persistenceWindow=3, coherenceThreshold=0.6, h1DimensionThreshold=2)", () => {
       // Use getCurrentCandidate to inspect (private config not exposed directly)
       // Verify by behavior: with defaults, need exactly 3 iterations + coherence >= 0.6 + H^1 >= 2
 
@@ -508,23 +568,21 @@ describe('RegimeValidator (SOC-06)', () => {
       expect(after.confirmed).toBe(true);
     });
   });
-
 });
 
 // ---------------------------------------------------------------------------
 // RegimeAnalyzer Tests (SOC-07)
 // ---------------------------------------------------------------------------
 
-describe('RegimeAnalyzer (SOC-07)', () => {
-
+describe("RegimeAnalyzer (SOC-07)", () => {
   // -------------------------------------------------------------------------
   // Regime classification
   // -------------------------------------------------------------------------
 
-  describe('Regime classification', () => {
+  describe("Regime classification", () => {
     it('T25: Initial regime is "nascent"', () => {
       const analyzer = new RegimeAnalyzer();
-      expect(analyzer.getCurrentRegime()).toBe('nascent');
+      expect(analyzer.getCurrentRegime()).toBe("nascent");
     });
 
     it('T26: After persistenceThreshold iterations with low variance → "stable"', () => {
@@ -542,12 +600,16 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       // variance=0, stdDev=0 → well below stable thresholds
       // persistence after 5 iters = 5 >= threshold=3
       for (let i = 1; i <= 5; i++) {
-        const metrics = makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: 0.5 });
+        const metrics = makeSocMetrics({
+          iteration: i,
+          cdp: 0.1,
+          correlationCoefficient: 0.5,
+        });
         analyzer.analyzeRegime(metrics, false);
       }
 
       const regime = analyzer.getCurrentRegime();
-      expect(regime).toBe('stable');
+      expect(regime).toBe("stable");
     });
 
     it('T27: High CDP variance (> 0.5) → "critical"', () => {
@@ -564,11 +626,15 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       // Then feed high-variance CDPs
       for (let i = 1; i <= 4; i++) {
         const cdp = i % 2 === 0 ? 2.0 : -2.0; // alternating wildly → very high variance
-        const metrics = makeSocMetrics({ iteration: i, cdp, correlationCoefficient: 0.5 });
+        const metrics = makeSocMetrics({
+          iteration: i,
+          cdp,
+          correlationCoefficient: 0.5,
+        });
         analyzer.analyzeRegime(metrics, false);
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('critical');
+      expect(analyzer.getCurrentRegime()).toBe("critical");
     });
 
     it('T28: High correlation std dev (> 0.8) → "critical"', () => {
@@ -584,11 +650,15 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       for (let i = 1; i <= 4; i++) {
         // Alternating correlation: +0.9 and -0.9 → stdDev ≈ 0.9 > 0.8
         const corr = i % 2 === 0 ? 0.9 : -0.9;
-        const metrics = makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: corr });
+        const metrics = makeSocMetrics({
+          iteration: i,
+          cdp: 0.1,
+          correlationCoefficient: corr,
+        });
         analyzer.analyzeRegime(metrics, false);
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('critical');
+      expect(analyzer.getCurrentRegime()).toBe("critical");
     });
 
     it('T29: isTransitioning=true → "transitioning" regardless of other metrics', () => {
@@ -596,20 +666,27 @@ describe('RegimeAnalyzer (SOC-07)', () => {
 
       // Feed some stable metrics first
       for (let i = 1; i <= 5; i++) {
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({
+            iteration: i,
+            cdp: 0.1,
+            correlationCoefficient: 0.5,
+          }),
+          false,
+        );
       }
 
       // Now trigger with isTransitioning=true
       const result = analyzer.analyzeRegime(
         makeSocMetrics({ iteration: 6, cdp: 0.1, correlationCoefficient: 0.5 }),
-        true // transitioning overrides everything
+        true, // transitioning overrides everything
       );
 
-      expect(result.regime).toBe('transitioning');
-      expect(analyzer.getCurrentRegime()).toBe('transitioning');
+      expect(result.regime).toBe("transitioning");
+      expect(analyzer.getCurrentRegime()).toBe("transitioning");
     });
 
-    it('T30: Regime changes reset the persistence counter', () => {
+    it("T30: Regime changes reset the persistence counter", () => {
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 2,
         analysisWindowSize: 6,
@@ -621,14 +698,21 @@ describe('RegimeAnalyzer (SOC-07)', () => {
 
       // Enter stable regime (3 stable iterations)
       for (let i = 1; i <= 3; i++) {
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({
+            iteration: i,
+            cdp: 0.1,
+            correlationCoefficient: 0.5,
+          }),
+          false,
+        );
       }
-      expect(analyzer.getCurrentRegime()).toBe('stable');
+      expect(analyzer.getCurrentRegime()).toBe("stable");
 
       // Trigger transitioning — this changes regime, resetting persistence
       const result = analyzer.analyzeRegime(
         makeSocMetrics({ iteration: 4, cdp: 0.1, correlationCoefficient: 0.5 }),
-        true
+        true,
       );
       expect(result.persistenceIterations).toBeLessThan(4); // persistence reset when transitioning started
     });
@@ -638,51 +722,82 @@ describe('RegimeAnalyzer (SOC-07)', () => {
   // Metrics computation
   // -------------------------------------------------------------------------
 
-  describe('Metrics computation', () => {
-    it('T31: cdpVariance computed correctly for known CDP series', () => {
+  describe("Metrics computation", () => {
+    it("T31: cdpVariance computed correctly for known CDP series", () => {
       const analyzer = new RegimeAnalyzer({ analysisWindowSize: 10 });
 
       // Feed CDPs = [1, 3] → mean=2, variance = ((1-2)^2 + (3-2)^2) / (2-1) = 2
-      analyzer.analyzeRegime(makeSocMetrics({ iteration: 1, cdp: 1.0, correlationCoefficient: 0.5 }), false);
-      const result = analyzer.analyzeRegime(makeSocMetrics({ iteration: 2, cdp: 3.0, correlationCoefficient: 0.5 }), false);
+      analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 1, cdp: 1.0, correlationCoefficient: 0.5 }),
+        false,
+      );
+      const result = analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 2, cdp: 3.0, correlationCoefficient: 0.5 }),
+        false,
+      );
 
       expect(result.cdpVariance).toBeCloseTo(2.0, 5);
     });
 
-    it('T32: correlationConsistency computed correctly for known correlation series', () => {
+    it("T32: correlationConsistency computed correctly for known correlation series", () => {
       const analyzer = new RegimeAnalyzer({ analysisWindowSize: 10 });
 
       // Feed correlations = [0.5, 0.5] → stdDev = 0
-      analyzer.analyzeRegime(makeSocMetrics({ iteration: 1, cdp: 0.1, correlationCoefficient: 0.5 }), false);
-      const result1 = analyzer.analyzeRegime(makeSocMetrics({ iteration: 2, cdp: 0.1, correlationCoefficient: 0.5 }), false);
+      analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 1, cdp: 0.1, correlationCoefficient: 0.5 }),
+        false,
+      );
+      const result1 = analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 2, cdp: 0.1, correlationCoefficient: 0.5 }),
+        false,
+      );
       expect(result1.correlationConsistency).toBeCloseTo(0, 10);
 
       // Feed different correlations: [0, 1] → mean=0.5, std = sqrt(((0-0.5)^2+(1-0.5)^2)/1) = sqrt(0.25+0.25) ≈ 0.707
       const analyzer2 = new RegimeAnalyzer({ analysisWindowSize: 10 });
-      analyzer2.analyzeRegime(makeSocMetrics({ iteration: 1, cdp: 0.1, correlationCoefficient: 0.0 }), false);
-      const result2 = analyzer2.analyzeRegime(makeSocMetrics({ iteration: 2, cdp: 0.1, correlationCoefficient: 1.0 }), false);
+      analyzer2.analyzeRegime(
+        makeSocMetrics({ iteration: 1, cdp: 0.1, correlationCoefficient: 0.0 }),
+        false,
+      );
+      const result2 = analyzer2.analyzeRegime(
+        makeSocMetrics({ iteration: 2, cdp: 0.1, correlationCoefficient: 1.0 }),
+        false,
+      );
       expect(result2.correlationConsistency).toBeCloseTo(Math.sqrt(0.5), 5);
     });
 
-    it('T33: persistenceIterations tracks time since regime entry', () => {
+    it("T33: persistenceIterations tracks time since regime entry", () => {
       const analyzer = new RegimeAnalyzer({ persistenceThreshold: 100 }); // keep nascent forever
 
       // All iterations should stay nascent, incrementing persistenceIterations
-      let lastResult = analyzer.analyzeRegime(makeSocMetrics({ iteration: 0 }), false);
+      let lastResult = analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 0 }),
+        false,
+      );
       for (let i = 1; i <= 10; i++) {
-        lastResult = analyzer.analyzeRegime(makeSocMetrics({ iteration: i }), false);
+        lastResult = analyzer.analyzeRegime(
+          makeSocMetrics({ iteration: i }),
+          false,
+        );
       }
 
       // persistenceIterations = current_iteration - regimeStartIteration (which was 0 from init)
       expect(lastResult.persistenceIterations).toBe(10);
     });
 
-    it('T34: Rolling window trims old metrics beyond analysisWindowSize', () => {
+    it("T34: Rolling window trims old metrics beyond analysisWindowSize", () => {
       const analyzer = new RegimeAnalyzer({ analysisWindowSize: 3 });
 
       // Feed 5 entries — window should only retain last 3
       for (let i = 1; i <= 5; i++) {
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: i * 1.0, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({
+            iteration: i,
+            cdp: i * 1.0,
+            correlationCoefficient: 0.5,
+          }),
+          false,
+        );
       }
 
       // The metrics window should have max 3 entries
@@ -692,19 +807,22 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       expect(window[window.length - 1]!.iteration).toBe(5);
     });
 
-    it('T35: analyzeRegime returns RegimeMetrics with all required fields', () => {
+    it("T35: analyzeRegime returns RegimeMetrics with all required fields", () => {
       const analyzer = new RegimeAnalyzer();
-      const result = analyzer.analyzeRegime(makeSocMetrics({ iteration: 1 }), false);
+      const result = analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 1 }),
+        false,
+      );
 
-      expect(result).toHaveProperty('regime');
-      expect(result).toHaveProperty('cdpVariance');
-      expect(result).toHaveProperty('correlationConsistency');
-      expect(result).toHaveProperty('persistenceIterations');
-      expect(result).toHaveProperty('iteration');
+      expect(result).toHaveProperty("regime");
+      expect(result).toHaveProperty("cdpVariance");
+      expect(result).toHaveProperty("correlationConsistency");
+      expect(result).toHaveProperty("persistenceIterations");
+      expect(result).toHaveProperty("iteration");
       expect(result.iteration).toBe(1);
-      expect(typeof result.cdpVariance).toBe('number');
-      expect(typeof result.correlationConsistency).toBe('number');
-      expect(typeof result.persistenceIterations).toBe('number');
+      expect(typeof result.cdpVariance).toBe("number");
+      expect(typeof result.correlationConsistency).toBe("number");
+      expect(typeof result.persistenceIterations).toBe("number");
     });
   });
 
@@ -712,16 +830,19 @@ describe('RegimeAnalyzer (SOC-07)', () => {
   // Edge cases
   // -------------------------------------------------------------------------
 
-  describe('Edge cases', () => {
-    it('T36: Window with single metric — variance = 0 → still nascent (insufficient persistence)', () => {
+  describe("Edge cases", () => {
+    it("T36: Window with single metric — variance = 0 → still nascent (insufficient persistence)", () => {
       const analyzer = new RegimeAnalyzer({ persistenceThreshold: 5 });
-      const result = analyzer.analyzeRegime(makeSocMetrics({ iteration: 1, cdp: 1.5 }), false);
+      const result = analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 1, cdp: 1.5 }),
+        false,
+      );
 
       expect(result.cdpVariance).toBe(0); // single value → variance = 0 by definition
-      expect(result.regime).toBe('nascent'); // < persistenceThreshold
+      expect(result.regime).toBe("nascent"); // < persistenceThreshold
     });
 
-    it('T37: All CDPs identical — variance = 0 — classified as stable after threshold', () => {
+    it("T37: All CDPs identical — variance = 0 — classified as stable after threshold", () => {
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 3,
         analysisWindowSize: 5,
@@ -733,13 +854,20 @@ describe('RegimeAnalyzer (SOC-07)', () => {
 
       for (let i = 1; i <= 5; i++) {
         // Perfectly constant: variance=0, stdDev=0
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({
+            iteration: i,
+            cdp: 0.1,
+            correlationCoefficient: 0.5,
+          }),
+          false,
+        );
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('stable');
+      expect(analyzer.getCurrentRegime()).toBe("stable");
     });
 
-    it('T38: CDPs alternating wildly — high variance — classified as critical', () => {
+    it("T38: CDPs alternating wildly — high variance — classified as critical", () => {
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 2,
         analysisWindowSize: 6,
@@ -756,16 +884,16 @@ describe('RegimeAnalyzer (SOC-07)', () => {
         lastResult = { ...metrics, ...r } as unknown as SOCMetrics;
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('critical');
+      expect(analyzer.getCurrentRegime()).toBe("critical");
     });
 
     it('T39: Empty state — getCurrentRegime returns "nascent" without any analysis', () => {
       const analyzer = new RegimeAnalyzer();
-      expect(analyzer.getCurrentRegime()).toBe('nascent');
+      expect(analyzer.getCurrentRegime()).toBe("nascent");
       expect(analyzer.getMetricsWindow()).toHaveLength(0);
     });
 
-    it('T40: Very long stable run (50+ iterations) — stays stable throughout', () => {
+    it("T40: Very long stable run (50+ iterations) — stays stable throughout", () => {
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 3,
         analysisWindowSize: 10,
@@ -779,12 +907,12 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       let stableCount = 0;
       for (const m of metrics) {
         const result = analyzer.analyzeRegime(m, false);
-        if (result.regime === 'stable') stableCount++;
+        if (result.regime === "stable") stableCount++;
       }
 
       // After warming up (first 3 iterations are nascent), remaining 57+ should be stable
       expect(stableCount).toBeGreaterThan(50);
-      expect(analyzer.getCurrentRegime()).toBe('stable');
+      expect(analyzer.getCurrentRegime()).toBe("stable");
     });
   });
 
@@ -792,13 +920,16 @@ describe('RegimeAnalyzer (SOC-07)', () => {
   // Configuration
   // -------------------------------------------------------------------------
 
-  describe('Configuration', () => {
-    it('T41: Custom analysisWindowSize respected — only last N metrics used', () => {
+  describe("Configuration", () => {
+    it("T41: Custom analysisWindowSize respected — only last N metrics used", () => {
       const analyzer = new RegimeAnalyzer({ analysisWindowSize: 2 });
 
       // Feed 10 entries with very different CDPs early on
       for (let i = 1; i <= 10; i++) {
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: i * 10.0 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({ iteration: i, cdp: i * 10.0 }),
+          false,
+        );
       }
 
       // Only last 2 CDPs [90, 100] are in window
@@ -808,7 +939,7 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       expect(window[1]!.cdp).toBeCloseTo(100, 0);
     });
 
-    it('T42: Custom criticalCdpVariance threshold respected', () => {
+    it("T42: Custom criticalCdpVariance threshold respected", () => {
       // Very low critical threshold (0.05) → any small variance triggers critical
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 2,
@@ -825,10 +956,10 @@ describe('RegimeAnalyzer (SOC-07)', () => {
         analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp }), false);
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('critical');
+      expect(analyzer.getCurrentRegime()).toBe("critical");
     });
 
-    it('T43: Custom stableCdpVariance threshold respected', () => {
+    it("T43: Custom stableCdpVariance threshold respected", () => {
       // High stable threshold (0.9) → nearly any variance is below stable threshold
       const analyzer = new RegimeAnalyzer({
         persistenceThreshold: 2,
@@ -842,13 +973,16 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       // Feed moderate variance CDPs — variance ≈ 0.18 < 0.9 stable threshold
       for (let i = 1; i <= 4; i++) {
         const cdp = i % 2 === 0 ? 0.8 : 0.2;
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({ iteration: i, cdp, correlationCoefficient: 0.5 }),
+          false,
+        );
       }
 
-      expect(analyzer.getCurrentRegime()).toBe('stable');
+      expect(analyzer.getCurrentRegime()).toBe("stable");
     });
 
-    it('T44: Default config matches documented values', () => {
+    it("T44: Default config matches documented values", () => {
       // Default: analysisWindowSize=10, persistenceThreshold=5,
       //          criticalCdpVariance=0.5, stableCdpVariance=0.2,
       //          criticalCorrelationStdDev=0.8, stableCorrelationStdDev=0.3
@@ -858,14 +992,23 @@ describe('RegimeAnalyzer (SOC-07)', () => {
       // With defaults: need 5 iterations before "stable" is possible
       // Feed 4 stable iterations → should still be nascent
       for (let i = 1; i <= 4; i++) {
-        analyzer.analyzeRegime(makeSocMetrics({ iteration: i, cdp: 0.1, correlationCoefficient: 0.5 }), false);
+        analyzer.analyzeRegime(
+          makeSocMetrics({
+            iteration: i,
+            cdp: 0.1,
+            correlationCoefficient: 0.5,
+          }),
+          false,
+        );
       }
-      expect(analyzer.getCurrentRegime()).toBe('nascent');
+      expect(analyzer.getCurrentRegime()).toBe("nascent");
 
       // Feed 5th stable iteration → should now be stable (persistence = 5 >= threshold=5)
-      analyzer.analyzeRegime(makeSocMetrics({ iteration: 5, cdp: 0.1, correlationCoefficient: 0.5 }), false);
-      expect(analyzer.getCurrentRegime()).toBe('stable');
+      analyzer.analyzeRegime(
+        makeSocMetrics({ iteration: 5, cdp: 0.1, correlationCoefficient: 0.5 }),
+        false,
+      );
+      expect(analyzer.getCurrentRegime()).toBe("stable");
     });
   });
-
 });

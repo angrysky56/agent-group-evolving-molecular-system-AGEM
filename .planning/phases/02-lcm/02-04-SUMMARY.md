@@ -2,7 +2,15 @@
 phase: 02-lcm
 plan: "04"
 subsystem: lcm
-tags: [context-dag, summary-index, embedding-cache, semantic-search, cosine-similarity, tdd]
+tags:
+  [
+    context-dag,
+    summary-index,
+    embedding-cache,
+    semantic-search,
+    cosine-similarity,
+    tdd,
+  ]
 
 # Dependency graph
 requires:
@@ -16,7 +24,13 @@ provides:
   - LCMGrep: cosine-similarity semantic search over cached embeddings with IEmbedder injection
   - cosineSimilarity: pure function for dot-product-based similarity (exported for reuse)
 
-affects: [02-05 EscalationProtocol, 02-06 lcm_expand, LCMClient, downstream grep consumers]
+affects:
+  [
+    02-05 EscalationProtocol,
+    02-06 lcm_expand,
+    LCMClient,
+    downstream grep consumers,
+  ]
 
 # Tech tracking
 tech-stack:
@@ -98,13 +112,14 @@ Each task followed TDD red-green cycle with separate test and feat commits:
 - SummaryNode content frozen at add() via `Object.defineProperties(node, { content: { writable: false, configurable: false } })`. This allows metrics to remain mutable-but-tracked while making content assignment throw `TypeError` in strict mode.
 - getParentSummary() is O(n) scan over all SummaryIndex nodes — acceptable for Phase 2 where summarization is linear (wave 3 will not need to optimize this).
 - T11c test reads LCMGrep.ts source with `readFileSync` and asserts `not.toMatch(/@huggingface\/transformers/)`. The implementation doc comments were reworded to say "huggingface transformers library" without the scoped package name to keep the guard passing while remaining descriptive.
-- cosineSimilarity() uses the full dot/(normA * normB) formula for correctness with any embedder, not the simplified dot-only version (which only works when vectors are guaranteed L2-normalized).
+- cosineSimilarity() uses the full dot/(normA \* normB) formula for correctness with any embedder, not the simplified dot-only version (which only works when vectors are guaranteed L2-normalized).
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed type cast in T5b immutability test**
+
 - **Found during:** Task 1 (ContextDAG implementation, type-check phase)
 - **Issue:** `(retrieved as Record<string, unknown>)['content']` caused TS2352 error — SummaryNode and Record<string, unknown> don't overlap sufficiently
 - **Fix:** Changed to `(retrieved as unknown as Record<string, unknown>)['content']` (double cast via unknown)
@@ -113,6 +128,7 @@ Each task followed TDD red-green cycle with separate test and feat commits:
 - **Committed in:** bfe4bf3 (Task 1 feat commit)
 
 **2. [Rule 1 - Bug] Rewrote LCMGrep doc comment to avoid triggering T11c**
+
 - **Found during:** Task 2 (LCMGrep implementation, first test run)
 - **Issue:** T11c asserts LCMGrep.ts does NOT contain `/@huggingface\/transformers/`. The file comment said "NEVER imports @huggingface/transformers" — the package name itself matched the regex.
 - **Fix:** Rewrote to "NEVER imports the huggingface transformers library directly" — communicates intent without including the scoped package name in source.
@@ -156,5 +172,6 @@ None — no external service configuration required.
 - FOUND: 069d4c8 (feat LCMGrep GREEN)
 
 ---
-*Phase: 02-lcm*
-*Completed: 2026-02-28*
+
+_Phase: 02-lcm_
+_Completed: 2026-02-28_

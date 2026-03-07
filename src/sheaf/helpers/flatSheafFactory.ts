@@ -11,8 +11,13 @@
  * The non-flat counterpart is threeCycleFactory (task w1-t7).
  */
 
-import { CellularSheaf } from '../CellularSheaf.js';
-import type { VertexId, EdgeId, SheafVertex, SheafEdge } from '../../types/index.js';
+import { CellularSheaf } from "../CellularSheaf.js";
+import type {
+  VertexId,
+  EdgeId,
+  SheafVertex,
+  SheafEdge,
+} from "../../types/index.js";
 
 /**
  * Build an identity matrix of given dimension as a row-major Float64Array.
@@ -55,7 +60,11 @@ function buildVertex(i: number, stalkDim: number): SheafVertex {
  *
  * Both source and target restrictions are identity maps: R^stalkDim → R^stalkDim.
  */
-function buildFlatEdge(srcIdx: number, tgtIdx: number, stalkDim: number): SheafEdge {
+function buildFlatEdge(
+  srcIdx: number,
+  tgtIdx: number,
+  stalkDim: number,
+): SheafEdge {
   const sourceId = vid(srcIdx);
   const targetId = vid(tgtIdx);
   const edgeId = eid(srcIdx, tgtIdx);
@@ -98,13 +107,13 @@ function buildFlatEdge(srcIdx: number, tgtIdx: number, stalkDim: number): SheafE
 export function buildFlatSheaf(
   numVertices: number,
   stalkDim: number,
-  topology: 'path' | 'triangle' | 'complete' = 'path'
+  topology: "path" | "triangle" | "complete" = "path",
 ): CellularSheaf {
   if (numVertices < 1) {
-    throw new Error('buildFlatSheaf: numVertices must be >= 1');
+    throw new Error("buildFlatSheaf: numVertices must be >= 1");
   }
   if (stalkDim < 1) {
-    throw new Error('buildFlatSheaf: stalkDim must be >= 1');
+    throw new Error("buildFlatSheaf: stalkDim must be >= 1");
   }
 
   // Build vertices.
@@ -117,17 +126,17 @@ export function buildFlatSheaf(
   const edges: SheafEdge[] = [];
 
   switch (topology) {
-    case 'path': {
+    case "path": {
       for (let i = 0; i < numVertices - 1; i++) {
         edges.push(buildFlatEdge(i, i + 1, stalkDim));
       }
       break;
     }
 
-    case 'triangle': {
+    case "triangle": {
       if (numVertices !== 3) {
         throw new Error(
-          `buildFlatSheaf: 'triangle' topology requires numVertices = 3, got ${numVertices}`
+          `buildFlatSheaf: 'triangle' topology requires numVertices = 3, got ${numVertices}`,
         );
       }
       edges.push(buildFlatEdge(0, 1, stalkDim));
@@ -136,7 +145,7 @@ export function buildFlatSheaf(
       break;
     }
 
-    case 'complete': {
+    case "complete": {
       for (let i = 0; i < numVertices; i++) {
         for (let j = i + 1; j < numVertices; j++) {
           edges.push(buildFlatEdge(i, j, stalkDim));

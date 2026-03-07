@@ -24,13 +24,22 @@
 // ---------------------------------------------------------------------------
 // Sheaf module imports
 // ---------------------------------------------------------------------------
-import { CellularSheaf, CohomologyAnalyzer, buildFlatSheaf } from '../sheaf/index.js';
+import {
+  CellularSheaf,
+  CohomologyAnalyzer,
+  buildFlatSheaf,
+} from "../sheaf/index.js";
 
 // ---------------------------------------------------------------------------
 // LCM module imports
 // ---------------------------------------------------------------------------
-import { LCMClient, ImmutableStore, EmbeddingCache, GptTokenCounter } from '../lcm/index.js';
-import type { IEmbedder } from '../lcm/index.js';
+import {
+  LCMClient,
+  ImmutableStore,
+  EmbeddingCache,
+  GptTokenCounter,
+} from "../lcm/index.js";
+import type { IEmbedder } from "../lcm/index.js";
 
 // ---------------------------------------------------------------------------
 // TNA module imports
@@ -43,23 +52,26 @@ import {
   GapDetector,
   CatalystQuestionGenerator,
   LayoutComputer,
-} from '../tna/index.js';
+} from "../tna/index.js";
 
 // ---------------------------------------------------------------------------
 // SOC module imports
 // ---------------------------------------------------------------------------
-import { SOCTracker } from '../soc/index.js';
-import type { SOCInputs } from '../soc/index.js';
+import { SOCTracker } from "../soc/index.js";
+import type { SOCInputs } from "../soc/index.js";
 
 // ---------------------------------------------------------------------------
 // Orchestrator internal imports
 // ---------------------------------------------------------------------------
-import { EventBus } from './EventBus.js';
-import { OrchestratorState, OrchestratorStateManager } from './OrchestratorState.js';
-import type { StateChangeEvent } from './OrchestratorState.js';
-import { ObstructionHandler } from './ObstructionHandler.js';
-import { VdWAgentSpawner } from './VdWAgentSpawner.js';
-import type { AnyEvent } from './interfaces.js';
+import { EventBus } from "./EventBus.js";
+import {
+  OrchestratorState,
+  OrchestratorStateManager,
+} from "./OrchestratorState.js";
+import type { StateChangeEvent } from "./OrchestratorState.js";
+import { ObstructionHandler } from "./ObstructionHandler.js";
+import { VdWAgentSpawner } from "./VdWAgentSpawner.js";
+import type { AnyEvent } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Orchestrator class
@@ -187,67 +199,74 @@ export class Orchestrator {
   }
 
   #wireCohomologyEvents(): void {
-    this.cohomologyAnalyzer.on('sheaf:consensus-reached', (event: AnyEvent) => {
+    this.cohomologyAnalyzer.on("sheaf:consensus-reached", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.cohomologyAnalyzer.on('sheaf:h1-obstruction-detected', (event: AnyEvent) => {
-      void this.eventBus.emit(event);
+    this.cohomologyAnalyzer.on(
+      "sheaf:h1-obstruction-detected",
+      (event: AnyEvent) => {
+        void this.eventBus.emit(event);
 
-      const h1Dimension = (event as { h1Dimension?: number }).h1Dimension ?? 0;
-      this.stateManager.updateMetrics(h1Dimension);
-      this.obstructionHandler.updateH1ForSpawner(h1Dimension);
-    });
+        const h1Dimension =
+          (event as { h1Dimension?: number }).h1Dimension ?? 0;
+        this.stateManager.updateMetrics(h1Dimension);
+        this.obstructionHandler.updateH1ForSpawner(h1Dimension);
+      },
+    );
   }
 
   #wireSocEvents(): void {
-    this.socTracker.on('soc:metrics', (event: AnyEvent) => {
+    this.socTracker.on("soc:metrics", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.socTracker.on('phase:transition', (event: AnyEvent) => {
+    this.socTracker.on("phase:transition", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.socTracker.on('regime:classification', (event: AnyEvent) => {
+    this.socTracker.on("regime:classification", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+    this.eventBus.subscribe("regime:classification", (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.obstructionHandler.updateRegime(regimeEvent.regime);
     });
   }
 
   #wireTnaEvents(): void {
-    this.tnaCentrality.on('tna:centrality-change-detected', (event: AnyEvent) => {
-      void this.eventBus.emit(event);
-    });
-    this.tnaCentrality.on('tna:topology-reorganized', (event: AnyEvent) => {
+    this.tnaCentrality.on(
+      "tna:centrality-change-detected",
+      (event: AnyEvent) => {
+        void this.eventBus.emit(event);
+      },
+    );
+    this.tnaCentrality.on("tna:topology-reorganized", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+    this.eventBus.subscribe("regime:classification", (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.tnaCentrality.adjustInterval(regimeEvent.regime);
     });
 
-    this.tnaLayout.on('tna:layout-updated', (event: AnyEvent) => {
+    this.tnaLayout.on("tna:layout-updated", (event: AnyEvent) => {
       void this.eventBus.emit(event);
     });
 
-    this.eventBus.subscribe('regime:classification', (event: AnyEvent) => {
+    this.eventBus.subscribe("regime:classification", (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
       this.tnaLayout.adjustInterval(regimeEvent.regime);
     });
   }
 
   #wireStateEvents(): void {
-    this.eventBus.subscribe('orch:state-changed', (event) => {
+    this.eventBus.subscribe("orch:state-changed", (event) => {
       const stateEvent = event as unknown as StateChangeEvent;
       console.log(
         `[ORCH] Iteration ${this.#iterationCounter}: State transition to ` +
-          `${stateEvent.newState} (reason: ${stateEvent.reason})`
+          `${stateEvent.newState} (reason: ${stateEvent.reason})`,
       );
     });
   }
@@ -256,21 +275,21 @@ export class Orchestrator {
    * Register default subscribers for monitoring and observability.
    */
   #registerDefaultSubscribers(): void {
-    this.eventBus.subscribe('sheaf:consensus-reached', (event) => {
+    this.eventBus.subscribe("sheaf:consensus-reached", (event) => {
       const e = event as { h0Dimension?: number };
       console.log(
-        `[ORCH] Iteration ${this.#iterationCounter}: Sheaf consensus at h0=${e.h0Dimension ?? '?'}`
+        `[ORCH] Iteration ${this.#iterationCounter}: Sheaf consensus at h0=${e.h0Dimension ?? "?"}`,
       );
     });
 
-    this.eventBus.subscribe('sheaf:h1-obstruction-detected', (event) => {
+    this.eventBus.subscribe("sheaf:h1-obstruction-detected", (event) => {
       const e = event as { h1Dimension?: number };
       console.log(
-        `[ORCH] Iteration ${this.#iterationCounter}: H^1 obstruction dim=${e.h1Dimension ?? '?'}`
+        `[ORCH] Iteration ${this.#iterationCounter}: H^1 obstruction dim=${e.h1Dimension ?? "?"}`,
       );
     });
 
-    this.eventBus.subscribe('soc:metrics', (event) => {
+    this.eventBus.subscribe("soc:metrics", (event) => {
       const e = event as {
         iteration?: number;
         cdp?: number;
@@ -279,19 +298,22 @@ export class Orchestrator {
         surprisingEdgeRatio?: number;
       };
       console.log(
-        `[ORCH] Iteration ${e.iteration ?? '?'}: SOC metrics ` +
-        `CDP=${(e.cdp ?? 0).toFixed(3)}, ` +
-        `VNE=${(e.vonNeumannEntropy ?? 0).toFixed(3)}, ` +
-        `EE=${(e.embeddingEntropy ?? 0).toFixed(3)}, ` +
-        `SER=${(e.surprisingEdgeRatio ?? 0).toFixed(2)}`
+        `[ORCH] Iteration ${e.iteration ?? "?"}: SOC metrics ` +
+          `CDP=${(e.cdp ?? 0).toFixed(3)}, ` +
+          `VNE=${(e.vonNeumannEntropy ?? 0).toFixed(3)}, ` +
+          `EE=${(e.embeddingEntropy ?? 0).toFixed(3)}, ` +
+          `SER=${(e.surprisingEdgeRatio ?? 0).toFixed(2)}`,
       );
     });
 
-    this.eventBus.subscribe('phase:transition', (event) => {
-      const e = event as { iteration?: number; correlationCoefficient?: number };
+    this.eventBus.subscribe("phase:transition", (event) => {
+      const e = event as {
+        iteration?: number;
+        correlationCoefficient?: number;
+      };
       console.log(
-        `[ORCH] Iteration ${e.iteration ?? '?'}: PHASE TRANSITION detected ` +
-        `(r=${(e.correlationCoefficient ?? 0).toFixed(3)})`
+        `[ORCH] Iteration ${e.iteration ?? "?"}: PHASE TRANSITION detected ` +
+          `(r=${(e.correlationCoefficient ?? 0).toFixed(3)})`,
       );
     });
   }
@@ -332,7 +354,7 @@ export class Orchestrator {
 
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: TNA processed ` +
-      `${preprocessed.tokens.length} tokens → graph has ${this.tnaGraph.order} nodes`
+        `${preprocessed.tokens.length} tokens → graph has ${this.tnaGraph.order} nodes`,
     );
 
     // Step 4: Run Louvain community detection (only when graph has nodes)
@@ -341,7 +363,7 @@ export class Orchestrator {
       const modularity = this.tnaLouvain.getModularity();
       console.log(
         `[ORCH] Iteration ${this.#iterationCounter}: Communities detected: ` +
-        `${communities.communityCount}, modularity=${modularity.toFixed(3)}`
+          `${communities.communityCount}, modularity=${modularity.toFixed(3)}`,
       );
 
       // Phase 6: Centrality time-series update (TNA-09)
@@ -357,18 +379,20 @@ export class Orchestrator {
 
     // Step 5: Append prompt to LCM
     const entryId = await this.lcmClient.append(prompt);
-    console.log(`[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`);
+    console.log(
+      `[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`,
+    );
 
     // Step 6: Run Sheaf cohomology analysis
     // In a real system, the sheaf is constructed from TNA graph topology.
     // For Phase 5: use the instance sheaf (empty → h0=0, h1=0 → consensus event fires).
     const cohomologyResult = this.cohomologyAnalyzer.analyze(
       this.sheaf,
-      this.#iterationCounter
+      this.#iterationCounter,
     );
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
-      `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`
+        `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
     );
     // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
     // (and are forwarded to eventBus via #wireEventBus handlers above)
@@ -422,7 +446,7 @@ export class Orchestrator {
    */
   async shutdown(): Promise<void> {
     await this.obstructionHandler.shutdown();
-    console.log('[ORCH] Shutdown complete.');
+    console.log("[ORCH] Shutdown complete.");
   }
 
   // -------------------------------------------------------------------------
@@ -467,11 +491,11 @@ export class Orchestrator {
     (this as any).tnaGapDetector = new GapDetector(
       this.tnaGraph,
       this.tnaLouvain,
-      this.tnaCentrality
+      this.tnaCentrality,
     );
     (this as any).tnaCatalystGenerator = new CatalystQuestionGenerator(
       this.tnaGraph,
-      this.tnaCentrality
+      this.tnaCentrality,
     );
     (this as any).tnaLayout = new LayoutComputer(this.tnaGraph);
   }
@@ -486,7 +510,7 @@ export class Orchestrator {
       this.eventBus,
       this.tnaGapDetector,
       this.tnaGraph,
-      { agentPoolSize: 4, vdwSpawner }
+      { agentPoolSize: 4, vdwSpawner },
     );
   }
 }

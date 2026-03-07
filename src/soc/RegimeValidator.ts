@@ -19,7 +19,7 @@ import type {
   RegimeStability,
   RegimeMetrics,
   SOCMetrics,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Private math helpers
@@ -28,7 +28,9 @@ import type {
 function variance(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (values.length - 1);
+  return (
+    values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (values.length - 1)
+  );
 }
 
 function stdDev(values: number[]): number {
@@ -145,7 +147,7 @@ export class RegimeValidator {
    */
   validateTransition(
     h1Dimension: number,
-    iteration: number
+    iteration: number,
   ): { confirmed: boolean; coherence: number } {
     if (this.#candidateStartIteration === null) {
       return { confirmed: false, coherence: 0 };
@@ -161,8 +163,11 @@ export class RegimeValidator {
     // Gate 2: Coherence check
     const window = this.#config.persistenceWindow;
     const recentSigns = this.#signHistory.slice(-window);
-    const sameSignCount = recentSigns.filter(s => s === this.#candidateSign).length;
-    const coherence = recentSigns.length > 0 ? sameSignCount / recentSigns.length : 0;
+    const sameSignCount = recentSigns.filter(
+      (s) => s === this.#candidateSign,
+    ).length;
+    const coherence =
+      recentSigns.length > 0 ? sameSignCount / recentSigns.length : 0;
 
     if (coherence < this.#config.coherenceThreshold) {
       return { confirmed: false, coherence };
@@ -223,7 +228,7 @@ export class RegimeValidator {
  */
 export class RegimeAnalyzer {
   readonly #config: RegimeAnalyzerConfig;
-  #currentRegime: RegimeStability = 'nascent';
+  #currentRegime: RegimeStability = "nascent";
   #regimeStartIteration: number = 0;
   #metricsWindow: SOCMetrics[] = [];
 
@@ -252,21 +257,22 @@ export class RegimeAnalyzer {
     this.#totalIterations++;
 
     // Compute metrics
-    const cdpValues = this.#metricsWindow.map(m => m.cdp);
-    const corrValues = this.#metricsWindow.map(m => m.correlationCoefficient);
+    const cdpValues = this.#metricsWindow.map((m) => m.cdp);
+    const corrValues = this.#metricsWindow.map((m) => m.correlationCoefficient);
     const cdpVariance = variance(cdpValues);
     const correlationConsistency = stdDev(corrValues);
 
     // Persistence: how many iterations since the system entered the current regime.
     // Uses metrics.iteration - #regimeStartIteration for consistent tracking.
-    const persistenceIterations = metrics.iteration - this.#regimeStartIteration;
+    const persistenceIterations =
+      metrics.iteration - this.#regimeStartIteration;
 
     // Classify regime
     const newRegime = this.#classifyRegime(
       cdpVariance,
       correlationConsistency,
       persistenceIterations,
-      isTransitioning
+      isTransitioning,
     );
 
     // If regime changed, reset persistence counter.
@@ -293,17 +299,20 @@ export class RegimeAnalyzer {
     cdpVariance: number,
     corrConsistency: number,
     persistence: number,
-    isTransitioning: boolean
+    isTransitioning: boolean,
   ): RegimeStability {
     // Priority 1: Transitioning (transient state for sign changes)
-    if (isTransitioning) return 'transitioning';
+    if (isTransitioning) return "transitioning";
 
     // Priority 2: Nascent — only applies while still in initial 'nascent' regime.
     // Once the system has graduated to stable/critical/transitioning, the persistence
     // check no longer blocks classification. 'nascent' can only re-appear as a default
     // when metrics are ambiguous (between stable and critical thresholds).
-    if (this.#currentRegime === 'nascent' && persistence < this.#config.persistenceThreshold) {
-      return 'nascent';
+    if (
+      this.#currentRegime === "nascent" &&
+      persistence < this.#config.persistenceThreshold
+    ) {
+      return "nascent";
     }
 
     // Priority 3: Critical (high instability markers)
@@ -311,7 +320,7 @@ export class RegimeAnalyzer {
       cdpVariance > this.#config.criticalCdpVariance ||
       corrConsistency > this.#config.criticalCorrelationStdDev
     ) {
-      return 'critical';
+      return "critical";
     }
 
     // Priority 4: Stable (low variance, consistent correlation)
@@ -319,11 +328,11 @@ export class RegimeAnalyzer {
       cdpVariance < this.#config.stableCdpVariance &&
       corrConsistency < this.#config.stableCorrelationStdDev
     ) {
-      return 'stable';
+      return "stable";
     }
 
     // Default: nascent (insufficient evidence for stable or critical after data warmup)
-    return 'nascent';
+    return "nascent";
   }
 
   /**

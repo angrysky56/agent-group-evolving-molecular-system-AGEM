@@ -15,7 +15,7 @@
  * Imports: Agent, PoolConfig from ./interfaces.js only. No external npm dependencies.
  */
 
-import type { Agent, PoolConfig } from './interfaces.js';
+import type { Agent, PoolConfig } from "./interfaces.js";
 
 /**
  * AgentPool — manages the lifecycle of a fixed-size pool of reasoning agents.
@@ -68,7 +68,7 @@ export class AgentPool {
     await Promise.all(this.#agents.map((agent) => agent.spawn()));
     this.#heartbeatTimer = setInterval(
       () => void this.#runHeartbeat(),
-      this.#config.heartbeatIntervalMs
+      this.#config.heartbeatIntervalMs,
     );
   }
 
@@ -84,21 +84,22 @@ export class AgentPool {
    */
   async #runHeartbeat(): Promise<void> {
     const promises = this.#agents
-      .filter((agent) => agent.status !== 'terminated')
+      .filter((agent) => agent.status !== "terminated")
       .map((agent) =>
         Promise.race([
           agent.heartbeat(),
           new Promise<void>((_, reject) =>
             setTimeout(
-              () => reject(new Error(`Heartbeat timeout for agent ${agent.id}`)),
-              this.#config.heartbeatTimeoutMs
-            )
+              () =>
+                reject(new Error(`Heartbeat timeout for agent ${agent.id}`)),
+              this.#config.heartbeatTimeoutMs,
+            ),
           ),
         ]).catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`Agent ${agent.id} heartbeat failed: ${message}`);
-          agent.status = 'terminated';
-        })
+          agent.status = "terminated";
+        }),
       );
 
     await Promise.all(promises);
@@ -145,7 +146,9 @@ export class AgentPool {
    * @returns Readonly array of idle Agent instances.
    */
   getIdleAgents(): readonly Agent[] {
-    return this.#agents.filter((agent) => agent.status === 'idle') as readonly Agent[];
+    return this.#agents.filter(
+      (agent) => agent.status === "idle",
+    ) as readonly Agent[];
   }
 
   /**

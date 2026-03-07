@@ -20,12 +20,7 @@ import { settings } from "../config.js";
 
 /* ─── Default Directory Structure ─── */
 
-const DEFAULT_SUBDIRS = [
-  "reports",
-  "analysis",
-  "outputs",
-  "sessions",
-] as const;
+const DEFAULT_SUBDIRS = ["reports", "analysis", "outputs", "sessions"] as const;
 
 /* ─── Knowledge Base Service ─── */
 
@@ -68,7 +63,7 @@ class KnowledgeBaseService {
           "- **sessions/** — Chat session history (JSON)",
           "",
         ].join("\n"),
-        "utf-8"
+        "utf-8",
       );
     }
   }

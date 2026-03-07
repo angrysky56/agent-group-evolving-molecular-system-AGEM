@@ -28,8 +28,8 @@
  *   T-VN-05 remains valid since ln(n-1) < ln(n) for all n >= 2.
  */
 
-import { describe, it, expect } from 'vitest';
-import { vonNeumannEntropy, embeddingEntropy } from './entropy.js';
+import { describe, it, expect } from "vitest";
+import { vonNeumannEntropy, embeddingEntropy } from "./entropy.js";
 
 // ---------------------------------------------------------------------------
 // Helper: build complete graph K_n edges
@@ -40,7 +40,9 @@ import { vonNeumannEntropy, embeddingEntropy } from './entropy.js';
  * Every pair (i, j) for i < j is connected with weight 1.
  * Returns an array suitable for vonNeumannEntropy().
  */
-function buildKn(n: number): Array<{ source: number; target: number; weight: number }> {
+function buildKn(
+  n: number,
+): Array<{ source: number; target: number; weight: number }> {
   const edges: Array<{ source: number; target: number; weight: number }> = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -54,7 +56,9 @@ function buildKn(n: number): Array<{ source: number; target: number; weight: num
  * buildPathGraph — build a path graph P_n: 0-1-2-...(n-1).
  * Returns edges suitable for vonNeumannEntropy().
  */
-function buildPathGraph(n: number): Array<{ source: number; target: number; weight: number }> {
+function buildPathGraph(
+  n: number,
+): Array<{ source: number; target: number; weight: number }> {
   const edges: Array<{ source: number; target: number; weight: number }> = [];
   for (let i = 0; i < n - 1; i++) {
     edges.push({ source: i, target: i + 1, weight: 1 });
@@ -66,7 +70,7 @@ function buildPathGraph(n: number): Array<{ source: number; target: number; weig
 // Von Neumann Entropy Tests (SOC-01)
 // ---------------------------------------------------------------------------
 
-describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
+describe("vonNeumannEntropy — SOC-01 correctness gates", () => {
   /**
    * T-VN-01: Complete graph K_3 yields Von Neumann entropy = ln(2).
    *
@@ -81,7 +85,7 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
    * (ROADMAP SC-1 variant). The ROADMAP states ln(n), but the math gives ln(n-1).
    * See module-level DEVIATION NOTE for full explanation.
    */
-  it('T-VN-01: K_3 complete graph yields Von Neumann entropy approximately ln(2)', () => {
+  it("T-VN-01: K_3 complete graph yields Von Neumann entropy approximately ln(2)", () => {
     const edges = buildKn(3);
     const result = vonNeumannEntropy(3, edges);
 
@@ -93,14 +97,14 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
    * T-VN-02: Generalized K_n test for n=4 and n=5.
    * S(K_4) = ln(3). S(K_5) = ln(4). General: S(K_n) = ln(n-1).
    */
-  it('T-VN-02: K_4 complete graph yields Von Neumann entropy approximately ln(3)', () => {
+  it("T-VN-02: K_4 complete graph yields Von Neumann entropy approximately ln(3)", () => {
     const edges = buildKn(4);
     const result = vonNeumannEntropy(4, edges);
     // S(K_4) = ln(3) = 1.0986...
     expect(result).toBeCloseTo(Math.log(3), 5);
   });
 
-  it('T-VN-02b: K_5 complete graph yields Von Neumann entropy approximately ln(4)', () => {
+  it("T-VN-02b: K_5 complete graph yields Von Neumann entropy approximately ln(4)", () => {
     const edges = buildKn(5);
     const result = vonNeumannEntropy(5, edges);
     // S(K_5) = ln(4) = 1.3862...
@@ -112,7 +116,7 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
    * Path graphs are less structurally complex than complete graphs.
    * S(P_4) < S(K_4) = ln(3). Since K_4 is the maximum for 4 nodes, P_4 must be below.
    */
-  it('T-VN-03: Path graph P_4 yields entropy strictly less than ln(4)', () => {
+  it("T-VN-03: Path graph P_4 yields entropy strictly less than ln(4)", () => {
     const edges = buildPathGraph(4);
     const result = vonNeumannEntropy(4, edges);
     // Path graphs have strictly less entropy than complete graphs
@@ -126,7 +130,7 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
    * Degenerate case: no Laplacian structure means zero entropy.
    * The function must handle nodeCount=1, edges=[] without throwing.
    */
-  it('T-VN-04: Single node with no edges yields entropy 0', () => {
+  it("T-VN-04: Single node with no edges yields entropy 0", () => {
     const result = vonNeumannEntropy(1, []);
     expect(result).toBe(0);
   });
@@ -139,7 +143,7 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
    * Note: The bound ln(n) is NOT tight — K_n achieves ln(n-1), not ln(n).
    * The invariant is still valid: ln(n-1) <= ln(n) + 1e-10 for all n.
    */
-  it('T-VN-05: Von Neumann entropy never exceeds ln(n) for K_3, K_4, K_5, K_6', () => {
+  it("T-VN-05: Von Neumann entropy never exceeds ln(n) for K_3, K_4, K_5, K_6", () => {
     for (const n of [3, 4, 5, 6]) {
       const edges = buildKn(n);
       const result = vonNeumannEntropy(n, edges);
@@ -153,7 +157,7 @@ describe('vonNeumannEntropy — SOC-01 correctness gates', () => {
 // Embedding Entropy Tests (SOC-02)
 // ---------------------------------------------------------------------------
 
-describe('embeddingEntropy — SOC-02 correctness gates', () => {
+describe("embeddingEntropy — SOC-02 correctness gates", () => {
   /**
    * T-EE-01: Identical embeddings yield entropy near zero.
    * ROADMAP SC-2 first edge case.
@@ -161,7 +165,7 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
    * Covariance matrix Sigma = outer([1,0,...,0],[1,0,...,0]) has rank 1.
    * Normalized eigenspectrum: [1, 0, 0, ...] → entropy = 0.
    */
-  it('T-EE-01: Five identical embeddings yield entropy near zero', () => {
+  it("T-EE-01: Five identical embeddings yield entropy near zero", () => {
     const vec = new Float64Array(10);
     vec[0] = 1;
     const embeddings = [vec, vec, vec, vec, vec];
@@ -177,7 +181,7 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
    * Normalized eigenvalues: p_i = 1/4 for all i.
    * Entropy = -4 * (1/4) * ln(1/4) = ln(4).
    */
-  it('T-EE-02: Four orthogonal unit vectors yield entropy approximately ln(4)', () => {
+  it("T-EE-02: Four orthogonal unit vectors yield entropy approximately ln(4)", () => {
     const d = 4;
     const embeddings: Float64Array[] = [];
     for (let i = 0; i < d; i++) {
@@ -197,7 +201,7 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
    * Normalized: p_1 = p_2 = 1/2.
    * Entropy = -2 * (1/2) * ln(1/2) = ln(2).
    */
-  it('T-EE-03: Two orthogonal embeddings yield entropy approximately ln(2)', () => {
+  it("T-EE-03: Two orthogonal embeddings yield entropy approximately ln(2)", () => {
     const e1 = new Float64Array([1, 0, 0]);
     const e2 = new Float64Array([0, 1, 0]);
     const result = embeddingEntropy([e1, e2]);
@@ -209,7 +213,7 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
    * Degenerate case: no data → no covariance structure → zero entropy.
    * The function must handle embeddings.length === 0 without throwing.
    */
-  it('T-EE-04: Empty embedding set yields entropy 0', () => {
+  it("T-EE-04: Empty embedding set yields entropy 0", () => {
     const result = embeddingEntropy([]);
     expect(result).toBe(0);
   });
@@ -220,7 +224,7 @@ describe('embeddingEntropy — SOC-02 correctness gates', () => {
    * Normalized eigenspectrum: [1, 0, 0, ...] → entropy = -1*ln(1) = 0.
    * The function must handle embeddings.length === 1 without throwing.
    */
-  it('T-EE-05: Single embedding yields entropy 0', () => {
+  it("T-EE-05: Single embedding yields entropy 0", () => {
     const result = embeddingEntropy([new Float64Array([1, 2, 3])]);
     expect(result).toBe(0);
   });

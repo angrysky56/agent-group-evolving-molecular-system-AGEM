@@ -23,6 +23,7 @@ AGEM is a sophisticated multi-agent orchestration framework designed to simulate
 ## Tech Stack
 
 ### Core Engine
+
 - **Language**: [TypeScript](https://www.typescriptlang.org/) (ES2022)
 - **Runtime**: [Node.js](https://nodejs.org/) v20+
 - **Mathematics**: [mathjs](https://mathjs.org/), [ml-matrix](https://github.com/mljs/matrix)
@@ -32,6 +33,7 @@ AGEM is a sophisticated multi-agent orchestration framework designed to simulate
 - **Testing**: [Vitest](https://vitest.dev/)
 
 ### Interface
+
 - **Backend**: [Express](https://expressjs.com/) + SSE streaming
 - **Frontend**: [React](https://react.dev/) + [Vite](https://vite.dev/) + TypeScript
 - **State**: [Zustand](https://zustand.docs.pmnd.rs/) (persisted to localStorage)
@@ -112,43 +114,53 @@ This installs dependencies (if needed), copies `.env.example` → `.env` (if mis
 
 All configuration lives in `.env` at the project root. Key settings:
 
-| Variable | Default | Description |
-|---|---|---|
-| `LLM_PROVIDER` | `ollama` | Active provider (`ollama` or `openrouter`) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `gemma3:latest` | Ollama chat model |
-| `OPENROUTER_API_KEY` | — | OpenRouter API key |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API endpoint |
-| `OPENROUTER_MODEL` | `google/gemini-2.5-flash-preview` | OpenRouter chat model |
-| `PORT` | `8000` | Backend server port |
+| Variable              | Default                           | Description                                |
+| --------------------- | --------------------------------- | ------------------------------------------ |
+| `LLM_PROVIDER`        | `ollama`                          | Active provider (`ollama` or `openrouter`) |
+| `OLLAMA_BASE_URL`     | `http://localhost:11434`          | Ollama API endpoint                        |
+| `OLLAMA_MODEL`        | `gemma3:latest`                   | Ollama chat model                          |
+| `OPENROUTER_API_KEY`  | —                                 | OpenRouter API key                         |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1`    | OpenRouter API endpoint                    |
+| `OPENROUTER_MODEL`    | `google/gemini-2.5-flash-preview` | OpenRouter chat model                      |
+| `PORT`                | `8000`                            | Backend server port                        |
 
 ## Architecture
 
 ### Core Engine Modules
 
 #### `src/orchestrator`
+
 The central nervous system of AGEM. Coordinates sub-systems and manages the high-level request lifecycle.
+
 - **ComposeRootModule**: Entry point for assembling the AGEM orchestrator.
 - **ObstructionHandler**: Manages system state transitions and triggers curative agents.
 - **VdWAgentSpawner**: Handles agent creation during system obstructions.
 
 #### `src/sheaf`
+
 Implements the topological backbone of the system.
+
 - **CellularSheaf**: Tracks agent stalks and their relations.
 - **CohomologyAnalyzer**: Computes H^0 (consensus) and H^1 (obstructions).
 
 #### `src/tna`
+
 Text Network Analysis pipeline for semantic understanding.
+
 - **GapDetector**: Identifies structural holes in the semantic network.
 - **LouvainDetector**: Partitions the semantic graph into communities.
 - **CentralityAnalyzer**: Identifies bridge nodes and hubs.
 
 #### `src/soc`
+
 Tracks Self-Organized Criticality metrics to maintain system stability.
+
 - **SOCTracker**: Computes Divergence, Entropy, and Efficiency metrics.
 
 #### `src/lcm`
+
 Lifecycle Context Model for persistent memory.
+
 - **LCMClient**: Handles context appends and similarity search.
 
 ### Interface & CLI
@@ -164,12 +176,12 @@ The interface wraps the AGEM engine with a chat-like experience:
 
 ## Available Scripts
 
-| Command | Description |
-|---|---|
-| `npm run build` | Compiles the TypeScript project (core engine). |
-| `npm test` | Runs the full Vitest suite. |
-| `npm run test:watch` | Runs Vitest in watch mode. |
-| `npm run typecheck` | Runs the TypeScript compiler in no-emit mode. |
+| Command              | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `npm run build`      | Compiles the TypeScript project (core engine). |
+| `npm test`           | Runs the full Vitest suite.                    |
+| `npm run test:watch` | Runs Vitest in watch mode.                     |
+| `npm run typecheck`  | Runs the TypeScript compiler in no-emit mode.  |
 
 ## License
 

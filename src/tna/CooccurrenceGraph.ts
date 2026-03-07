@@ -20,16 +20,18 @@
  */
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import GraphologyLib from 'graphology';
-import type { AbstractGraph } from 'graphology-types';
-import { Preprocessor } from './Preprocessor.js';
-import type { TextNode, TextNodeId, TNAConfig } from './interfaces.js';
+import GraphologyLib from "graphology";
+import type { AbstractGraph } from "graphology-types";
+import { Preprocessor } from "./Preprocessor.js";
+import type { TextNode, TextNodeId, TNAConfig } from "./interfaces.js";
 
 // Graphology TypeScript pattern for NodeNext ESM:
 // Use the default import as a VALUE (constructor), AbstractGraph as the TYPE.
 // The "Cannot use namespace as a type" error occurs when the same identifier
 // is used as both constructor and type annotation in strict NodeNext mode.
-const GraphConstructor = GraphologyLib as unknown as new (options?: Record<string, unknown>) => AbstractGraph;
+const GraphConstructor = GraphologyLib as unknown as new (
+  options?: Record<string, unknown>,
+) => AbstractGraph;
 type GraphInstance = AbstractGraph;
 
 // ---------------------------------------------------------------------------
@@ -72,24 +74,27 @@ export class CooccurrenceGraph {
    * Tracks: canonical lemma, all surface forms observed, TF-IDF weight,
    * community assignment, centrality score, and Phase 6 layout position.
    */
-  readonly #nodeMetadata: Map<string, {
-    id: TextNodeId;
-    lemma: string;
-    surfaceForms: Set<string>;
-    tfidfWeight: number;
-    communityId?: number;
-    betweennessCentrality?: number;
-    // Phase 6: Layout position (set by LayoutComputer after ForceAtlas2 simulation)
-    x?: number;
-    y?: number;
-  }> = new Map();
+  readonly #nodeMetadata: Map<
+    string,
+    {
+      id: TextNodeId;
+      lemma: string;
+      surfaceForms: Set<string>;
+      tfidfWeight: number;
+      communityId?: number;
+      betweennessCentrality?: number;
+      // Phase 6: Layout position (set by LayoutComputer after ForceAtlas2 simulation)
+      x?: number;
+      y?: number;
+    }
+  > = new Map();
 
   #currentIteration: number = 0;
 
   constructor(preprocessor: Preprocessor, config?: TNAConfig) {
     this.#preprocessor = preprocessor;
     this.#windowSize = config?.windowSize ?? DEFAULT_WINDOW_SIZE;
-    this.#graph = new GraphConstructor({ type: 'undirected', multi: false });
+    this.#graph = new GraphConstructor({ type: "undirected", multi: false });
   }
 
   // --------------------------------------------------------------------------
@@ -117,7 +122,11 @@ export class CooccurrenceGraph {
     // result.surfaceToLemma contains the mapping for all non-stopword tokens.
     const surfaceToLemma = result.surfaceToLemma;
 
-    this.#insertTokensWithSurfaces(result.tokens, result.tfidfScores, surfaceToLemma);
+    this.#insertTokensWithSurfaces(
+      result.tokens,
+      result.tfidfScores,
+      surfaceToLemma,
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -168,7 +177,7 @@ export class CooccurrenceGraph {
   #insertTokensWithSurfaces(
     tokens: readonly string[],
     tfidfScores: ReadonlyMap<string, number>,
-    surfaceToLemma: ReadonlyMap<string, string>
+    surfaceToLemma: ReadonlyMap<string, string>,
   ): void {
     if (tokens.length === 0) return;
 
@@ -222,13 +231,21 @@ export class CooccurrenceGraph {
         if (this.#graph.hasEdge(tokenI, tokenJ)) {
           // Accumulate weight on existing edge.
           const existingEdge = this.#graph.edge(tokenI, tokenJ)!;
-          const existingWeight = this.#graph.getEdgeAttribute(existingEdge, 'weight') as number;
-          this.#graph.setEdgeAttribute(existingEdge, 'weight', existingWeight + weight);
+          const existingWeight = this.#graph.getEdgeAttribute(
+            existingEdge,
+            "weight",
+          ) as number;
+          this.#graph.setEdgeAttribute(
+            existingEdge,
+            "weight",
+            existingWeight + weight,
+          );
         } else {
           // Create new edge with weight and iteration tracking.
           // Build a consistent edge key: always use lexicographic order to avoid
           // duplicate key conflicts (graphology undirected: a:b = b:a logically).
-          const [n1, n2] = tokenI < tokenJ ? [tokenI, tokenJ] : [tokenJ, tokenI];
+          const [n1, n2] =
+            tokenI < tokenJ ? [tokenI, tokenJ] : [tokenJ, tokenI];
           const edgeKey = `${n1}:${n2}`;
           try {
             this.#graph.addEdgeWithKey(edgeKey, tokenI, tokenJ, {
@@ -239,8 +256,15 @@ export class CooccurrenceGraph {
             // Edge already exists under a different key direction — accumulate weight.
             const existingEdge = this.#graph.edge(tokenI, tokenJ);
             if (existingEdge) {
-              const existingWeight = this.#graph.getEdgeAttribute(existingEdge, 'weight') as number;
-              this.#graph.setEdgeAttribute(existingEdge, 'weight', existingWeight + weight);
+              const existingWeight = this.#graph.getEdgeAttribute(
+                existingEdge,
+                "weight",
+              ) as number;
+              this.#graph.setEdgeAttribute(
+                existingEdge,
+                "weight",
+                existingWeight + weight,
+              );
             }
           }
         }
@@ -288,7 +312,7 @@ export class CooccurrenceGraph {
    * getNodes — returns all TextNodes in the graph.
    */
   getNodes(): ReadonlyArray<TextNode> {
-    return Array.from(this.#nodeMetadata.values()).map(meta => ({
+    return Array.from(this.#nodeMetadata.values()).map((meta) => ({
       id: meta.id,
       lemma: meta.lemma,
       surfaceForms: Array.from(meta.surfaceForms),
@@ -310,7 +334,7 @@ export class CooccurrenceGraph {
   getEdgeWeight(source: string, target: string): number {
     if (!this.#graph.hasEdge(source, target)) return 0;
     const edge = this.#graph.edge(source, target)!;
-    return (this.#graph.getEdgeAttribute(edge, 'weight') as number) ?? 0;
+    return (this.#graph.getEdgeAttribute(edge, "weight") as number) ?? 0;
   }
 
   // --------------------------------------------------------------------------

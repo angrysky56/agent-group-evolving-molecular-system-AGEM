@@ -14,17 +14,22 @@ When asked to discuss, architect, or run the AGEM engine, you must apply the fol
 ## Core Concepts
 
 ### 1. Vehicle Node Execution (VNE)
+
 Agents in AGEM are not isolated; they are "vehicles" that move along a conceptual surface. Each agent represents a node in a cooccurrence graph. The VNE system manages how agents gather context, process prompts, and output reasoning paths (molecular Chain-of-Thought).
 
 ### 2. Sheaf Consensus
+
 Instead of simple voting, AGEM uses **Sheaf Theory** (borrowed from algebraic topology) to measure agreement.
+
 - A **Sheaf** assigns data (beliefs/thoughts) to open sets (communities of agents).
 - **H⁰ dimension** counts connected components (independent agreement clusters).
 - **H¹ dimension** measures obstructions — global inconsistencies that cannot be resolved locally.
 - Lower H¹ = higher consensus. An H¹ obstruction triggers agent spawning via the VdW spawner.
 
 ### 3. Topological Nerve Architecture (TNA)
+
 TNA analyses the structure of the agent network.
+
 - It builds a cooccurrence graph from reasoning tokens, weighted by TF-IDF.
 - **Louvain community detection** identifies clusters.
 - **Betweenness centrality** identifies bridge nodes.
@@ -32,10 +37,13 @@ TNA analyses the structure of the agent network.
 - The **CatalystQuestionGenerator** creates bridging questions designed to close those gaps.
 
 ### 4. Local Consensus Module (LCM)
+
 The LCM stores context in an **ImmutableStore** with token-counted entries. It supports semantic search via **LCMGrep** (cosine similarity over embeddings). When TNA detects a gap or sheaf energy remains high, the LCM triggers focused sub-routines.
 
 ### 5. Self-Organised Criticality (SOC)
+
 The **SOCTracker** monitors metrics at each iteration:
+
 - **Von Neumann Entropy (VNE)**: Graph complexity from the Laplacian spectrum.
 - **Embedding Entropy (EE)**: Diversity of agent embeddings.
 - **Criticality Divergence Parameter (CDP)**: Deviation from critical state.
@@ -49,23 +57,23 @@ As an AI assistant connected to the AGEM interface, you have access to **10 nati
 
 ### State & Execution
 
-| Tool | Description |
-|---|---|
-| `get_agem_state` | Current engine state: iteration, graph size, sheaf H¹, gap count, communities. |
-| `run_agem_cycle` | Execute one full reasoning pipeline iteration. Returns post-cycle state + artifacts. |
-| `reset_agem_engine` | Shut down and re-instantiate a clean engine. Clears all data. |
-| `spawn_agem_agent` | Request a new agent with a given persona. *(Currently auto-triggered by H¹ obstructions.)* |
+| Tool                | Description                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| `get_agem_state`    | Current engine state: iteration, graph size, sheaf H¹, gap count, communities.             |
+| `run_agem_cycle`    | Execute one full reasoning pipeline iteration. Returns post-cycle state + artifacts.       |
+| `reset_agem_engine` | Shut down and re-instantiate a clean engine. Clears all data.                              |
+| `spawn_agem_agent`  | Request a new agent with a given persona. _(Currently auto-triggered by H¹ obstructions.)_ |
 
 ### Introspection
 
-| Tool | Description |
-|---|---|
-| `get_cohomology` | Sheaf cohomology analysis: H⁰ dimension, H¹ dimension, obstruction status, coboundary rank. |
-| `get_graph_topology` | Full TNA graph: all nodes (labels, communities, sizes) and edges (weights). |
-| `get_soc_metrics` | SOC metrics: latest, regime classification, trend (mean + slope), history length. |
-| `detect_gaps` | Structural gaps between communities: density, shortest path, modularity delta, bridge nodes. |
+| Tool                          | Description                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `get_cohomology`              | Sheaf cohomology analysis: H⁰ dimension, H¹ dimension, obstruction status, coboundary rank.   |
+| `get_graph_topology`          | Full TNA graph: all nodes (labels, communities, sizes) and edges (weights).                   |
+| `get_soc_metrics`             | SOC metrics: latest, regime classification, trend (mean + slope), history length.             |
+| `detect_gaps`                 | Structural gaps between communities: density, shortest path, modularity delta, bridge nodes.  |
 | `generate_catalyst_questions` | Bridging questions to close gaps. Optional `gap_id` filter (format: `communityA_communityB`). |
-| `search_context` | Semantic search across the LCM context store. Requires `query`, optional `max_results`. |
+| `search_context`              | Semantic search across the LCM context store. Requires `query`, optional `max_results`.       |
 
 ## Diagnostic Workflow
 

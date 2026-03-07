@@ -52,14 +52,14 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 ### Requirements in This Phase
 
-| ID | Description |
-|----|-------------|
-| SHEAF-01 | Define cellular sheaf over typed agent communication graph |
-| SHEAF-02 | Implement vertex and edge stalk space definitions (inner product spaces) |
+| ID       | Description                                                                  |
+| -------- | ---------------------------------------------------------------------------- |
+| SHEAF-01 | Define cellular sheaf over typed agent communication graph                   |
+| SHEAF-02 | Implement vertex and edge stalk space definitions (inner product spaces)     |
 | SHEAF-03 | Implement restriction (consistency) maps for state projection between agents |
-| SHEAF-04 | Implement Sheaf Laplacian operator via coboundary computation |
-| SHEAF-05 | Implement ADMM distributed solver for consensus diffusion |
-| SHEAF-06 | Implement Sheaf Cohomology H^1 analyzer for obstruction detection |
+| SHEAF-04 | Implement Sheaf Laplacian operator via coboundary computation                |
+| SHEAF-05 | Implement ADMM distributed solver for consensus diffusion                    |
+| SHEAF-06 | Implement Sheaf Cohomology H^1 analyzer for obstruction detection            |
 
 ### Success Criteria
 
@@ -85,13 +85,13 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 ### Requirements in This Phase
 
-| ID | Description |
-|----|-------------|
-| LCM-01 | Implement append-only immutable store with time-sequenced entry IDs |
+| ID     | Description                                                                    |
+| ------ | ------------------------------------------------------------------------------ |
+| LCM-01 | Implement append-only immutable store with time-sequenced entry IDs            |
 | LCM-02 | Implement Context DAG data structure with pointer-based SummaryNode references |
 | LCM-03 | Implement three-level escalation protocol (nuanced -> compressed -> truncated) |
-| LCM-04 | Implement lcm_grep primitive for queried context retrieval |
-| LCM-05 | Implement lcm_expand primitive for context unrolling from summary pointers |
+| LCM-04 | Implement lcm_grep primitive for queried context retrieval                     |
+| LCM-05 | Implement lcm_expand primitive for context unrolling from summary pointers     |
 
 ### Success Criteria
 
@@ -125,15 +125,15 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 ### Requirements in This Phase
 
-| ID | Description |
-|----|-------------|
-| TNA-01 | Implement TF-IDF + lemmatization preprocessing for semantic entity extraction |
-| TNA-02 | Implement 4-gram sliding window for weighted co-occurrence graph construction |
-| TNA-03 | Implement Louvain community detection with deterministic seeding |
-| TNA-04 | Implement betweenness centrality computation for bridging node identification |
-| TNA-05 | Implement structural gap detection (low-density inter-community regions) |
-| TNA-06 | Implement topological metrics for gap characterization (distance, modularity delta) |
-| ORCH-03 | Implement Molecular-CoT bond type classification (covalent/hydrogen/Van der Waals) |
+| ID      | Description                                                                         |
+| ------- | ----------------------------------------------------------------------------------- |
+| TNA-01  | Implement TF-IDF + lemmatization preprocessing for semantic entity extraction       |
+| TNA-02  | Implement 4-gram sliding window for weighted co-occurrence graph construction       |
+| TNA-03  | Implement Louvain community detection with deterministic seeding                    |
+| TNA-04  | Implement betweenness centrality computation for bridging node identification       |
+| TNA-05  | Implement structural gap detection (low-density inter-community regions)            |
+| TNA-06  | Implement topological metrics for gap characterization (distance, modularity delta) |
+| ORCH-03 | Implement Molecular-CoT bond type classification (covalent/hydrogen/Van der Waals)  |
 
 ### Success Criteria
 
@@ -167,12 +167,12 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 ### Requirements in This Phase
 
-| ID | Description |
-|----|-------------|
-| SOC-01 | Implement Von Neumann entropy from normalized Laplacian density matrix |
-| SOC-02 | Implement embedding entropy from semantic embedding covariance eigenspectrum |
-| SOC-03 | Implement Critical Discovery Parameter (CDP) computation and tracking |
-| SOC-04 | Implement surprising edge ratio calculation (cross-domain connection tracking) |
+| ID     | Description                                                                       |
+| ------ | --------------------------------------------------------------------------------- |
+| SOC-01 | Implement Von Neumann entropy from normalized Laplacian density matrix            |
+| SOC-02 | Implement embedding entropy from semantic embedding covariance eigenspectrum      |
+| SOC-03 | Implement Critical Discovery Parameter (CDP) computation and tracking             |
+| SOC-04 | Implement surprising edge ratio calculation (cross-domain connection tracking)    |
 | SOC-05 | Implement structural-semantic correlation analysis for phase transition detection |
 
 ### Success Criteria
@@ -206,13 +206,13 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 ### Requirements in This Phase
 
-| ID | Description | Status |
-|----|-------------|--------|
-| ORCH-01 | Implement agent pool with lifecycle management (spawn, heartbeat, cleanup) | DONE (Plan 01) |
-| ORCH-02 | Implement llm_map primitive for parallel task dispatch with context preservation | DONE (Plan 02) |
-| ORCH-03 | Implement Molecular-CoT bond type classification | DONE (Phase 3, Plan 01) |
-| ORCH-04 | Implement event-driven coordination bus for async component messaging | DONE (Plan 01) |
-| ORCH-05 | Implement single composition root (Orchestrator) importing all four modules | DONE (Plan 03) |
+| ID      | Description                                                                      | Status                  |
+| ------- | -------------------------------------------------------------------------------- | ----------------------- |
+| ORCH-01 | Implement agent pool with lifecycle management (spawn, heartbeat, cleanup)       | DONE (Plan 01)          |
+| ORCH-02 | Implement llm_map primitive for parallel task dispatch with context preservation | DONE (Plan 02)          |
+| ORCH-03 | Implement Molecular-CoT bond type classification                                 | DONE (Phase 3, Plan 01) |
+| ORCH-04 | Implement event-driven coordination bus for async component messaging            | DONE (Plan 01)          |
+| ORCH-05 | Implement single composition root (Orchestrator) importing all four modules      | DONE (Plan 03)          |
 
 ### Success Criteria — All Satisfied
 
@@ -237,11 +237,13 @@ This is not a standalone phase with a timeline; types are defined as the first t
 **Rationale:** P2 features are added only after the core mathematical properties are verified end-to-end in Phase 5. Each P2 feature has an explicit trigger condition. No P2 feature should be started while any Phase 1-5 success criterion is failing.
 
 **Trigger conditions for starting Phase 6:**
+
 - All Phase 5 success criteria passing in CI
 - CDP tracking is stable over 400+ iterations of the integration test runner
 - ADMM solver specification is confirmed compatible with restriction map interfaces defined in Phase 1
 
 **Planned enhancements (from v2 requirements):**
+
 - SOC-06: Dynamic phase transition detector (cross-correlation sign change, replacing the Phase 5 approximation)
 - SOC-07: Regime validation and stability metrics
 - ORCH-06: Obstruction-driven topology reconfiguration (H1 signal -> Van der Waals agent spawn, fully automated)
@@ -257,59 +259,59 @@ This is not a standalone phase with a timeline; types are defined as the first t
 
 All 25 v1 requirements are mapped to exactly one phase:
 
-| Requirement | Phase | Component |
-|-------------|-------|-----------|
-| SHEAF-01 | Phase 1 | Sheaf |
-| SHEAF-02 | Phase 1 | Sheaf |
-| SHEAF-03 | Phase 1 | Sheaf |
-| SHEAF-04 | Phase 1 | Sheaf |
-| SHEAF-05 | Phase 1 | Sheaf |
-| SHEAF-06 | Phase 1 | Sheaf |
-| LCM-01 | Phase 2 | LCM |
-| LCM-02 | Phase 2 | LCM |
-| LCM-03 | Phase 2 | LCM |
-| LCM-04 | Phase 2 | LCM |
-| LCM-05 | Phase 2 | LCM |
-| TNA-01 | Phase 3 | TNA |
-| TNA-02 | Phase 3 | TNA |
-| TNA-03 | Phase 3 | TNA |
-| TNA-04 | Phase 3 | TNA |
-| TNA-05 | Phase 3 | TNA |
-| TNA-06 | Phase 3 | TNA |
-| ORCH-03 | Phase 3 | Molecular-CoT types |
-| SOC-01 | Phase 4 | SOC |
-| SOC-02 | Phase 4 | SOC |
-| SOC-03 | Phase 4 | SOC |
-| SOC-04 | Phase 4 | SOC |
-| SOC-05 | Phase 4 | SOC |
-| ORCH-01 | Phase 5 | Orchestrator |
-| ORCH-02 | Phase 5 | Orchestrator |
-| ORCH-04 | Phase 5 | Orchestrator |
-| ORCH-05 | Phase 5 | Orchestrator |
+| Requirement | Phase   | Component           |
+| ----------- | ------- | ------------------- |
+| SHEAF-01    | Phase 1 | Sheaf               |
+| SHEAF-02    | Phase 1 | Sheaf               |
+| SHEAF-03    | Phase 1 | Sheaf               |
+| SHEAF-04    | Phase 1 | Sheaf               |
+| SHEAF-05    | Phase 1 | Sheaf               |
+| SHEAF-06    | Phase 1 | Sheaf               |
+| LCM-01      | Phase 2 | LCM                 |
+| LCM-02      | Phase 2 | LCM                 |
+| LCM-03      | Phase 2 | LCM                 |
+| LCM-04      | Phase 2 | LCM                 |
+| LCM-05      | Phase 2 | LCM                 |
+| TNA-01      | Phase 3 | TNA                 |
+| TNA-02      | Phase 3 | TNA                 |
+| TNA-03      | Phase 3 | TNA                 |
+| TNA-04      | Phase 3 | TNA                 |
+| TNA-05      | Phase 3 | TNA                 |
+| TNA-06      | Phase 3 | TNA                 |
+| ORCH-03     | Phase 3 | Molecular-CoT types |
+| SOC-01      | Phase 4 | SOC                 |
+| SOC-02      | Phase 4 | SOC                 |
+| SOC-03      | Phase 4 | SOC                 |
+| SOC-04      | Phase 4 | SOC                 |
+| SOC-05      | Phase 4 | SOC                 |
+| ORCH-01     | Phase 5 | Orchestrator        |
+| ORCH-02     | Phase 5 | Orchestrator        |
+| ORCH-04     | Phase 5 | Orchestrator        |
+| ORCH-05     | Phase 5 | Orchestrator        |
 
 **Total:** 27 rows above, but ORCH-03 is the 25th unique v1 requirement and there are exactly 25 v1 requirements. Count by group: SHEAF (6) + LCM (5) + TNA (6) + ORCH-03 (1) + SOC (5) + ORCH (4 in Phase 5) = 27 rows / 25 unique requirements. Confirmed: all 25 mapped, none duplicated, none omitted.
 
-*(Note: The coverage table shows 27 rows because ORCH-03 appears in Phase 3 and the remaining 4 ORCH requirements appear in Phase 5, totaling 25 unique requirements across 6 phases.)*
+_(Note: The coverage table shows 27 rows because ORCH-03 appears in Phase 3 and the remaining 4 ORCH requirements appear in Phase 5, totaling 25 unique requirements across 6 phases.)_
 
 ---
 
 ## Key Risks and Mitigations
 
-| Risk | Phase | Mitigation |
-|------|-------|-----------|
+| Risk                                                   | Phase   | Mitigation                                                                          |
+| ------------------------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
 | Sheaf Laplacian confused with standard graph Laplacian | Phase 1 | Unit test: `L_sheaf * x = 0` for consistent section; substituting `D - A` breaks it |
-| Flat sheaf shipped as reference (H^1 always zero) | Phase 1 | Two test configs mandatory: flat (trivial H^1) and non-flat (H^1 > 0) |
-| LCM store mutated between tests | Phase 2 | `readonly` + `Object.freeze()` + no `update`/`delete` methods; hash integrity check |
-| Escalation L3 missing (infinite loop risk) | Phase 2 | L3 code path mandatory; test activates it with verbose input; no LLM call in L3 |
-| Lemmatization missing from graph (costly rebuild) | Phase 3 | Lemmatization enforced before first graph insertion; morphological-variant test |
-| Bond types as metadata (no behavioral constraints) | Phase 3 | Interfaces with enforced invariants defined in type system before reasoning loop |
-| Von Neumann entropy from wrong matrix | Phase 4 | Cross-validate `S(K_n) = ln(n)` using normalized Laplacian density matrix |
-| Embedding entropy confused with Shannon entropy | Phase 4 | Edge case tests: identical embeddings -> ~0, d orthogonal -> ~ln(d) |
-| Phase transition hard-coded to iteration 400 | Phase 4 | Dynamic rolling cross-correlation; no literal `400` in source |
-| Surprising edge ratio computed cumulatively | Phase 4 | Per-iteration computation; test with all-intra edges -> ratio = 0 that iteration |
+| Flat sheaf shipped as reference (H^1 always zero)      | Phase 1 | Two test configs mandatory: flat (trivial H^1) and non-flat (H^1 > 0)               |
+| LCM store mutated between tests                        | Phase 2 | `readonly` + `Object.freeze()` + no `update`/`delete` methods; hash integrity check |
+| Escalation L3 missing (infinite loop risk)             | Phase 2 | L3 code path mandatory; test activates it with verbose input; no LLM call in L3     |
+| Lemmatization missing from graph (costly rebuild)      | Phase 3 | Lemmatization enforced before first graph insertion; morphological-variant test     |
+| Bond types as metadata (no behavioral constraints)     | Phase 3 | Interfaces with enforced invariants defined in type system before reasoning loop    |
+| Von Neumann entropy from wrong matrix                  | Phase 4 | Cross-validate `S(K_n) = ln(n)` using normalized Laplacian density matrix           |
+| Embedding entropy confused with Shannon entropy        | Phase 4 | Edge case tests: identical embeddings -> ~0, d orthogonal -> ~ln(d)                 |
+| Phase transition hard-coded to iteration 400           | Phase 4 | Dynamic rolling cross-correlation; no literal `400` in source                       |
+| Surprising edge ratio computed cumulatively            | Phase 4 | Per-iteration computation; test with all-intra edges -> ratio = 0 that iteration    |
 
 ---
 
-*Roadmap created: 2026-02-27*
-*Requirements version: v1 (25 requirements)*
-*Last updated: 2026-02-28 — Phase 4 plans added*
+_Roadmap created: 2026-02-27_
+_Requirements version: v1 (25 requirements)_
+_Last updated: 2026-02-28 — Phase 4 plans added_

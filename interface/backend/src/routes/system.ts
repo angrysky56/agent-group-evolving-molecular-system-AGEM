@@ -39,11 +39,12 @@ systemRouter.get("/models", async (req, res) => {
 
   try {
     const provider = createProvider(
-      (providerParam as LLMProviderType) || undefined
+      (providerParam as LLMProviderType) || undefined,
     );
 
-    const models = await (provider as { listModels: (apiKey?: string) => Promise<unknown[]> })
-      .listModels(apiKey);
+    const models = await (
+      provider as { listModels: (apiKey?: string) => Promise<unknown[]> }
+    ).listModels(apiKey);
     res.json(models);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";

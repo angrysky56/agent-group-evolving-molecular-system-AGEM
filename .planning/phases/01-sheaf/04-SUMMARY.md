@@ -2,18 +2,27 @@
 phase: 01-sheaf
 plan: 04
 subsystem: sheaf
-tags: [cohomology, svd, ml-matrix, event-emitter, tolerance-calibration, isolation, barrel-export]
+tags:
+  [
+    cohomology,
+    svd,
+    ml-matrix,
+    event-emitter,
+    tolerance-calibration,
+    isolation,
+    barrel-export,
+  ]
 
 # Dependency graph
 requires:
-  - 01-sheaf/02-PLAN.md  # Wave 1: CellularSheaf, types, test helpers
-  - 01-sheaf/03-PLAN.md  # Wave 2: coboundary operator B, Sheaf Laplacian, ADMM stub
+  - 01-sheaf/02-PLAN.md # Wave 1: CellularSheaf, types, test helpers
+  - 01-sheaf/03-PLAN.md # Wave 2: coboundary operator B, Sheaf Laplacian, ADMM stub
 provides:
-  - src/sheaf/CohomologyAnalyzer.ts    # SVD-based H^0/H^1 computation + EventEmitter
-  - src/sheaf/index.ts                  # Public barrel export for sheaf module
-  - src/sheaf/CohomologyAnalyzer.test.ts  # T7, T7b, T7c, T7d, T8, T8b, T8c
-  - src/sheaf/NumericalTolerance.test.ts  # Tolerance calibration and sensitivity tests
-  - src/sheaf/isolation.test.ts           # T9: zero cross-module imports
+  - src/sheaf/CohomologyAnalyzer.ts # SVD-based H^0/H^1 computation + EventEmitter
+  - src/sheaf/index.ts # Public barrel export for sheaf module
+  - src/sheaf/CohomologyAnalyzer.test.ts # T7, T7b, T7c, T7d, T8, T8b, T8c
+  - src/sheaf/NumericalTolerance.test.ts # Tolerance calibration and sensitivity tests
+  - src/sheaf/isolation.test.ts # T9: zero cross-module imports
   - Phase 1 complete: all 5 ROADMAP.md success criteria met
 affects:
   - Phase 4 (SOC): SheafEigenspectrum ready for Von Neumann entropy computation
@@ -33,11 +42,11 @@ tech-stack:
 
 key-files:
   created:
-    - src/sheaf/CohomologyAnalyzer.ts         # computeCohomology() + CohomologyAnalyzer class
-    - src/sheaf/index.ts                       # Public barrel export (full sheaf API)
-    - src/sheaf/CohomologyAnalyzer.test.ts    # T7, T7d dual gate, T8 event tests
-    - src/sheaf/NumericalTolerance.test.ts    # Tolerance calibration validation
-    - src/sheaf/isolation.test.ts             # T9 module isolation
+    - src/sheaf/CohomologyAnalyzer.ts # computeCohomology() + CohomologyAnalyzer class
+    - src/sheaf/index.ts # Public barrel export (full sheaf API)
+    - src/sheaf/CohomologyAnalyzer.test.ts # T7, T7d dual gate, T8 event tests
+    - src/sheaf/NumericalTolerance.test.ts # Tolerance calibration validation
+    - src/sheaf/isolation.test.ts # T9 module isolation
   modified: []
 
 key-decisions:
@@ -123,15 +132,15 @@ files_modified: 0
 
 ## Phase 1 Success Criteria — Final Verification
 
-| Criterion | Test(s) | Result |
-|-----------|---------|--------|
-| SC1: Laplacian correctness (L_sheaf * x = 0 for consistent sections) | T5.1, T5.2, T5.3, T5.4 | PASS |
-| SC2: Non-trivial H^1 detection (h1=1, event fires) | T7, T8 | PASS |
-| SC3: Flat vs. non-flat dual configurations (same run) | T7d-flat, T7d-nontrivial | PASS |
-| SC4: Numerical tolerance calibration (MATLAB formula, documented) | NumericalTolerance.test.ts (10 tests) | PASS |
-| SC5: Component isolation (zero cross-module imports) | T9 | PASS |
-| SC6 (extended): ADMM forward-compat (all 6 methods public) | T10 (10 tests) | PASS |
-| SC7 (extended): Eigenspectrum (Float64Array, length N_0, sorted ascending, all >= -1e-12) | T6b (7 tests) | PASS |
+| Criterion                                                                                 | Test(s)                               | Result |
+| ----------------------------------------------------------------------------------------- | ------------------------------------- | ------ |
+| SC1: Laplacian correctness (L_sheaf \* x = 0 for consistent sections)                     | T5.1, T5.2, T5.3, T5.4                | PASS   |
+| SC2: Non-trivial H^1 detection (h1=1, event fires)                                        | T7, T8                                | PASS   |
+| SC3: Flat vs. non-flat dual configurations (same run)                                     | T7d-flat, T7d-nontrivial              | PASS   |
+| SC4: Numerical tolerance calibration (MATLAB formula, documented)                         | NumericalTolerance.test.ts (10 tests) | PASS   |
+| SC5: Component isolation (zero cross-module imports)                                      | T9                                    | PASS   |
+| SC6 (extended): ADMM forward-compat (all 6 methods public)                                | T10 (10 tests)                        | PASS   |
+| SC7 (extended): Eigenspectrum (Float64Array, length N_0, sorted ascending, all >= -1e-12) | T6b (7 tests)                         | PASS   |
 
 **Total tests:** 106 (79 from Waves 1-2 + 27 from Wave 3)
 **Test execution time:** < 1 second
@@ -144,6 +153,7 @@ None beyond the T7 mathematical correction documented above.
 ## Next Phase Readiness
 
 **Phase 1 is COMPLETE.** All gates are open:
+
 - Phase 2 (LCM Dual-Memory): UNBLOCKED — types/ has been stable since Wave 1.
 - Phase 3 (TNA + Molecular-CoT): UNBLOCKED — depends on types/ only.
 - Phase 4 (SOC): UNBLOCKED — SheafEigenspectrum (Float64Array, length N_0) ready for Von Neumann entropy.
@@ -152,5 +162,6 @@ None beyond the T7 mathematical correction documented above.
 The sheaf module's EventEmitter events are ready for Phase 5 subscription without any rewiring of sheaf internals.
 
 ---
-*Phase: 01-sheaf*
-*Completed: 2026-02-27*
+
+_Phase: 01-sheaf_
+_Completed: 2026-02-27_

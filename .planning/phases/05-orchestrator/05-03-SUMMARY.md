@@ -2,7 +2,16 @@
 phase: 05-orchestrator
 plan: 03
 subsystem: orchestrator
-tags: [orchestrator, composition-root, event-bus, agent-pool, gap-detector, state-machine, integration]
+tags:
+  [
+    orchestrator,
+    composition-root,
+    event-bus,
+    agent-pool,
+    gap-detector,
+    state-machine,
+    integration,
+  ]
 
 # Dependency graph
 requires:
@@ -144,6 +153,7 @@ New tests added in Plan 03: 62 tests
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] ImmutableStore constructor requires ITokenCounter argument**
+
 - **Found during:** Task 1 (ComposeRootModule constructor implementation)
 - **Issue:** Plan pseudocode showed `new ImmutableStore()` (0 args) but actual constructor signature is `ImmutableStore(tokenCounter: ITokenCounter)`
 - **Fix:** Added `const tokenCounter = new GptTokenCounter()` and passed it to constructor; imported `GptTokenCounter` from `'../lcm/index.js'`
@@ -152,6 +162,7 @@ New tests added in Plan 03: 62 tests
 - **Committed in:** `83c7006`
 
 **2. [Rule 1 - Bug] CellularSheaf constructor requires (vertices, edges) arguments**
+
 - **Found during:** Task 1 (ComposeRootModule constructor)
 - **Issue:** Plan pseudocode showed `new CellularSheaf()` (0 args) but constructor requires `(vertices: SheafVertex[], edges: SheafEdge[])`
 - **Fix:** Used `buildFlatSheaf(2, 1)` helper to create a 2-vertex path sheaf; imported `buildFlatSheaf` from sheaf index
@@ -160,6 +171,7 @@ New tests added in Plan 03: 62 tests
 - **Committed in:** `83c7006`
 
 **3. [Rule 1 - Bug] Preprocessor.process() → Preprocessor.preprocess()**
+
 - **Found during:** Task 1 (runReasoning() implementation)
 - **Issue:** Plan pseudocode used `this.tnaPreprocessor.process(prompt)` but the actual API is `preprocess(prompt: string): PreprocessResult`
 - **Fix:** Changed `.process()` to `.preprocess()`
@@ -168,6 +180,7 @@ New tests added in Plan 03: 62 tests
 - **Committed in:** `83c7006`
 
 **4. [Rule 1 - Bug] Isolation test regex failed on multiline TypeScript imports**
+
 - **Found during:** Task 3 (isolation.test.ts execution)
 - **Issue:** The original `(?:import|export)...` regex didn't extract import paths from multiline import blocks (e.g., TNA's `import {\n  Preprocessor,\n  ...\n} from '../tna/index.js'`)
 - **Fix:** Changed extraction to `\bfrom\s+['"]([^'"]+)['"]` regex which handles multiline imports; changed `importsFromModule()` to use segment-equality matching
@@ -182,23 +195,23 @@ New tests added in Plan 03: 62 tests
 
 ## Phase 5 Complete — All 5 ROADMAP Success Criteria Satisfied
 
-| Criteria | Requirement | Status |
-|----------|-------------|--------|
-| #1 | Single composition root (ComposeRootModule.ts) | SATISFIED |
-| #2 | llm_map context preservation (Wave 2, Plan 02) | SATISFIED |
-| #3 | Obstruction-driven reconfiguration (ObstructionHandler) | SATISFIED |
-| #4 | Three-mode state machine (OrchestratorStateManager) | SATISFIED |
-| #5 | End-to-end multi-iteration run (10-iteration loop test T6) | SATISFIED |
+| Criteria | Requirement                                                | Status    |
+| -------- | ---------------------------------------------------------- | --------- |
+| #1       | Single composition root (ComposeRootModule.ts)             | SATISFIED |
+| #2       | llm_map context preservation (Wave 2, Plan 02)             | SATISFIED |
+| #3       | Obstruction-driven reconfiguration (ObstructionHandler)    | SATISFIED |
+| #4       | Three-mode state machine (OrchestratorStateManager)        | SATISFIED |
+| #5       | End-to-end multi-iteration run (10-iteration loop test T6) | SATISFIED |
 
 ## All Five ORCH Requirements Satisfied
 
-| Requirement | Component | Plan | Status |
-|-------------|-----------|------|--------|
-| ORCH-01 | AgentPool with spawn/heartbeat/cleanup | 05-01 | DONE |
-| ORCH-02 | llm_map with order preservation | 05-02 | DONE |
-| ORCH-03 | OrchestratorState machine (NORMAL/OBSTRUCTED/CRITICAL) | 05-01 | DONE |
-| ORCH-04 | EventBus for async messaging | 05-01 | DONE |
-| ORCH-05 | Orchestrator composition root | 05-03 | DONE |
+| Requirement | Component                                              | Plan  | Status |
+| ----------- | ------------------------------------------------------ | ----- | ------ |
+| ORCH-01     | AgentPool with spawn/heartbeat/cleanup                 | 05-01 | DONE   |
+| ORCH-02     | llm_map with order preservation                        | 05-02 | DONE   |
+| ORCH-03     | OrchestratorState machine (NORMAL/OBSTRUCTED/CRITICAL) | 05-01 | DONE   |
+| ORCH-04     | EventBus for async messaging                           | 05-01 | DONE   |
+| ORCH-05     | Orchestrator composition root                          | 05-03 | DONE   |
 
 ## Issues Encountered
 
@@ -221,12 +234,14 @@ Phase 5 is COMPLETE. The AGEM system is ready for Phase 6 enhancements:
 **System is self-contained**: zero external npm dependencies beyond what was already installed. All tests deterministic.
 
 ---
-*Phase: 05-orchestrator*
-*Completed: 2026-03-01*
+
+_Phase: 05-orchestrator_
+_Completed: 2026-03-01_
 
 ## Self-Check: PASSED
 
 Files verified:
+
 - FOUND: src/orchestrator/ComposeRootModule.ts
 - FOUND: src/orchestrator/ObstructionHandler.ts
 - FOUND: src/orchestrator/ObstructionHandler.test.ts
@@ -235,6 +250,7 @@ Files verified:
 - FOUND: src/orchestrator/index.ts
 
 Commits verified:
+
 - FOUND: 83c7006 (Task 1: ComposeRootModule + ObstructionHandler)
 - FOUND: 9bcc35e (Task 2: ObstructionHandler tests)
 - FOUND: 8c4ee77 (Task 3: Integration tests, isolation test, barrel export)

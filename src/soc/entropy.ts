@@ -31,8 +31,8 @@
  *     - S = -(n-1) * (1/(n-1)) * ln(1/(n-1)) = ln(n-1)
  */
 
-import * as math from 'mathjs';
-import { Matrix as MlMatrix, EigenvalueDecomposition } from 'ml-matrix';
+import * as math from "mathjs";
+import { Matrix as MlMatrix, EigenvalueDecomposition } from "ml-matrix";
 
 // ---------------------------------------------------------------------------
 // Von Neumann Entropy (SOC-01)
@@ -67,7 +67,7 @@ import { Matrix as MlMatrix, EigenvalueDecomposition } from 'ml-matrix';
  */
 export function vonNeumannEntropy(
   nodeCount: number,
-  edges: ReadonlyArray<{ source: number; target: number; weight: number }>
+  edges: ReadonlyArray<{ source: number; target: number; weight: number }>,
 ): number {
   // Degenerate cases
   if (nodeCount <= 1 || edges.length === 0) return 0;
@@ -75,7 +75,10 @@ export function vonNeumannEntropy(
   const n = nodeCount;
 
   // Step b: Build adjacency matrix A (n x n) using 2D array
-  const A: number[][] = Array.from({ length: n }, () => new Array(n).fill(0) as number[]);
+  const A: number[][] = Array.from(
+    { length: n },
+    () => new Array(n).fill(0) as number[],
+  );
   for (const edge of edges) {
     const { source, target, weight } = edge;
     if (source < 0 || source >= n || target < 0 || target >= n) continue;
@@ -100,9 +103,10 @@ export function vonNeumannEntropy(
   const L_norm: number[][] = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (__, j) => {
       const identity = i === j ? 1 : 0;
-      const normalized = (D_inv_sqrt[i] ?? 0) * (A[i]![j] ?? 0) * (D_inv_sqrt[j] ?? 0);
+      const normalized =
+        (D_inv_sqrt[i] ?? 0) * (A[i]![j] ?? 0) * (D_inv_sqrt[j] ?? 0);
       return identity - normalized;
-    })
+    }),
   );
 
   // Step f: trace(L_norm) = Σ L_norm[i][i]
@@ -140,7 +144,7 @@ export function vonNeumannEntropy(
   // Clamp small negatives to zero (numerical artifact of floating-point arithmetic).
   let entropy = 0;
   for (const rawLambda of eigenvalues) {
-    const lambda = typeof rawLambda === 'number' ? rawLambda : 0;
+    const lambda = typeof rawLambda === "number" ? rawLambda : 0;
     const p = Math.max(0, lambda);
     if (p > 1e-12) {
       entropy -= p * Math.log(p);

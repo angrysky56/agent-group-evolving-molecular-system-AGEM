@@ -28,8 +28,8 @@
  *   - B[eRow : eRow+eDim, tgtCol : tgtCol+tgtDim] = +F_{v<-e}
  */
 
-import * as math from 'mathjs';
-import { CellularSheaf } from './CellularSheaf.js';
+import * as math from "mathjs";
+import { CellularSheaf } from "./CellularSheaf.js";
 
 /**
  * buildCoboundaryMatrix — assemble the coboundary operator B from a CellularSheaf.

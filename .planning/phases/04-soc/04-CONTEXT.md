@@ -7,6 +7,7 @@
 ## Phase Boundary
 
 Compute five SOC metrics from mathematical component outputs:
+
 1. Von Neumann entropy from Sheaf eigenspectrum
 2. Embedding entropy from TNA semantic embeddings
 3. Critical Discovery Parameter (CDP) composite signal
@@ -21,6 +22,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 ## Implementation Decisions
 
 ### Von Neumann Entropy Formula (SOC-01)
+
 - **Approach:** Eigenvalue-based entropy on normalized Laplacian density matrix
 - **Formula:** `S = -Σ λ_i * ln(λ_i)` where:
   - Eigenvalues λ_i are from normalized Laplacian `L_norm = I - D^(-1/2) A D^(-1/2)`
@@ -30,6 +32,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 - **Note:** This is distinct from adjacency-matrix Shannon entropy; implementation must pass the K_n test to confirm correctness
 
 ### Embedding Entropy Formula (SOC-02)
+
 - **Approach:** Eigenvalue-based entropy on embedding covariance eigenspectrum
 - **Formula:** `S = -Σ λ_i * ln(λ_i)` where:
   - Covariance matrix is `Σ = (1/n) E^T E` for embedding matrix E (rows = nodes, cols = dimensions)
@@ -40,6 +43,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 - **Note:** This is not token-frequency Shannon entropy; implementation must distinguish semantic embedding entropy from token distribution entropy
 
 ### Surprising Edge Classification (SOC-04)
+
 - **Definition:** Edges connecting nodes that are far apart in both structural and semantic space
 - **Per-iteration tracking:** Edge set for each iteration contains only edges created at that iteration (tagged via `createdAtIteration` in TNA CooccurrenceGraph)
 - **Surprising edge criteria:**
@@ -51,6 +55,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 - **Calibration:** Target ~12% (per paper); threshold calibration can be adjusted empirically during Phase 4 research if actual corpus differs significantly
 
 ### Phase Transition Detection Window (SOC-05)
+
 - **Detection mechanism:** Rolling cross-correlation between structural entropy delta and semantic entropy delta
 - **Window size:** 10-iteration rolling window (fixed, not adaptive yet; configurable parameter for research)
 - **Correlation computation:** Pearson correlation coefficient between `ΔS_structural[i:i+10]` and `ΔS_semantic[i:i+10]`
@@ -59,6 +64,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 - **Note:** Window can be tuned empirically; smaller windows detect faster transitions, larger windows reduce noise
 
 ### Event Emission and Metric History (SOC-03)
+
 - **Emission frequency:** Per-iteration (every iteration emits a `soc:metrics` event)
 - **Event payload:** Single event containing all five metrics (Von Neumann entropy, embedding entropy, CDP, surprising edge ratio, phase transition detection state)
 - **History tracking:** SOC instance maintains full time series (array of metric objects per iteration), not rolling-window truncation
@@ -68,6 +74,7 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 - **History access:** Public method `getMetricsHistory()` returns full array; `getLatestMetrics()` returns last entry; `getMetricsTrend(window)` returns mean and slope
 
 ### Claude's Discretion
+
 - Exact similarity threshold for "surprising edge" semantic criterion (currently 0.3; can be tuned based on empirical results)
 - Window centering strategy for phase transition event (currently middle-aligned; alternative: end-aligned)
 - Trend analysis window size (currently 5 iterations; can be configurable)
@@ -96,5 +103,5 @@ SOC reads inputs from Sheaf (Phase 1) and TNA (Phase 3) and emits metric events.
 
 ---
 
-*Phase: 04-soc*
-*Context gathered: 2026-03-01*
+_Phase: 04-soc_
+_Context gathered: 2026-03-01_

@@ -24,23 +24,23 @@ export type {
   TNAConfig,
   PreprocessResult,
   DetailedPreprocessResult,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Classes
 // ---------------------------------------------------------------------------
 
-export { Preprocessor } from './Preprocessor.js';
-export { CooccurrenceGraph } from './CooccurrenceGraph.js';
-export { LouvainDetector } from './LouvainDetector.js';
-export { CentralityAnalyzer } from './CentralityAnalyzer.js';
-export { GapDetector } from './GapDetector.js';
+export { Preprocessor } from "./Preprocessor.js";
+export { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+export { LouvainDetector } from "./LouvainDetector.js";
+export { CentralityAnalyzer } from "./CentralityAnalyzer.js";
+export { GapDetector } from "./GapDetector.js";
 
 // Phase 6: Catalyst question generation (TNA-07)
-export { CatalystQuestionGenerator } from './CatalystQuestionGenerator.js';
+export { CatalystQuestionGenerator } from "./CatalystQuestionGenerator.js";
 
 // Phase 6: Layout computation (TNA-08)
-export { LayoutComputer } from './LayoutComputer.js';
+export { LayoutComputer } from "./LayoutComputer.js";
 
 // Phase 6: Extended types (TNA-07, TNA-08, TNA-09)
 export type {
@@ -53,4 +53,4 @@ export type {
   LayoutOutput,
   LayoutExportJSON,
   LayoutComputerConfig,
-} from './interfaces.js';
+} from "./interfaces.js";

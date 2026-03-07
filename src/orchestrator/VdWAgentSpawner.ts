@@ -19,9 +19,9 @@
  *   - No imports from sheaf/, lcm/, soc/ — regime info arrives via method call, not import.
  */
 
-import { EventBus } from './EventBus.js';
-import type { AnyEvent } from './interfaces.js';
-import type { GapMetrics } from '../tna/interfaces.js';
+import { EventBus } from "./EventBus.js";
+import type { AnyEvent } from "./interfaces.js";
+import type { GapMetrics } from "../tna/interfaces.js";
 
 // ---------------------------------------------------------------------------
 // VdWSpawnParams — parameters for spawning a single VdW agent
@@ -56,7 +56,7 @@ export class VdWAgent {
   readonly id: string;
   readonly params: VdWSpawnParams;
 
-  #status: 'spawning' | 'active' | 'terminated' = 'spawning';
+  #status: "spawning" | "active" | "terminated" = "spawning";
   #stepsExecuted: number = 0;
   #synthQueries: string[] = [];
   #entitiesAdded: string[] = [];
@@ -67,7 +67,7 @@ export class VdWAgent {
     this.params = params;
   }
 
-  get status(): 'spawning' | 'active' | 'terminated' {
+  get status(): "spawning" | "active" | "terminated" {
     return this.#status;
   }
 
@@ -77,7 +77,7 @@ export class VdWAgent {
 
   /** Activate the agent (transition from spawning → active). */
   activate(): void {
-    this.#status = 'active';
+    this.#status = "active";
   }
 
   /**
@@ -85,7 +85,7 @@ export class VdWAgent {
    * Returns true if agent should continue, false if done (self-terminated).
    */
   async executeStep(): Promise<boolean> {
-    if (this.#status !== 'active') return false;
+    if (this.#status !== "active") return false;
 
     this.#stepsExecuted++;
 
@@ -102,13 +102,13 @@ export class VdWAgent {
       this.#relationsAdded.push({
         from: entity,
         to: `community-${this.params.communityA}`,
-        type: 'vdw-bridge',
+        type: "vdw-bridge",
       });
     }
 
     // Self-terminate if maxIterations reached
     if (this.#stepsExecuted >= this.params.maxIterations) {
-      this.#status = 'terminated';
+      this.#status = "terminated";
       return false;
     }
 
@@ -117,7 +117,7 @@ export class VdWAgent {
 
   /** Force terminate the agent immediately. */
   terminate(): void {
-    this.#status = 'terminated';
+    this.#status = "terminated";
   }
 
   /** Get the results of this agent's exploration. */
@@ -197,7 +197,7 @@ export class VdWAgentSpawner {
   #h1AboveThresholdCount: number = 0;
 
   /** Current regime classification (updated by external caller via updateRegime()). */
-  #currentRegime: string = 'nascent';
+  #currentRegime: string = "nascent";
 
   /** Spawn cooldown: gapId -> last spawn iteration. */
   #gapSpawnHistory: Map<string, number> = new Map();
@@ -259,7 +259,7 @@ export class VdWAgentSpawner {
   async evaluateAndSpawn(
     gaps: ReadonlyArray<GapMetrics>,
     h1Dimension: number,
-    iteration: number
+    iteration: number,
   ): Promise<VdWAgent[]> {
     if (this.#shouldSuppressSpawn(gaps)) {
       return [];
@@ -271,7 +271,7 @@ export class VdWAgentSpawner {
 
     // Limit by nascent regime (max 1 agent total)
     const maxNewAgents =
-      regime === 'nascent'
+      regime === "nascent"
         ? 1
         : this.#config.maxConcurrentAgents - this.#agents.length;
 
@@ -299,7 +299,10 @@ export class VdWAgentSpawner {
       }
 
       // Spawn agentsPerGap agents for this gap (subject to overall cap)
-      const agentsForThisGap = Math.min(agentsPerGap, maxNewAgents - spawnedAgents.length);
+      const agentsForThisGap = Math.min(
+        agentsPerGap,
+        maxNewAgents - spawnedAgents.length,
+      );
 
       for (let i = 0; i < agentsForThisGap; i++) {
         const agentId = `vdw-agent-${++this.#agentCounter}`;
@@ -318,7 +321,13 @@ export class VdWAgentSpawner {
         this.#agents.push(agent);
         spawnedAgents.push(agent);
 
-        await this.#emitSpawnEvent(agentId, h1Dimension, gapId, tokenBudget, iteration);
+        await this.#emitSpawnEvent(
+          agentId,
+          h1Dimension,
+          gapId,
+          tokenBudget,
+          iteration,
+        );
       }
 
       // Record spawn for cooldown tracking (use the iteration of first agent for this gap)
@@ -342,7 +351,7 @@ export class VdWAgentSpawner {
    */
   async runAgents(): Promise<void> {
     // Process all currently active agents (snapshot the list to avoid mutation during iteration)
-    const agentsToRun = [...this.#agents.filter((a) => a.status === 'active')];
+    const agentsToRun = [...this.#agents.filter((a) => a.status === "active")];
 
     for (const agent of agentsToRun) {
       // Run agent to completion (bounded by maxIterations via self-termination)
@@ -371,13 +380,17 @@ export class VdWAgentSpawner {
    * getActiveAgentCount — returns number of currently active (not terminated) agents.
    */
   getActiveAgentCount(): number {
-    return this.#agents.filter((a) => a.status === 'active').length;
+    return this.#agents.filter((a) => a.status === "active").length;
   }
 
   /**
    * getH1HysteresisStatus — returns current H^1 hysteresis state for monitoring.
    */
-  getH1HysteresisStatus(): { count: number; threshold: number; sustained: boolean } {
+  getH1HysteresisStatus(): {
+    count: number;
+    threshold: number;
+    sustained: boolean;
+  } {
     return {
       count: this.#h1AboveThresholdCount,
       threshold: this.#config.h1HysteresisCount,
@@ -411,7 +424,7 @@ export class VdWAgentSpawner {
     }
 
     // 2. Check regime gating
-    if (this.#currentRegime === 'stable') {
+    if (this.#currentRegime === "stable") {
       return true;
     }
 
@@ -424,14 +437,14 @@ export class VdWAgentSpawner {
   }
 
   #computeTokenBudget(regime: string, h1Dimension: number): number {
-    if (regime === 'nascent') {
+    if (regime === "nascent") {
       return 500;
     }
     return Math.max(500, Math.floor(5000 / h1Dimension));
   }
 
   #determineAgentsPerGap(regime: string, h1Dimension: number): number {
-    return regime === 'critical' && h1Dimension >= 5 ? 2 : 1;
+    return regime === "critical" && h1Dimension >= 5 ? 2 : 1;
   }
 
   async #emitSpawnEvent(
@@ -439,10 +452,10 @@ export class VdWAgentSpawner {
     h1Dimension: number,
     gapId: string,
     tokenBudget: number,
-    iteration: number
+    iteration: number,
   ): Promise<void> {
     const spawnedEvent: AnyEvent = {
-      type: 'orch:vdw-agent-spawned',
+      type: "orch:vdw-agent-spawned",
       agentId,
       iteration,
       h1Dimension,
@@ -457,10 +470,10 @@ export class VdWAgentSpawner {
 
   async #emitCompleteEvent(
     agent: VdWAgent,
-    results: ReturnType<VdWAgent['getResults']>
+    results: ReturnType<VdWAgent["getResults"]>,
   ): Promise<void> {
     const completeEvent: AnyEvent = {
-      type: 'orch:vdw-agent-complete',
+      type: "orch:vdw-agent-complete",
       agentId: agent.id,
       iteration: agent.params.h1Dimension,
       synthQueries: results.synthQueries,

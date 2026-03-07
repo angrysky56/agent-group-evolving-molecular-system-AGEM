@@ -254,7 +254,11 @@ export interface MetricsTrend {
  *   - 'transitioning': Phase transition in progress. Correlation sign change detected and
  *                      being validated. Transient state lasting 1-3 iterations.
  */
-export type RegimeStability = 'nascent' | 'stable' | 'critical' | 'transitioning';
+export type RegimeStability =
+  | "nascent"
+  | "stable"
+  | "critical"
+  | "transitioning";
 
 /**
  * RegimeMetrics — full regime analysis output emitted every iteration.

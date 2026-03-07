@@ -2,7 +2,17 @@
 phase: 04-soc
 plan: 02
 subsystem: soc
-tags: [EventEmitter, pearson-correlation, phase-transition, surprising-edge-ratio, cdp, isolation, barrel-export, tdd]
+tags:
+  [
+    EventEmitter,
+    pearson-correlation,
+    phase-transition,
+    surprising-edge-ratio,
+    cdp,
+    isolation,
+    barrel-export,
+    tdd,
+  ]
 
 # Dependency graph
 requires:
@@ -143,22 +153,23 @@ Phase 5 (Orchestrator Integration) can proceed immediately:
 
 ## Self-Check: PASSED
 
-| Item | Status |
-|------|--------|
-| src/soc/correlation.ts | FOUND |
-| src/soc/SOCTracker.ts | FOUND |
-| src/soc/SOCTracker.test.ts | FOUND |
-| src/soc/isolation.test.ts | FOUND |
-| src/soc/index.ts | FOUND |
-| Commit e9aa564 (Task 1 RED: failing tests) | FOUND |
-| Commit 1c87455 (Task 1 GREEN: implementation) | FOUND |
-| Commit a844784 (Task 2: isolation + barrel) | FOUND |
-| npx tsc --noEmit | PASSED (0 errors) |
-| npx vitest run src/soc/ | PASSED (30/30 tests) |
-| Full suite: npx vitest run | PASSED (239/239 tests) |
-| No literal 400 in production code | PASSED (only in comment) |
-| Zero imports from lcm/orchestrator/tna/sheaf | PASSED |
+| Item                                          | Status                   |
+| --------------------------------------------- | ------------------------ |
+| src/soc/correlation.ts                        | FOUND                    |
+| src/soc/SOCTracker.ts                         | FOUND                    |
+| src/soc/SOCTracker.test.ts                    | FOUND                    |
+| src/soc/isolation.test.ts                     | FOUND                    |
+| src/soc/index.ts                              | FOUND                    |
+| Commit e9aa564 (Task 1 RED: failing tests)    | FOUND                    |
+| Commit 1c87455 (Task 1 GREEN: implementation) | FOUND                    |
+| Commit a844784 (Task 2: isolation + barrel)   | FOUND                    |
+| npx tsc --noEmit                              | PASSED (0 errors)        |
+| npx vitest run src/soc/                       | PASSED (30/30 tests)     |
+| Full suite: npx vitest run                    | PASSED (239/239 tests)   |
+| No literal 400 in production code             | PASSED (only in comment) |
+| Zero imports from lcm/orchestrator/tna/sheaf  | PASSED                   |
 
 ---
-*Phase: 04-soc*
-*Completed: 2026-03-01*
+
+_Phase: 04-soc_
+_Completed: 2026-03-01_

@@ -18,7 +18,13 @@ export type ThinkingCallback = (chunk: string) => void;
 
 /** Options for a chat completion request. */
 export interface ChatCompletionOptions {
-  messages: Array<{ role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }>;
+  messages: Array<{
+    role: string;
+    content: string;
+    tool_calls?: any[];
+    tool_call_id?: string;
+    name?: string;
+  }>;
   model?: string;
   tools?: any[];
   apiKey?: string;
@@ -82,8 +88,14 @@ class OllamaProvider implements LLMProvider {
     // Handle models that don't support tools with a fallback retry
     if (response.status === 400) {
       const errorData = (await response.json().catch(() => ({}))) as any;
-      if (errorData.error && typeof errorData.error === "string" && errorData.error.includes("does not support tools")) {
-        console.warn(`[LLM] Model '${model}' does not support tools. Retrying without tools.`);
+      if (
+        errorData.error &&
+        typeof errorData.error === "string" &&
+        errorData.error.includes("does not support tools")
+      ) {
+        console.warn(
+          `[LLM] Model '${model}' does not support tools. Retrying without tools.`,
+        );
 
         response = await fetch(`${this.#baseUrl}/api/chat`, {
           method: "POST",
@@ -96,7 +108,7 @@ class OllamaProvider implements LLMProvider {
 
     if (!response.ok) {
       throw new Error(
-        `Ollama chat failed: ${response.status} ${response.statusText}`
+        `Ollama chat failed: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -178,7 +190,9 @@ class OllamaProvider implements LLMProvider {
         description: m.details?.parameter_size
           ? `${m.details.family ?? ""} ${m.details.parameter_size}`.trim()
           : undefined,
-        type: m.name.toLowerCase().includes("embed") ? "embedding" as const : "chat" as const,
+        type: m.name.toLowerCase().includes("embed")
+          ? ("embedding" as const)
+          : ("chat" as const),
       }));
     } catch (error) {
       console.error("[LLM] Failed to list Ollama models:", error);
@@ -203,7 +217,7 @@ class OpenRouterProvider implements LLMProvider {
   }
 
   async chat(
-    options: ChatCompletionOptions & { apiKey?: string }
+    options: ChatCompletionOptions & { apiKey?: string },
   ): Promise<ChatCompletionResult> {
     const config = settings.getLLMConfig();
     const model = options.model ?? config.model;
@@ -232,7 +246,9 @@ class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(`OpenRouter chat failed: ${response.status} — ${errorText}`);
+      throw new Error(
+        `OpenRouter chat failed: ${response.status} — ${errorText}`,
+      );
     }
 
     const reader = response.body?.getReader();
@@ -260,7 +276,11 @@ class OpenRouterProvider implements LLMProvider {
         try {
           const parsed = JSON.parse(dataStr) as {
             choices?: Array<{
-              delta?: { content?: string; reasoning?: string; tool_calls?: any[] };
+              delta?: {
+                content?: string;
+                reasoning?: string;
+                tool_calls?: any[];
+              };
             }>;
             usage?: any;
           };
@@ -277,10 +297,17 @@ class OpenRouterProvider implements LLMProvider {
           if (delta?.tool_calls) {
             for (const call of delta.tool_calls) {
               const idx = call.index ?? 0;
-              if (!toolCallsMap[idx]) toolCallsMap[idx] = { id: call.id, type: call.type, function: { name: "", arguments: "" } };
+              if (!toolCallsMap[idx])
+                toolCallsMap[idx] = {
+                  id: call.id,
+                  type: call.type,
+                  function: { name: "", arguments: "" },
+                };
               if (call.id) toolCallsMap[idx].id = call.id;
-              if (call.function?.name) toolCallsMap[idx].function.name += call.function.name;
-              if (call.function?.arguments) toolCallsMap[idx].function.arguments += call.function.arguments;
+              if (call.function?.name)
+                toolCallsMap[idx].function.name += call.function.name;
+              if (call.function?.arguments)
+                toolCallsMap[idx].function.arguments += call.function.arguments;
             }
           }
           if (parsed.usage) {
@@ -320,7 +347,12 @@ class OpenRouterProvider implements LLMProvider {
       if (!response.ok) return [];
 
       const data = (await response.json()) as {
-        data?: Array<{ id: string; name: string; context_length?: number; description?: string }>;
+        data?: Array<{
+          id: string;
+          name: string;
+          context_length?: number;
+          description?: string;
+        }>;
       };
 
       return (data.data ?? []).map((m) => ({
@@ -329,7 +361,9 @@ class OpenRouterProvider implements LLMProvider {
         provider: "openrouter" as const,
         context_length: m.context_length ?? 0,
         description: m.description,
-        type: m.id.toLowerCase().includes("embed") ? "embedding" as const : "chat" as const,
+        type: m.id.toLowerCase().includes("embed")
+          ? ("embedding" as const)
+          : ("chat" as const),
       }));
     } catch (error) {
       console.error("[LLM] Failed to list OpenRouter models:", error);
@@ -354,7 +388,7 @@ class AnthropicProvider implements LLMProvider {
   }
 
   async chat(
-    options: ChatCompletionOptions & { apiKey?: string }
+    options: ChatCompletionOptions & { apiKey?: string },
   ): Promise<ChatCompletionResult> {
     const config = settings.getLLMConfig();
     const model = options.model ?? config.model;
@@ -380,7 +414,10 @@ class AnthropicProvider implements LLMProvider {
             type: "tool_use",
             id: tc.id,
             name: tc.function.name,
-            input: typeof tc.function.arguments === "string" ? JSON.parse(tc.function.arguments || "{}") : (tc.function.arguments || {}),
+            input:
+              typeof tc.function.arguments === "string"
+                ? JSON.parse(tc.function.arguments || "{}")
+                : tc.function.arguments || {},
           })),
         };
       } else if (m.role === "tool" || m.tool_call_id) {
@@ -427,7 +464,9 @@ class AnthropicProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(`Anthropic chat failed: ${response.status} — ${errorText}`);
+      throw new Error(
+        `Anthropic chat failed: ${response.status} — ${errorText}`,
+      );
     }
 
     const reader = response.body?.getReader();
@@ -455,10 +494,16 @@ class AnthropicProvider implements LLMProvider {
           const evt = JSON.parse(dataStr);
           if (evt.type === "message_start") {
             usage.prompt_tokens = evt.message.usage.input_tokens;
-          } else if (evt.type === "content_block_delta" && evt.delta.type === "text_delta") {
+          } else if (
+            evt.type === "content_block_delta" &&
+            evt.delta.type === "text_delta"
+          ) {
             fullContent += evt.delta.text;
             options.onToken?.(evt.delta.text);
-          } else if (evt.type === "content_block_start" && evt.content_block.type === "tool_use") {
+          } else if (
+            evt.type === "content_block_start" &&
+            evt.content_block.type === "tool_use"
+          ) {
             // Anthropic tool starts here...
             toolCalls[evt.index] = {
               id: evt.content_block.id,
@@ -468,7 +513,10 @@ class AnthropicProvider implements LLMProvider {
                 arguments: "",
               },
             };
-          } else if (evt.type === "content_block_delta" && evt.delta.type === "input_json_delta") {
+          } else if (
+            evt.type === "content_block_delta" &&
+            evt.delta.type === "input_json_delta"
+          ) {
             toolCalls[evt.index].function.arguments += evt.delta.partial_json;
           } else if (evt.type === "message_delta") {
             usage.completion_tokens = evt.usage.output_tokens;
@@ -523,9 +571,13 @@ export function createProvider(type?: LLMProviderType): LLMProvider {
     case "ollama":
       return new OllamaProvider(config.base_url || "http://localhost:11434");
     case "openrouter":
-      return new OpenRouterProvider(config.base_url || "https://openrouter.ai/api/v1");
+      return new OpenRouterProvider(
+        config.base_url || "https://openrouter.ai/api/v1",
+      );
     case "anthropic":
-      return new AnthropicProvider(config.base_url || "https://api.anthropic.com/v1");
+      return new AnthropicProvider(
+        config.base_url || "https://api.anthropic.com/v1",
+      );
     default:
       throw new Error(`Unknown LLM provider: ${providerType}`);
   }

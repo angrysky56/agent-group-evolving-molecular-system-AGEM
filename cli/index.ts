@@ -7,10 +7,7 @@ const API_URL = "http://localhost:8000/api/v1";
 
 const program = new Command();
 
-program
-  .name("agem")
-  .description("AGEM CLI Interface")
-  .version("1.0.0");
+program.name("agem").description("AGEM CLI Interface").version("1.0.0");
 
 program
   .command("status")
@@ -44,21 +41,21 @@ program
   .action(async () => {
     console.log("AGEM Chat initialized. Type 'exit' to quit.");
     const sessionId = "cli-session-" + Date.now();
-    
+
     // We get the current config
     let config;
     try {
-        const res = await fetch(`${API_URL}/system/config`);
-        config = await res.json();
+      const res = await fetch(`${API_URL}/system/config`);
+      config = await res.json();
     } catch (e) {
-        console.error("Could not fetch config. Ensure backend is running.");
-        return;
+      console.error("Could not fetch config. Ensure backend is running.");
+      return;
     }
 
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
-      prompt: "You: "
+      prompt: "You: ",
     });
 
     rl.prompt();
@@ -71,7 +68,7 @@ program
       }
 
       process.stdout.write("AGEM: ");
-      
+
       try {
         const response = await fetch(`${API_URL}/chat/completions`, {
           method: "POST",
@@ -80,14 +77,14 @@ program
             message: input,
             session_id: sessionId,
             model: config.model,
-            provider: config.provider
-          })
+            provider: config.provider,
+          }),
         });
 
         if (!response.ok) {
-            console.error(`Error: ${response.statusText}`);
-            rl.prompt();
-            return;
+          console.error(`Error: ${response.statusText}`);
+          rl.prompt();
+          return;
         }
 
         const reader = response.body?.getReader();
@@ -97,10 +94,10 @@ program
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             const chunk = decoder.decode(value, { stream: true });
             const lines = chunk.split("\n");
-            
+
             for (const l of lines) {
               if (l.trim().startsWith("data: ")) {
                 const dataStr = l.trim().slice(6);
@@ -110,7 +107,9 @@ program
                   if (data.type === "chunk") {
                     process.stdout.write(data.delta);
                   } else if (data.type === "agent_event") {
-                    process.stdout.write(`\n[Agent ${data.data.agent_id} state updated]\nAGEM: `);
+                    process.stdout.write(
+                      `\n[Agent ${data.data.agent_id} state updated]\nAGEM: `,
+                    );
                   }
                 } catch (e) {
                   // ignore parse error for incomplete chunks
@@ -119,7 +118,7 @@ program
             }
           }
         }
-        
+
         console.log();
       } catch (error) {
         console.error("\nFailed to send message:", error);

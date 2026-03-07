@@ -2,15 +2,15 @@
 wave: 2
 title: "Laplacian Implementation: Coboundary Operator, Sheaf Laplacian, ADMM Stub"
 depends_on:
-  - 02-PLAN.md  # Wave 1 must be complete (types, CellularSheaf, test helpers)
+  - 02-PLAN.md # Wave 1 must be complete (types, CellularSheaf, test helpers)
 files_modified:
-  - src/sheaf/CellularSheaf.ts           # Add Laplacian and coboundary methods
-  - src/sheaf/CoboundaryOperator.ts       # Standalone coboundary matrix assembly
-  - src/sheaf/SheafLaplacian.ts           # L_sheaf = B^T B computation + eigenspectrum
-  - src/sheaf/ADMMSolver.ts               # Interface + gradient descent stub
-  - src/sheaf/CoboundaryOperator.test.ts  # T3: hand-computed verification
-  - src/sheaf/SheafLaplacian.test.ts      # T4, T5, T6: PSD, null space, flat dims
-  - src/sheaf/ADMMInterface.test.ts       # T10: forward-compat interface tests
+  - src/sheaf/CellularSheaf.ts # Add Laplacian and coboundary methods
+  - src/sheaf/CoboundaryOperator.ts # Standalone coboundary matrix assembly
+  - src/sheaf/SheafLaplacian.ts # L_sheaf = B^T B computation + eigenspectrum
+  - src/sheaf/ADMMSolver.ts # Interface + gradient descent stub
+  - src/sheaf/CoboundaryOperator.test.ts # T3: hand-computed verification
+  - src/sheaf/SheafLaplacian.test.ts # T4, T5, T6: PSD, null space, flat dims
+  - src/sheaf/ADMMInterface.test.ts # T10: forward-compat interface tests
 autonomous: true
 commits:
   - "feat(sheaf): implement coboundary operator B and Sheaf Laplacian L_sheaf = B^T B"
@@ -57,6 +57,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     Implementation note: Use `math.subset()` with `math.index()` to place blocks into the matrix. Alternative: build a 2D array row by row and convert to `math.matrix()` at the end. The second approach is simpler and avoids mathjs indexing quirks.
 
     CRITICAL: This is NOT the incidence matrix. The incidence matrix has scalar entries (+1, -1, 0). The coboundary operator has matrix-valued blocks. The shape of `B` is `N_1 x N_0` (not `|E| x |V|`). If `B` has shape `|E| x |V|`, the implementation is wrong.
+
   </description>
   <acceptance>
     - `buildCoboundaryMatrix()` returns a `math.Matrix` of shape `[N_1, N_0]`.
@@ -113,6 +114,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     3. Positive semidefinite: all eigenvalues >= 0 (up to numerical tolerance).
     4. Null space dimension = dim(H^0) = number of independent global sections.
     5. For a flat sheaf on a connected graph: null space dimension = stalkDim.
+
   </description>
   <acceptance>
     - `getSheafLaplacian()` returns an `N_0 x N_0` math.Matrix.
@@ -155,6 +157,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     This satisfies the ADMM forward-compatibility requirement: `getCoboundaryMatrix()`, `getSheafLaplacian()`, `getVertexOffset()`, `getEdgeOffset()`, and `getEdgeDim()` are all publicly accessible on `CellularSheaf`.
 
     Import `math` from `mathjs` in this file. This is the first mathjs import in the sheaf module.
+
   </description>
   <acceptance>
     - `sheaf.getCoboundaryMatrix()` returns the same matrix as `new SheafLaplacian(sheaf).getCoboundaryMatrix()`.
@@ -220,6 +223,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     ```
 
     The Dirichlet energy computation `x^T L x` uses `math.multiply()`.
+
   </description>
   <acceptance>
     - `ADMMSolver` constructs from a `CellularSheaf` without error.
@@ -261,6 +265,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     - Build the same 2-vertex sheaf but swap source and target.
     - Verify the B matrix has negated blocks compared to the original.
     - This confirms the orientation convention is consistent.
+
   </description>
   <acceptance>
     - T3: B = [[-1,0,1,0],[0,-1,0,1]] exactly (element-wise comparison with tolerance 1e-14).
@@ -320,6 +325,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     - Assert: `eigenvalues.length = N_0`.
     - Assert: eigenvalues are sorted ascending.
     - Assert: all eigenvalues >= -1e-12.
+
   </description>
   <acceptance>
     - T4: All eigenvalues >= -1e-12.
@@ -358,6 +364,7 @@ The flat sheaf test (T6) verifies that `dim(H^0) = stalkDim` for identity restri
     - Assert: energy > 0.
 
     These tests verify that the ADMM interface is complete enough for a future phase to replace the gradient descent internals with real ADMM without changing any test.
+
   </description>
   <acceptance>
     - All `getCoboundaryMatrix`, `getSheafLaplacian`, `getVertexOffset`, `getEdgeOffset`, `getEdgeDim`, `getEdgeRestrictions`, `getVertexIds`, `getEdgeIds` are callable and return correct types.
@@ -389,7 +396,7 @@ After Wave 2 is complete, the following must all be true:
 - [ ] B shape is `[N_1, N_0]` for all test configurations (not `[|E|, |V|]`)
 - [ ] L_sheaf = B^T B computed via mathjs `multiply(transpose(B), B)`
 - [ ] L_sheaf is symmetric and positive semidefinite (tested)
-- [ ] L_sheaf * x = 0 for constant sections of flat sheaves (T5)
+- [ ] L_sheaf \* x = 0 for constant sections of flat sheaves (T5)
 - [ ] L_sheaf for three-cycle DIFFERS from L_graph tensor I_d (T5b -- discrimination test)
 - [ ] dim(H^0) = 2 for flat 2D sheaf on connected graph, verified via eigenvalue counting (T6)
 - [ ] Three-cycle inconsistency sheaf B has shape [3, 6] not [3, 3] (PITFALL GATE -- T3c)

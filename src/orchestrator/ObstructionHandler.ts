@@ -25,12 +25,12 @@
  *   - CooccurrenceGraph from ../tna/CooccurrenceGraph.js (graph integration)
  */
 
-import { EventBus } from './EventBus.js';
-import type { GapDetector } from '../tna/GapDetector.js';
-import type { CooccurrenceGraph } from '../tna/CooccurrenceGraph.js';
-import type { AnyEvent } from './interfaces.js';
-import { VdWAgentSpawner } from './VdWAgentSpawner.js';
-import type { VdWAgent } from './VdWAgentSpawner.js';
+import { EventBus } from "./EventBus.js";
+import type { GapDetector } from "../tna/GapDetector.js";
+import type { CooccurrenceGraph } from "../tna/CooccurrenceGraph.js";
+import type { AnyEvent } from "./interfaces.js";
+import { VdWAgentSpawner } from "./VdWAgentSpawner.js";
+import type { VdWAgent } from "./VdWAgentSpawner.js";
 
 // ---------------------------------------------------------------------------
 // GapDetectorAgent — stub agent for Phase 5
@@ -49,16 +49,16 @@ class GapDetectorAgent {
   readonly id: string;
 
   /** Current lifecycle status. */
-  status: 'spawning' | 'active' | 'idle' | 'terminating' | 'terminated';
+  status: "spawning" | "active" | "idle" | "terminating" | "terminated";
 
   constructor(id: string) {
     this.id = id;
-    this.status = 'spawning';
+    this.status = "spawning";
   }
 
   /** Initialize: transition from spawning to active. */
   async spawn(): Promise<void> {
-    this.status = 'active';
+    this.status = "active";
   }
 
   /** Health probe: confirm agent is alive. */
@@ -68,7 +68,7 @@ class GapDetectorAgent {
 
   /** Release resources: transition to terminated. */
   async cleanup(): Promise<void> {
-    this.status = 'terminated';
+    this.status = "terminated";
   }
 }
 
@@ -106,7 +106,7 @@ export interface GapFillResult {
 // ---------------------------------------------------------------------------
 
 interface ObstructionEventPayload {
-  readonly type: 'sheaf:h1-obstruction-detected';
+  readonly type: "sheaf:h1-obstruction-detected";
   readonly iteration: number;
   readonly h1Dimension: number;
 }
@@ -168,7 +168,7 @@ export class ObstructionHandler {
     eventBus: EventBus,
     gapDetector: GapDetector,
     tnaGraph: CooccurrenceGraph,
-    config?: { agentPoolSize?: number; vdwSpawner?: VdWAgentSpawner }
+    config?: { agentPoolSize?: number; vdwSpawner?: VdWAgentSpawner },
   ) {
     this.#eventBus = eventBus;
     this.#gapDetector = gapDetector;
@@ -179,8 +179,10 @@ export class ObstructionHandler {
     // Pre-populate agent pool with idle agents
     this.#agentPool = [];
     for (let i = 0; i < this.#agentPoolSize; i++) {
-      const agent = new GapDetectorAgent(`gap-detector-${++this.#agentCounter}`);
-      agent.status = 'idle'; // pre-initialize as idle (spawned lazily)
+      const agent = new GapDetectorAgent(
+        `gap-detector-${++this.#agentCounter}`,
+      );
+      agent.status = "idle"; // pre-initialize as idle (spawned lazily)
       this.#agentPool.push(agent);
     }
 
@@ -190,7 +192,10 @@ export class ObstructionHandler {
       this.#onObstructionDetected(event as unknown as ObstructionEventPayload);
     };
 
-    this.#eventBus.subscribe('sheaf:h1-obstruction-detected', this.#obstructionHandler);
+    this.#eventBus.subscribe(
+      "sheaf:h1-obstruction-detected",
+      this.#obstructionHandler,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -239,9 +244,11 @@ export class ObstructionHandler {
   /**
    * #processSingleObstruction — process one obstruction from the queue.
    */
-  async #processSingleObstruction(obstruction: ObstructionEventPayload): Promise<void> {
+  async #processSingleObstruction(
+    obstruction: ObstructionEventPayload,
+  ): Promise<void> {
     // Get an idle agent from the pool (or create a new one if needed)
-    let agent = this.#agentPool.find((a) => a.status === 'idle');
+    let agent = this.#agentPool.find((a) => a.status === "idle");
     if (!agent) {
       // No idle agents: create a new one (up to agentPoolSize)
       if (this.#agentPool.length < this.#agentPoolSize) {
@@ -263,14 +270,14 @@ export class ObstructionHandler {
     this.#integrateGapFillResults(gapFillResult);
 
     // Return agent to idle state
-    agent.status = 'idle';
+    agent.status = "idle";
 
     // Phase 6: VdW agent spawning (ORCH-06)
     await this.#processVdWSpawning(obstruction);
 
     // Emit monitoring event
     const filledEvent = {
-      type: 'orch:obstruction-filled' as const,
+      type: "orch:obstruction-filled" as const,
       ...gapFillResult,
     };
     // Emit as unknown/any since orch:obstruction-filled is not in AnyEvent union
@@ -278,29 +285,31 @@ export class ObstructionHandler {
 
     console.log(
       `[ORCH-OBSTRUCTION] Filled obstruction from iteration ${obstruction.iteration}: ` +
-      `${gapFillResult.gapsDetected} gaps, ` +
-      `${gapFillResult.entitiesAdded.length} new entities, ` +
-      `${gapFillResult.relationsAdded.length} new relations`
+        `${gapFillResult.gapsDetected} gaps, ` +
+        `${gapFillResult.entitiesAdded.length} new entities, ` +
+        `${gapFillResult.relationsAdded.length} new relations`,
     );
   }
 
   /**
    * #processVdWSpawning — handle Phase 6 VdW agent spawning logic.
    */
-  async #processVdWSpawning(obstruction: ObstructionEventPayload): Promise<void> {
+  async #processVdWSpawning(
+    obstruction: ObstructionEventPayload,
+  ): Promise<void> {
     if (!this.#vdwSpawner) return;
 
     const gaps = this.#gapDetector.findGaps();
     const spawnedAgents: VdWAgent[] = await this.#vdwSpawner.evaluateAndSpawn(
       gaps,
       obstruction.h1Dimension,
-      obstruction.iteration
+      obstruction.iteration,
     );
 
     if (spawnedAgents.length > 0) {
       console.log(
         `[ORCH-OBSTRUCTION] Spawned ${spawnedAgents.length} VdW agents ` +
-        `for iteration ${obstruction.iteration}`
+          `for iteration ${obstruction.iteration}`,
       );
 
       // Run spawned agents (serialized to avoid graph mutation races)
@@ -335,7 +344,7 @@ export class ObstructionHandler {
    */
   async #runGapDetectorAgent(
     agent: GapDetectorAgent,
-    obstruction: ObstructionEventPayload
+    obstruction: ObstructionEventPayload,
   ): Promise<GapFillResult> {
     // Step 1: Find structural gaps in TNA graph
     const gaps = this.#gapDetector.findGaps();
@@ -344,11 +353,13 @@ export class ObstructionHandler {
     // Step 2: Generate synthetic queries for each gap
     const synthQueries: string[] = [];
     const entitiesAdded: string[] = [];
-    const relationsAdded: Array<{ from: string; to: string; type: string }> = [];
+    const relationsAdded: Array<{ from: string; to: string; type: string }> =
+      [];
 
     for (const gap of gaps) {
       // Generate a synthetic bridging query
-      const query = `What relates community ${gap.communityA} to community ${gap.communityB}? ` +
+      const query =
+        `What relates community ${gap.communityA} to community ${gap.communityB}? ` +
         `(density=${gap.interCommunityDensity.toFixed(3)}, path=${gap.shortestPathLength})`;
       synthQueries.push(query);
 
@@ -363,7 +374,7 @@ export class ObstructionHandler {
         relationsAdded.push({
           from: String(bridgeNodes[0]),
           to: bridgeEntity,
-          type: 'gap-bridge',
+          type: "gap-bridge",
         });
       }
     }
@@ -399,7 +410,7 @@ export class ObstructionHandler {
     if (results.entitiesAdded.length > 0) {
       this.#tnaGraph.ingestTokens(results.entitiesAdded);
       console.log(
-        `[ORCH-OBSTRUCTION] Integrated ${results.entitiesAdded.length} new entities from gap fill`
+        `[ORCH-OBSTRUCTION] Integrated ${results.entitiesAdded.length} new entities from gap fill`,
       );
     }
 
@@ -409,7 +420,7 @@ export class ObstructionHandler {
     if (results.relationsAdded.length > 0) {
       console.log(
         `[ORCH-OBSTRUCTION] ${results.relationsAdded.length} relations noted ` +
-        `(direct edge addition available in Phase 6)`
+          `(direct edge addition available in Phase 6)`,
       );
     }
   }
@@ -447,7 +458,10 @@ export class ObstructionHandler {
    */
   async shutdown(): Promise<void> {
     // Unsubscribe from obstruction events
-    this.#eventBus.unsubscribe('sheaf:h1-obstruction-detected', this.#obstructionHandler);
+    this.#eventBus.unsubscribe(
+      "sheaf:h1-obstruction-detected",
+      this.#obstructionHandler,
+    );
 
     // Drain the queue: wait for processing to complete
     // Poll until the queue is empty and processing has stopped
@@ -455,8 +469,10 @@ export class ObstructionHandler {
     const pollIntervalMs = 10;
     const startTime = Date.now();
 
-    while ((this.#isProcessing || this.#obstructionQueue.length > 0) &&
-           Date.now() - startTime < maxWaitMs) {
+    while (
+      (this.#isProcessing || this.#obstructionQueue.length > 0) &&
+      Date.now() - startTime < maxWaitMs
+    ) {
       await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
@@ -466,7 +482,7 @@ export class ObstructionHandler {
     // Clean up all agents
     await Promise.all(this.#agentPool.map((agent) => agent.cleanup()));
 
-    console.log('[ORCH-OBSTRUCTION] ObstructionHandler shutdown complete.');
+    console.log("[ORCH-OBSTRUCTION] ObstructionHandler shutdown complete.");
   }
 
   // -------------------------------------------------------------------------
@@ -476,7 +492,11 @@ export class ObstructionHandler {
   /**
    * getProcessingStatus — return current processing state for monitoring/testing.
    */
-  getProcessingStatus(): { isProcessing: boolean; queueLength: number; agentCount: number } {
+  getProcessingStatus(): {
+    isProcessing: boolean;
+    queueLength: number;
+    agentCount: number;
+  } {
     return {
       isProcessing: this.#isProcessing,
       queueLength: this.#obstructionQueue.length,

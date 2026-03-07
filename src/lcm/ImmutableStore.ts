@@ -16,9 +16,9 @@
  *   - ITokenCounter (injected): deterministic token counting without inference
  */
 
-import { createHash } from 'node:crypto';
-import { uuidv7 } from 'uuidv7';
-import type { LCMEntry, ITokenCounter } from './interfaces.js';
+import { createHash } from "node:crypto";
+import { uuidv7 } from "uuidv7";
+import type { LCMEntry, ITokenCounter } from "./interfaces.js";
 
 export class ImmutableStore {
   /**
@@ -58,7 +58,7 @@ export class ImmutableStore {
       id: uuidv7(),
       content,
       tokenCount: this.#tokenCounter.countTokens(content),
-      hash: createHash('sha256').update(content, 'utf8').digest('hex'),
+      hash: createHash("sha256").update(content, "utf8").digest("hex"),
       timestamp: Date.now(),
       sequenceNumber,
     });

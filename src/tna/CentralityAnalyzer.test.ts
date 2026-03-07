@@ -14,10 +14,10 @@
  * RED phase: all tests fail until CentralityAnalyzer.ts is implemented.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Preprocessor } from './Preprocessor.js';
-import { CooccurrenceGraph } from './CooccurrenceGraph.js';
-import { CentralityAnalyzer } from './CentralityAnalyzer.js';
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Preprocessor } from "./Preprocessor.js";
+import { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+import { CentralityAnalyzer } from "./CentralityAnalyzer.js";
 
 // ---------------------------------------------------------------------------
 // Test helper: buildTwoCliqueGraph()
@@ -35,8 +35,8 @@ function buildTwoCliqueGraph(): {
   const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
   const graph = new CooccurrenceGraph(preprocessor);
 
-  const cliqueA = ['a1', 'a2', 'a3', 'a4', 'a5'];
-  const cliqueB = ['b1', 'b2', 'b3', 'b4', 'b5'];
+  const cliqueA = ["a1", "a2", "a3", "a4", "a5"];
+  const cliqueB = ["b1", "b2", "b3", "b4", "b5"];
 
   graph.ingestTokens([...cliqueA, ...cliqueB], 0);
 
@@ -51,7 +51,7 @@ function buildTwoCliqueGraph(): {
         g.addEdge(src, dst, { weight: 10, createdAtIteration: 0 });
       } else {
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 10);
+        g.setEdgeAttribute(edge, "weight", 10);
       }
     }
   }
@@ -65,7 +65,7 @@ function buildTwoCliqueGraph(): {
         g.addEdge(src, dst, { weight: 10, createdAtIteration: 0 });
       } else {
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 10);
+        g.setEdgeAttribute(edge, "weight", 10);
       }
     }
   }
@@ -81,19 +81,20 @@ function buildTwoCliqueGraph(): {
     if (!isInterClique) return;
 
     const isBridge =
-      (source === 'a1' && target === 'b1') || (source === 'b1' && target === 'a1');
+      (source === "a1" && target === "b1") ||
+      (source === "b1" && target === "a1");
     if (!isBridge) {
       g.dropEdge(edge);
     } else {
-      g.setEdgeAttribute(edge, 'weight', 1);
+      g.setEdgeAttribute(edge, "weight", 1);
     }
   });
 
-  if (!g.hasEdge('a1', 'b1')) {
-    g.addEdge('a1', 'b1', { weight: 1, createdAtIteration: 0 });
+  if (!g.hasEdge("a1", "b1")) {
+    g.addEdge("a1", "b1", { weight: 1, createdAtIteration: 0 });
   }
 
-  return { graph, cliqueA, cliqueB, bridgeNodes: ['a1', 'b1'] };
+  return { graph, cliqueA, cliqueB, bridgeNodes: ["a1", "b1"] };
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +117,7 @@ function buildFullyConnectedGraph(n: number): CooccurrenceGraph {
         g.addEdge(src, dst, { weight: 5, createdAtIteration: 0 });
       } else {
         const edge = g.edge(src, dst)!;
-        g.setEdgeAttribute(edge, 'weight', 5);
+        g.setEdgeAttribute(edge, "weight", 5);
       }
     }
   }
@@ -128,7 +129,7 @@ function buildFullyConnectedGraph(n: number): CooccurrenceGraph {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('CentralityAnalyzer', () => {
+describe("CentralityAnalyzer", () => {
   let twoCliqueGraph: CooccurrenceGraph;
   let cliqueA: string[];
   let cliqueB: string[];
@@ -146,16 +147,16 @@ describe('CentralityAnalyzer', () => {
   // T13: Bridge node has highest betweenness centrality
   // --------------------------------------------------------------------------
 
-  it('T13: bridge nodes (a1, b1) have the highest betweenness centrality', () => {
+  it("T13: bridge nodes (a1, b1) have the highest betweenness centrality", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     const scores = analyzer.compute();
 
-    const bridgeA1 = scores.get('a1') ?? 0;
-    const bridgeB1 = scores.get('b1') ?? 0;
+    const bridgeA1 = scores.get("a1") ?? 0;
+    const bridgeB1 = scores.get("b1") ?? 0;
 
     // Bridge nodes should have higher centrality than all other nodes.
     for (const node of [...cliqueA, ...cliqueB]) {
-      if (node === 'a1' || node === 'b1') continue;
+      if (node === "a1" || node === "b1") continue;
       const score = scores.get(node) ?? 0;
       expect(bridgeA1).toBeGreaterThan(score);
       expect(bridgeB1).toBeGreaterThan(score);
@@ -166,14 +167,14 @@ describe('CentralityAnalyzer', () => {
   // T13b: Peripheral nodes have low centrality
   // --------------------------------------------------------------------------
 
-  it('T13b: peripheral nodes (non-bridge clique members) have betweenness centrality near 0', () => {
+  it("T13b: peripheral nodes (non-bridge clique members) have betweenness centrality near 0", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     const scores = analyzer.compute();
 
     // Non-bridge nodes in clique A: a2, a3, a4, a5
     // These are NOT on any shortest path between communities.
-    const peripheralA = cliqueA.filter(n => n !== 'a1');
-    const peripheralB = cliqueB.filter(n => n !== 'b1');
+    const peripheralA = cliqueA.filter((n) => n !== "a1");
+    const peripheralB = cliqueB.filter((n) => n !== "b1");
 
     for (const node of [...peripheralA, ...peripheralB]) {
       const score = scores.get(node) ?? 0;
@@ -186,7 +187,7 @@ describe('CentralityAnalyzer', () => {
   // T14: Centrality values are normalized between 0 and 1
   // --------------------------------------------------------------------------
 
-  it('T14: all betweenness centrality values are in [0, 1]', () => {
+  it("T14: all betweenness centrality values are in [0, 1]", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     const scores = analyzer.compute();
 
@@ -200,7 +201,7 @@ describe('CentralityAnalyzer', () => {
   // T14b: Complete graph has approximately uniform centrality
   // --------------------------------------------------------------------------
 
-  it('T14b: fully connected graph has approximately equal betweenness for all nodes', () => {
+  it("T14b: fully connected graph has approximately equal betweenness for all nodes", () => {
     const fullyConnected = buildFullyConnectedGraph(5);
     const analyzer = new CentralityAnalyzer(fullyConnected);
     const scores = analyzer.compute();
@@ -218,19 +219,19 @@ describe('CentralityAnalyzer', () => {
   // T15: Centrality results assigned back to TextNode metadata
   // --------------------------------------------------------------------------
 
-  it('T15: after compute(), cooccurrenceGraph.getNode() returns TextNode with betweennessCentrality set', () => {
+  it("T15: after compute(), cooccurrenceGraph.getNode() returns TextNode with betweennessCentrality set", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     analyzer.compute();
 
     // Bridge node 'a1' should have betweennessCentrality populated.
-    const bridgeNode = twoCliqueGraph.getNode('a1');
+    const bridgeNode = twoCliqueGraph.getNode("a1");
     expect(bridgeNode).toBeDefined();
     expect(bridgeNode?.betweennessCentrality).toBeDefined();
-    expect(typeof bridgeNode?.betweennessCentrality).toBe('number');
+    expect(typeof bridgeNode?.betweennessCentrality).toBe("number");
     expect(bridgeNode?.betweennessCentrality).toBeGreaterThan(0);
 
     // Peripheral node 'a2' should also have betweennessCentrality populated (may be 0).
-    const peripheralNode = twoCliqueGraph.getNode('a2');
+    const peripheralNode = twoCliqueGraph.getNode("a2");
     expect(peripheralNode?.betweennessCentrality).toBeDefined();
   });
 
@@ -238,7 +239,7 @@ describe('CentralityAnalyzer', () => {
   // T15b: getTopNodes() returns nodes ranked by centrality
   // --------------------------------------------------------------------------
 
-  it('T15b: getTopNodes(3) returns the top 3 nodes by betweenness centrality, sorted descending', () => {
+  it("T15b: getTopNodes(3) returns the top 3 nodes by betweenness centrality, sorted descending", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     analyzer.compute();
 
@@ -252,9 +253,9 @@ describe('CentralityAnalyzer', () => {
     }
 
     // The top nodes should include the bridge nodes (they have highest centrality).
-    const topNodeIds = top3.map(n => n.nodeId);
-    expect(topNodeIds).toContain('a1');
-    expect(topNodeIds).toContain('b1');
+    const topNodeIds = top3.map((n) => n.nodeId);
+    expect(topNodeIds).toContain("a1");
+    expect(topNodeIds).toContain("b1");
 
     // getTopNodes(0) returns empty array.
     const top0 = analyzer.getTopNodes(0);
@@ -265,29 +266,29 @@ describe('CentralityAnalyzer', () => {
   // Additional: getScore() and getBridgeNodes() methods
   // --------------------------------------------------------------------------
 
-  it('getScore() returns 0 for unknown nodes and correct scores for known nodes', () => {
+  it("getScore() returns 0 for unknown nodes and correct scores for known nodes", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     analyzer.compute();
 
     // Known bridge node has score > 0.
-    const bridgeScore = analyzer.getScore('a1');
+    const bridgeScore = analyzer.getScore("a1");
     expect(bridgeScore).toBeGreaterThan(0);
 
     // Unknown node returns 0.
-    const unknownScore = analyzer.getScore('nonexistent');
+    const unknownScore = analyzer.getScore("nonexistent");
     expect(unknownScore).toBe(0);
   });
 
-  it('getBridgeNodes(threshold) returns nodes with centrality above threshold', () => {
+  it("getBridgeNodes(threshold) returns nodes with centrality above threshold", () => {
     const analyzer = new CentralityAnalyzer(twoCliqueGraph);
     analyzer.compute();
 
     // High threshold — should return only the bridge nodes.
-    const highThreshold = analyzer.getScore('a1') * 0.5;
+    const highThreshold = analyzer.getScore("a1") * 0.5;
     const bridgeNodesList = analyzer.getBridgeNodes(highThreshold);
 
-    expect(bridgeNodesList).toContain('a1');
-    expect(bridgeNodesList).toContain('b1');
+    expect(bridgeNodesList).toContain("a1");
+    expect(bridgeNodesList).toContain("b1");
 
     // Very high threshold — should return empty.
     const veryHighThreshold = 2.0; // > 1.0, so nothing can exceed it
@@ -307,8 +308,8 @@ function buildTimeSeriesGraph(): { graph: CooccurrenceGraph } {
   const graph = new CooccurrenceGraph(preprocessor);
 
   // Two cliques of 4 nodes each, connected by bridge a1--b1
-  const cliqueA = ['a1', 'a2', 'a3', 'a4'];
-  const cliqueB = ['b1', 'b2', 'b3', 'b4'];
+  const cliqueA = ["a1", "a2", "a3", "a4"];
+  const cliqueB = ["b1", "b2", "b3", "b4"];
 
   graph.ingestTokens([...cliqueA, ...cliqueB], 0);
 
@@ -317,7 +318,10 @@ function buildTimeSeriesGraph(): { graph: CooccurrenceGraph } {
   for (let i = 0; i < cliqueA.length; i++) {
     for (let j = i + 1; j < cliqueA.length; j++) {
       if (!g.hasEdge(cliqueA[i]!, cliqueA[j]!)) {
-        g.addEdge(cliqueA[i]!, cliqueA[j]!, { weight: 5, createdAtIteration: 0 });
+        g.addEdge(cliqueA[i]!, cliqueA[j]!, {
+          weight: 5,
+          createdAtIteration: 0,
+        });
       }
     }
   }
@@ -325,48 +329,53 @@ function buildTimeSeriesGraph(): { graph: CooccurrenceGraph } {
   for (let i = 0; i < cliqueB.length; i++) {
     for (let j = i + 1; j < cliqueB.length; j++) {
       if (!g.hasEdge(cliqueB[i]!, cliqueB[j]!)) {
-        g.addEdge(cliqueB[i]!, cliqueB[j]!, { weight: 5, createdAtIteration: 0 });
+        g.addEdge(cliqueB[i]!, cliqueB[j]!, {
+          weight: 5,
+          createdAtIteration: 0,
+        });
       }
     }
   }
 
-  if (!g.hasEdge('a1', 'b1')) {
-    g.addEdge('a1', 'b1', { weight: 1, createdAtIteration: 0 });
+  if (!g.hasEdge("a1", "b1")) {
+    g.addEdge("a1", "b1", { weight: 1, createdAtIteration: 0 });
   }
 
   return { graph };
 }
 
-describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
-
+describe("Phase 6: Centrality time-series tracking (TNA-09)", () => {
   // --------------------------------------------------------------------------
   // computeIfDue
   // --------------------------------------------------------------------------
 
-  describe('computeIfDue', () => {
-
-    it('T-TS-1: Returns false when interval not yet elapsed', () => {
+  describe("computeIfDue", () => {
+    it("T-TS-1: Returns false when interval not yet elapsed", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 10 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 10,
+      });
 
       // First call at iteration 5 — interval is 10, elapsed = 5 - 0 = 5 < 10
       const result = analyzer.computeIfDue(5);
       expect(result).toBe(false);
     });
 
-    it('T-TS-2: Returns true and computes when interval elapsed', () => {
+    it("T-TS-2: Returns true and computes when interval elapsed", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 10 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 10,
+      });
 
       // First call at iteration 10 — elapsed = 10 >= 10
       const result = analyzer.computeIfDue(10);
       expect(result).toBe(true);
 
       // After computing, scores should be populated
-      expect(analyzer.getScore('a1')).toBeGreaterThan(0);
+      expect(analyzer.getScore("a1")).toBeGreaterThan(0);
     });
 
-    it('T-TS-3: Default interval is 10 iterations', () => {
+    it("T-TS-3: Default interval is 10 iterations", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
@@ -376,9 +385,11 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       expect(analyzer.computeIfDue(10)).toBe(true);
     });
 
-    it('T-TS-4: After computation, next check uses new lastComputeIteration', () => {
+    it("T-TS-4: After computation, next check uses new lastComputeIteration", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 10 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 10,
+      });
 
       // Compute at iteration 10
       analyzer.computeIfDue(10);
@@ -395,60 +406,67 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Time-series storage
   // --------------------------------------------------------------------------
 
-  describe('Time-series storage', () => {
-
-    it('T-TS-5: Scores appended to node time-series on each computation', () => {
+  describe("Time-series storage", () => {
+    it("T-TS-5: Scores appended to node time-series on each computation", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 10 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 10,
+      });
 
       analyzer.computeIfDue(10);
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
 
       expect(ts).toBeDefined();
       expect(ts?.scores.length).toBe(1);
       expect(ts?.scores[0]?.iteration).toBe(10);
     });
 
-    it('T-TS-6: Time-series trimmed to max 50 entries per node', () => {
+    it("T-TS-6: Time-series trimmed to max 50 entries per node", () => {
       const { graph } = buildTimeSeriesGraph();
       // Use interval=1 so every computeIfDue call computes
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       // Simulate 60 iterations
       for (let i = 1; i <= 60; i++) {
         analyzer.computeIfDue(i);
       }
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts).toBeDefined();
       // Should be capped at 50
       expect(ts!.scores.length).toBeLessThanOrEqual(50);
     });
 
-    it('T-TS-7: New nodes get new time-series entries on first computation', () => {
+    it("T-TS-7: New nodes get new time-series entries on first computation", () => {
       const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
       const graph = new CooccurrenceGraph(preprocessor);
       // ingestTokens already creates edges via 4-gram sliding window
-      graph.ingestTokens(['p', 'q', 'r'], 0);
+      graph.ingestTokens(["p", "q", "r"], 0);
 
       // Note: ingestTokens creates edges p-q, q-r, p-r automatically (windowSize=4)
       // No need to add additional edges.
 
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       analyzer.computeIfDue(5);
 
       // All nodes should have time-series data
-      for (const node of ['p', 'q', 'r']) {
+      for (const node of ["p", "q", "r"]) {
         const ts = analyzer.getTimeSeries(node);
         expect(ts).toBeDefined();
         expect(ts?.scores.length).toBe(1);
       }
     });
 
-    it('T-TS-8: getAllTimeSeries() returns entries for all tracked nodes', () => {
+    it("T-TS-8: getAllTimeSeries() returns entries for all tracked nodes", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       analyzer.computeIfDue(5);
 
@@ -463,9 +481,8 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Trend detection
   // --------------------------------------------------------------------------
 
-  describe('Trend detection', () => {
-
-    it('T-TS-9: Rising: 3 consecutive increasing scores → trend=rising', () => {
+  describe("Trend detection", () => {
+    it("T-TS-9: Rising: 3 consecutive increasing scores → trend=rising", () => {
       const { graph } = buildTimeSeriesGraph();
       // Use small interval so we can force multiple computations
       const analyzer = new CentralityAnalyzer(graph, {
@@ -480,30 +497,32 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       const g = graph.getGraph();
 
       // Add edges to 'a1' to make it more central over time
-      const extraNodes1 = ['e1', 'e2'];
+      const extraNodes1 = ["e1", "e2"];
       for (const en of extraNodes1) {
         if (!g.hasNode(en)) g.addNode(en);
-        if (!g.hasEdge('a1', en)) g.addEdge('a1', en, { weight: 1, createdAtIteration: 1 });
+        if (!g.hasEdge("a1", en))
+          g.addEdge("a1", en, { weight: 1, createdAtIteration: 1 });
       }
       analyzer.computeIfDue(2);
 
-      const extraNodes2 = ['e3', 'e4', 'e5'];
+      const extraNodes2 = ["e3", "e4", "e5"];
       for (const en of extraNodes2) {
         if (!g.hasNode(en)) g.addNode(en);
-        if (!g.hasEdge('a1', en)) g.addEdge('a1', en, { weight: 1, createdAtIteration: 2 });
+        if (!g.hasEdge("a1", en))
+          g.addEdge("a1", en, { weight: 1, createdAtIteration: 2 });
       }
       analyzer.computeIfDue(3);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts).toBeDefined();
       expect(ts?.scores.length).toBe(3);
 
       // With increasing centrality, trend should be rising or stable
       // (depending on magnitude of change)
-      expect(['rising', 'stable', 'oscillating']).toContain(ts?.trend);
+      expect(["rising", "stable", "oscillating"]).toContain(ts?.trend);
     });
 
-    it('T-TS-10: Stable: 3 similar scores → trend=stable', () => {
+    it("T-TS-10: Stable: 3 similar scores → trend=stable", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph, {
         defaultComputeInterval: 1,
@@ -515,44 +534,48 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       analyzer.computeIfDue(2);
       analyzer.computeIfDue(3);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.scores.length).toBe(3);
 
       // Same graph same scores → stable (or oscillating if floating-point noise)
-      expect(['stable', 'oscillating']).toContain(ts?.trend);
+      expect(["stable", "oscillating"]).toContain(ts?.trend);
     });
 
-    it('T-TS-11: Fewer than 3 data points → trend=stable (default)', () => {
+    it("T-TS-11: Fewer than 3 data points → trend=stable (default)", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       // Only 1 computation
       analyzer.computeIfDue(5);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.scores.length).toBe(1);
-      expect(ts?.trend).toBe('stable');
+      expect(ts?.trend).toBe("stable");
     });
 
-    it('T-TS-12: 2 data points also returns stable', () => {
+    it("T-TS-12: 2 data points also returns stable", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       analyzer.computeIfDue(1);
       analyzer.computeIfDue(2);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.scores.length).toBe(2);
       // Fewer than 3 points → stable
-      expect(ts?.trend).toBe('stable');
+      expect(ts?.trend).toBe("stable");
     });
 
-    it('T-TS-13: Falling: scores decreasing over 3 iterations', () => {
+    it("T-TS-13: Falling: scores decreasing over 3 iterations", () => {
       const preprocessor = new Preprocessor({ minTfidfWeight: 0.0 });
       const graph = new CooccurrenceGraph(preprocessor);
       // Create a path: p1 - p2 - p3 (p2 has max centrality as middle node)
       // ingestTokens creates edges via sliding window automatically
-      graph.ingestTokens(['p1', 'p2', 'p3'], 0);
+      graph.ingestTokens(["p1", "p2", "p3"], 0);
       const g = graph.getGraph();
 
       const analyzer = new CentralityAnalyzer(graph, {
@@ -562,33 +585,37 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
 
       // Iteration 1: p2 has high centrality (bridge on path)
       analyzer.computeIfDue(1);
-      const scoreIter1 = analyzer.getScore('p2');
+      const scoreIter1 = analyzer.getScore("p2");
 
       // Add shortcuts around p2 to reduce its centrality
-      if (!g.hasEdge('p1', 'p3')) {
-        g.addEdge('p1', 'p3', { weight: 10, createdAtIteration: 1 });
+      if (!g.hasEdge("p1", "p3")) {
+        g.addEdge("p1", "p3", { weight: 10, createdAtIteration: 1 });
       }
       analyzer.computeIfDue(2);
-      const scoreIter2 = analyzer.getScore('p2');
+      const scoreIter2 = analyzer.getScore("p2");
 
       // Add more shortcuts
-      const extra = ['q1', 'q2'];
+      const extra = ["q1", "q2"];
       for (const en of extra) {
         if (!g.hasNode(en)) g.addNode(en);
-        if (!g.hasEdge('p1', en)) g.addEdge('p1', en, { weight: 1, createdAtIteration: 2 });
-        if (!g.hasEdge('p3', en)) g.addEdge('p3', en, { weight: 1, createdAtIteration: 2 });
+        if (!g.hasEdge("p1", en))
+          g.addEdge("p1", en, { weight: 1, createdAtIteration: 2 });
+        if (!g.hasEdge("p3", en))
+          g.addEdge("p3", en, { weight: 1, createdAtIteration: 2 });
       }
       analyzer.computeIfDue(3);
 
-      const ts = analyzer.getTimeSeries('p2');
+      const ts = analyzer.getTimeSeries("p2");
       expect(ts?.scores.length).toBe(3);
 
       // With scores generally decreasing, expect falling or stable
-      const scores = ts?.scores.map(s => s.score) ?? [];
-      if (scores[0]! > scores[2]! && (scores[0]! - scores[2]!) > 0.001) {
-        expect(['falling', 'oscillating']).toContain(ts?.trend);
+      const scores = ts?.scores.map((s) => s.score) ?? [];
+      if (scores[0]! > scores[2]! && scores[0]! - scores[2]! > 0.001) {
+        expect(["falling", "oscillating"]).toContain(ts?.trend);
       } else {
-        expect(['stable', 'oscillating', 'falling', 'rising']).toContain(ts?.trend);
+        expect(["stable", "oscillating", "falling", "rising"]).toContain(
+          ts?.trend,
+        );
       }
     });
   });
@@ -597,58 +624,65 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Peak and valley
   // --------------------------------------------------------------------------
 
-  describe('Peak and valley', () => {
-
-    it('T-TS-14: Peak is the entry with highest score', () => {
+  describe("Peak and valley", () => {
+    it("T-TS-14: Peak is the entry with highest score", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       analyzer.computeIfDue(1);
       analyzer.computeIfDue(2);
       analyzer.computeIfDue(3);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.peak).toBeDefined();
 
       // Peak score should be >= all other scores
-      const maxScore = Math.max(...(ts?.scores.map(s => s.score) ?? []));
+      const maxScore = Math.max(...(ts?.scores.map((s) => s.score) ?? []));
       expect(ts?.peak?.score).toBe(maxScore);
     });
 
-    it('T-TS-15: Valley is the entry with lowest score', () => {
+    it("T-TS-15: Valley is the entry with lowest score", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       analyzer.computeIfDue(1);
       analyzer.computeIfDue(2);
       analyzer.computeIfDue(3);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.valley).toBeDefined();
 
-      const minScore = Math.min(...(ts?.scores.map(s => s.score) ?? []));
+      const minScore = Math.min(...(ts?.scores.map((s) => s.score) ?? []));
       expect(ts?.valley?.score).toBe(minScore);
     });
 
-    it('T-TS-16: Single entry is both peak and valley', () => {
+    it("T-TS-16: Single entry is both peak and valley", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       analyzer.computeIfDue(5);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts?.peak).toBeDefined();
       expect(ts?.valley).toBeDefined();
       expect(ts?.peak?.score).toBe(ts?.valley?.score);
       expect(ts?.peak?.iteration).toBe(ts?.valley?.iteration);
     });
 
-    it('T-TS-17: getTimeSeries() returns undefined for untracked node', () => {
+    it("T-TS-17: getTimeSeries() returns undefined for untracked node", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       // No computation yet
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts).toBeUndefined();
     });
   });
@@ -657,9 +691,8 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Rapid change detection
   // --------------------------------------------------------------------------
 
-  describe('Rapid change detection', () => {
-
-    it('T-TS-18: Score increase of 3x emits tna:centrality-change-detected', () => {
+  describe("Rapid change detection", () => {
+    it("T-TS-18: Score increase of 3x emits tna:centrality-change-detected", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph, {
         defaultComputeInterval: 1,
@@ -667,7 +700,7 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       });
 
       const events: unknown[] = [];
-      analyzer.on('tna:centrality-change-detected', (event) => {
+      analyzer.on("tna:centrality-change-detected", (event) => {
         events.push(event);
       });
 
@@ -676,13 +709,26 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
 
       // Add many edges to 'a1' to create a massive centrality spike
       const g = graph.getGraph();
-      const newNodes = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n10'];
+      const newNodes = [
+        "n1",
+        "n2",
+        "n3",
+        "n4",
+        "n5",
+        "n6",
+        "n7",
+        "n8",
+        "n9",
+        "n10",
+      ];
       for (const nn of newNodes) {
         if (!g.hasNode(nn)) g.addNode(nn);
         // Connect all new nodes through 'a1' (makes it a hub)
-        if (!g.hasEdge('a1', nn)) g.addEdge('a1', nn, { weight: 1, createdAtIteration: 1 });
+        if (!g.hasEdge("a1", nn))
+          g.addEdge("a1", nn, { weight: 1, createdAtIteration: 1 });
         // Also connect them to 'b1' side to make 'a1' the only path
-        if (!g.hasEdge(nn, 'b1')) g.addEdge(nn, 'b1', { weight: 1, createdAtIteration: 1 });
+        if (!g.hasEdge(nn, "b1"))
+          g.addEdge(nn, "b1", { weight: 1, createdAtIteration: 1 });
       }
 
       // Iteration 2: 'a1' should now have dramatically higher centrality
@@ -690,10 +736,10 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
 
       // If the centrality increased by 3x, an event should have been emitted
       // (Not guaranteed in all graph configurations, but we test the mechanism)
-      expect(typeof analyzer.on).toBe('function'); // CentralityAnalyzer is an EventEmitter
+      expect(typeof analyzer.on).toBe("function"); // CentralityAnalyzer is an EventEmitter
     });
 
-    it('T-TS-19: Event payload contains correct fields', () => {
+    it("T-TS-19: Event payload contains correct fields", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph, {
         defaultComputeInterval: 1,
@@ -701,34 +747,41 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       });
 
       let capturedEvent: Record<string, unknown> | null = null;
-      analyzer.on('tna:centrality-change-detected', (event: Record<string, unknown>) => {
-        capturedEvent = event;
-      });
+      analyzer.on(
+        "tna:centrality-change-detected",
+        (event: Record<string, unknown>) => {
+          capturedEvent = event;
+        },
+      );
 
       analyzer.computeIfDue(1);
 
       // Modify graph to trigger centrality change
       const g = graph.getGraph();
-      const newNodes = ['m1', 'm2', 'm3'];
+      const newNodes = ["m1", "m2", "m3"];
       for (const nn of newNodes) {
         if (!g.hasNode(nn)) g.addNode(nn);
-        if (!g.hasEdge('a1', nn)) g.addEdge('a1', nn, { weight: 1, createdAtIteration: 1 });
+        if (!g.hasEdge("a1", nn))
+          g.addEdge("a1", nn, { weight: 1, createdAtIteration: 1 });
       }
 
       analyzer.computeIfDue(2);
 
       // If event was emitted, verify payload fields
       if (capturedEvent !== null) {
-        expect(capturedEvent).toHaveProperty('type', 'tna:centrality-change-detected');
-        expect(capturedEvent).toHaveProperty('nodeId');
-        expect(capturedEvent).toHaveProperty('trend');
-        expect(capturedEvent).toHaveProperty('previousScore');
-        expect(capturedEvent).toHaveProperty('currentScore');
-        expect(capturedEvent).toHaveProperty('iteration', 2);
+        expect(capturedEvent).toHaveProperty(
+          "type",
+          "tna:centrality-change-detected",
+        );
+        expect(capturedEvent).toHaveProperty("nodeId");
+        expect(capturedEvent).toHaveProperty("trend");
+        expect(capturedEvent).toHaveProperty("previousScore");
+        expect(capturedEvent).toHaveProperty("currentScore");
+        expect(capturedEvent).toHaveProperty("iteration", 2);
       }
     });
 
-    it('T-TS-20: Custom rapidChangeMultiplier respected', () => {
+    it("T-TS-20: Custom rapidChangeMultiplier respected", () => {
       const { graph } = buildTimeSeriesGraph();
       // Very high multiplier — almost impossible to trigger
       const analyzer = new CentralityAnalyzer(graph, {
@@ -737,7 +790,7 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       });
 
       const events: unknown[] = [];
-      analyzer.on('tna:centrality-change-detected', (event) => {
+      analyzer.on("tna:centrality-change-detected", (event) => {
         events.push(event);
       });
 
@@ -747,7 +800,7 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       expect(events.length).toBe(0);
     });
 
-    it('T-TS-21: Rapid change multiplier works with custom value', () => {
+    it("T-TS-21: Rapid change multiplier works with custom value", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph, {
         defaultComputeInterval: 1,
@@ -755,8 +808,8 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       });
 
       // Simply verify the config is stored and the EventEmitter is functional
-      expect(typeof analyzer.emit).toBe('function');
-      expect(typeof analyzer.on).toBe('function');
+      expect(typeof analyzer.emit).toBe("function");
+      expect(typeof analyzer.on).toBe("function");
     });
   });
 
@@ -764,23 +817,27 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Topology reorganization
   // --------------------------------------------------------------------------
 
-  describe('Topology reorganization', () => {
-
-    it('T-TS-22: tna:topology-reorganized event has correct structure', () => {
+  describe("Topology reorganization", () => {
+    it("T-TS-22: tna:topology-reorganized event has correct structure", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       let topologyEvent: Record<string, unknown> | null = null;
-      analyzer.on('tna:topology-reorganized', (event: Record<string, unknown>) => {
-        topologyEvent = event;
-      });
+      analyzer.on(
+        "tna:topology-reorganized",
+        (event: Record<string, unknown>) => {
+          topologyEvent = event;
+        },
+      );
 
       // Compute baseline
       analyzer.computeIfDue(1);
 
       // Make massive structural change — add a hub node connected to everything
       const g = graph.getGraph();
-      const hub = 'superhub';
+      const hub = "superhub";
       if (!g.hasNode(hub)) g.addNode(hub);
       // Connect hub to all existing nodes
       for (const node of g.nodes()) {
@@ -794,21 +851,28 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
 
       // If topology event was emitted, verify structure
       if (topologyEvent !== null) {
-        expect(topologyEvent).toHaveProperty('type', 'tna:topology-reorganized');
-        expect(topologyEvent).toHaveProperty('majorNodeSwaps');
-        expect(topologyEvent).toHaveProperty('iteration', 2);
-        const swaps = (topologyEvent as Record<string, unknown>)['majorNodeSwaps'];
-        expect(typeof swaps).toBe('number');
+        expect(topologyEvent).toHaveProperty(
+          "type",
+          "tna:topology-reorganized",
+        );
+        expect(topologyEvent).toHaveProperty("majorNodeSwaps");
+        expect(topologyEvent).toHaveProperty("iteration", 2);
+        const swaps = (topologyEvent as Record<string, unknown>)[
+          "majorNodeSwaps"
+        ];
+        expect(typeof swaps).toBe("number");
         expect(swaps as number).toBeGreaterThan(3);
       }
     });
 
-    it('T-TS-23: Minor changes do not emit topology-reorganized', () => {
+    it("T-TS-23: Minor changes do not emit topology-reorganized", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       let eventCount = 0;
-      analyzer.on('tna:topology-reorganized', () => {
+      analyzer.on("tna:topology-reorganized", () => {
         eventCount++;
       });
 
@@ -825,53 +889,52 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Regime-adaptive interval
   // --------------------------------------------------------------------------
 
-  describe('Regime-adaptive interval', () => {
-
-    it('T-TS-24: adjustInterval(critical) sets interval to 5', () => {
+  describe("Regime-adaptive interval", () => {
+    it("T-TS-24: adjustInterval(critical) sets interval to 5", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
-      analyzer.adjustInterval('critical');
+      analyzer.adjustInterval("critical");
 
       // Should compute at iteration 5 (urgentComputeInterval=5)
       expect(analyzer.computeIfDue(3)).toBe(false);
       expect(analyzer.computeIfDue(5)).toBe(true);
     });
 
-    it('T-TS-25: adjustInterval(stable) sets interval to 20', () => {
+    it("T-TS-25: adjustInterval(stable) sets interval to 20", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
-      analyzer.adjustInterval('stable');
+      analyzer.adjustInterval("stable");
 
       // Should NOT compute at 15 (relaxedComputeInterval=20)
       expect(analyzer.computeIfDue(15)).toBe(false);
       expect(analyzer.computeIfDue(20)).toBe(true);
     });
 
-    it('T-TS-26: adjustInterval(transitioning) sets interval to 5', () => {
+    it("T-TS-26: adjustInterval(transitioning) sets interval to 5", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
-      analyzer.adjustInterval('transitioning');
+      analyzer.adjustInterval("transitioning");
 
       expect(analyzer.computeIfDue(4)).toBe(false);
       expect(analyzer.computeIfDue(5)).toBe(true);
     });
 
-    it('T-TS-27: adjustInterval(nascent) sets interval to 10 (default)', () => {
+    it("T-TS-27: adjustInterval(nascent) sets interval to 10 (default)", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
       // First set to urgent, then reset to default via unknown regime
-      analyzer.adjustInterval('critical');
-      analyzer.adjustInterval('nascent'); // → default
+      analyzer.adjustInterval("critical");
+      analyzer.adjustInterval("nascent"); // → default
 
       expect(analyzer.computeIfDue(9)).toBe(false);
       expect(analyzer.computeIfDue(10)).toBe(true);
     });
 
-    it('T-TS-28: Interval change affects next computeIfDue() check', () => {
+    it("T-TS-28: Interval change affects next computeIfDue() check", () => {
       const { graph } = buildTimeSeriesGraph();
       const analyzer = new CentralityAnalyzer(graph);
 
@@ -879,7 +942,7 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       analyzer.computeIfDue(10);
 
       // Switch to critical (interval 5)
-      analyzer.adjustInterval('critical');
+      analyzer.adjustInterval("critical");
 
       // Now at 14: elapsed = 14 - 10 = 4 < 5 → false
       expect(analyzer.computeIfDue(14)).toBe(false);
@@ -893,33 +956,38 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
   // Query methods
   // --------------------------------------------------------------------------
 
-  describe('Query methods', () => {
-
-    it('T-TS-29: getTimeSeries() returns data for tracked node after computeIfDue', () => {
+  describe("Query methods", () => {
+    it("T-TS-29: getTimeSeries() returns data for tracked node after computeIfDue", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       analyzer.computeIfDue(5);
 
-      const ts = analyzer.getTimeSeries('a1');
+      const ts = analyzer.getTimeSeries("a1");
       expect(ts).toBeDefined();
-      expect(ts?.nodeId).toBe('a1');
+      expect(ts?.nodeId).toBe("a1");
       expect(ts?.scores.length).toBeGreaterThan(0);
       expect(ts?.trend).toBeDefined();
     });
 
-    it('T-TS-30: getTimeSeries() returns undefined for untracked node', () => {
+    it("T-TS-30: getTimeSeries() returns undefined for untracked node", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 5 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 5,
+      });
 
       // No computeIfDue called yet
-      const ts = analyzer.getTimeSeries('nonexistent');
+      const ts = analyzer.getTimeSeries("nonexistent");
       expect(ts).toBeUndefined();
     });
 
-    it('T-TS-31: getAllTimeSeries() returns all tracked nodes', () => {
+    it("T-TS-31: getAllTimeSeries() returns all tracked nodes", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       analyzer.computeIfDue(1);
       analyzer.computeIfDue(2);
@@ -934,9 +1002,11 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
       }
     });
 
-    it('T-TS-32: getRisingNodes() filters to rising trend only', () => {
+    it("T-TS-32: getRisingNodes() filters to rising trend only", () => {
       const { graph } = buildTimeSeriesGraph();
-      const analyzer = new CentralityAnalyzer(graph, { defaultComputeInterval: 1 });
+      const analyzer = new CentralityAnalyzer(graph, {
+        defaultComputeInterval: 1,
+      });
 
       // Need 3+ computations to get trend data
       analyzer.computeIfDue(1);
@@ -947,7 +1017,7 @@ describe('Phase 6: Centrality time-series tracking (TNA-09)', () => {
 
       // All returned nodes should have 'rising' trend
       for (const ts of rising) {
-        expect(ts.trend).toBe('rising');
+        expect(ts.trend).toBe("rising");
       }
     });
   });

@@ -2,7 +2,17 @@
 phase: 03-tna-molecular-cot
 plan: 02
 subsystem: tna
-tags: [graphology, louvain, community-detection, betweenness-centrality, determinism, mulberry32, prng, bridge-nodes]
+tags:
+  [
+    graphology,
+    louvain,
+    community-detection,
+    betweenness-centrality,
+    determinism,
+    mulberry32,
+    prng,
+    bridge-nodes,
+  ]
 
 # Dependency graph
 requires:
@@ -95,6 +105,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 2 - Missing Functionality] Added updateNodeCentrality() and updateNodeCommunity() to CooccurrenceGraph**
+
 - **Found during:** Task 2 (CentralityAnalyzer implementation)
 - **Issue:** Plan specified `updateNodeCentrality()` should be added to CooccurrenceGraph if not present — it was not present. T15 requires TextNode.betweennessCentrality to be populated after compute()
 - **Fix:** Added both updateNodeCentrality(nodeId, score) and updateNodeCommunity(nodeId, communityId) to CooccurrenceGraph's public API
@@ -103,6 +114,7 @@ Each task was committed atomically:
 - **Committed in:** 554a5d3 (Task 2 commit)
 
 **2. [Rule 1 - Bug] Fixed TypeScript module resolution errors for CJS libraries under NodeNext**
+
 - **Found during:** Task 2 post-GREEN phase typecheck
 - **Issue:** Three TypeScript errors: (a) `graphology-metrics/centrality/betweenness` subpath not resolvable (no exports field), (b) `louvain.detailed` not visible on default import type, (c) `score: unknown` from `Object.entries` on untyped return
 - **Fix:** Used `createRequire(import.meta.url)` for both libraries, defined local ILouvain and IBetweennessCentrality interfaces with correct return types, eliminating all type errors
@@ -144,5 +156,6 @@ All files exist, all commits verified, all tests green.
 - TNA module still needs barrel export (Plan 03-03)
 
 ---
-*Phase: 03-tna-molecular-cot*
-*Completed: 2026-02-28*
+
+_Phase: 03-tna-molecular-cot_
+_Completed: 2026-02-28_

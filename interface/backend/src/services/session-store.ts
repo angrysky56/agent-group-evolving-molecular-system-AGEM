@@ -41,10 +41,7 @@ class SessionStore {
   #sessionsDir: string;
 
   constructor() {
-    this.#sessionsDir = resolve(
-      settings.all.KNOWLEDGE_BASE_PATH,
-      "sessions"
-    );
+    this.#sessionsDir = resolve(settings.all.KNOWLEDGE_BASE_PATH, "sessions");
     this.#ensureDir();
   }
 
@@ -104,7 +101,7 @@ class SessionStore {
 
     try {
       const files = readdirSync(this.#sessionsDir).filter((f) =>
-        f.endsWith(".json")
+        f.endsWith(".json"),
       );
 
       return files
@@ -116,7 +113,7 @@ class SessionStore {
         .filter((s): s is ChatSession => s !== null)
         .sort(
           (a, b) =>
-            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         );
     } catch (error) {
       console.error("[Sessions] Failed to list sessions:", error);
@@ -141,7 +138,9 @@ class SessionStore {
 
     if (!session) {
       // Auto-create if session doesn't exist
-      const created = this.create({ title: `Session ${sessionId.slice(0, 8)}` });
+      const created = this.create({
+        title: `Session ${sessionId.slice(0, 8)}`,
+      });
       session = this.#readSession(created.id);
       if (!session) return;
       // Re-assign the provided sessionId

@@ -21,11 +21,11 @@
  * STATE.md pitfall "Escalation L3 missing" — permanently guarded by T9, T9b, T9c, T9d, T9f.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { encode } from 'gpt-tokenizer';
-import { EscalationProtocol } from './EscalationProtocol.js';
-import type { ICompressor } from './interfaces.js';
-import { GptTokenCounter, MockCompressor } from './interfaces.js';
+import { describe, it, expect, vi } from "vitest";
+import { encode } from "gpt-tokenizer";
+import { EscalationProtocol } from "./EscalationProtocol.js";
+import type { ICompressor } from "./interfaces.js";
+import { GptTokenCounter, MockCompressor } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -42,8 +42,8 @@ function generateText(targetTokens: number): string {
   // words to account for spaces: gpt-tokenizer typically counts "cat cat cat"
   // as individual tokens per word (the space is merged with following token).
   // Empirically: 150 "cat" words = 150 tokens.
-  const words = Array.from({ length: targetTokens }, () => 'cat');
-  return words.join(' ');
+  const words = Array.from({ length: targetTokens }, () => "cat");
+  return words.join(" ");
 }
 
 /**
@@ -67,7 +67,9 @@ class ExpandingCompressor implements ICompressor {
   callCount = 0;
   async compress(text: string, _targetRatio: number): Promise<string> {
     this.callCount++;
-    return text + ' [EXTRA EXPLANATION ADDED BY LLM TO MAKE TEXT LONGER AND LONGER]';
+    return (
+      text + " [EXTRA EXPLANATION ADDED BY LLM TO MAKE TEXT LONGER AND LONGER]"
+    );
   }
 }
 
@@ -95,10 +97,10 @@ const defaultThresholds = {
 // T7: L1 triggers on token count exceeding threshold
 // ---------------------------------------------------------------------------
 
-describe('T7: L1 triggers on token count exceeding threshold', () => {
-  it('compress() is called when text exceeds level1TokenLimit', async () => {
+describe("T7: L1 triggers on token count exceeding threshold", () => {
+  it("compress() is called when text exceeds level1TokenLimit", async () => {
     const compressor = new MockCompressor();
-    const compressSpy = vi.spyOn(compressor, 'compress');
+    const compressSpy = vi.spyOn(compressor, "compress");
     const tokenCounter = new GptTokenCounter();
 
     const protocol = new EscalationProtocol(compressor, tokenCounter, {
@@ -126,8 +128,8 @@ describe('T7: L1 triggers on token count exceeding threshold', () => {
 // T7b: L1 produces compressed output
 // ---------------------------------------------------------------------------
 
-describe('T7b: L1 produces compressed output', () => {
-  it('L1 output has fewer tokens than input', async () => {
+describe("T7b: L1 produces compressed output", () => {
+  it("L1 output has fewer tokens than input", async () => {
     const compressor = new MockCompressor(); // truncates to targetRatio
     const tokenCounter = new GptTokenCounter();
 
@@ -154,8 +156,8 @@ describe('T7b: L1 produces compressed output', () => {
 // T7c: L1 result includes escalation metadata
 // ---------------------------------------------------------------------------
 
-describe('T7c: L1 result includes escalation metadata', () => {
-  it('result object includes level, inputTokens, outputTokens, compressorUsed', async () => {
+describe("T7c: L1 result includes escalation metadata", () => {
+  it("result object includes level, inputTokens, outputTokens, compressorUsed", async () => {
     const compressor = new MockCompressor();
     const tokenCounter = new GptTokenCounter();
 
@@ -169,11 +171,11 @@ describe('T7c: L1 result includes escalation metadata', () => {
     const text = generateText(150);
     const result = await protocol.escalate(text);
 
-    expect(typeof result.level).toBe('number');
+    expect(typeof result.level).toBe("number");
     expect([1, 2, 3]).toContain(result.level);
-    expect(typeof result.inputTokens).toBe('number');
-    expect(typeof result.outputTokens).toBe('number');
-    expect(typeof result.compressorUsed).toBe('boolean');
+    expect(typeof result.inputTokens).toBe("number");
+    expect(typeof result.outputTokens).toBe("number");
+    expect(typeof result.compressorUsed).toBe("boolean");
     expect(result.inputTokens).toBeGreaterThan(0);
     expect(result.outputTokens).toBeGreaterThanOrEqual(0);
   });
@@ -183,8 +185,8 @@ describe('T7c: L1 result includes escalation metadata', () => {
 // T8: L2 triggers when L1 compression ratio is insufficient
 // ---------------------------------------------------------------------------
 
-describe('T8: L2 triggers when L1 compression ratio is insufficient', () => {
-  it('L2 is attempted after L1 fails to meet minRatio', async () => {
+describe("T8: L2 triggers when L1 compression ratio is insufficient", () => {
+  it("L2 is attempted after L1 fails to meet minRatio", async () => {
     // IdentityCompressor returns text unchanged — ratio = 1.0, fails level2MinRatio=0.8
     const compressor = new IdentityCompressor();
     const tokenCounter = new GptTokenCounter();
@@ -210,8 +212,8 @@ describe('T8: L2 triggers when L1 compression ratio is insufficient', () => {
 // T8b: L2 tries multi-compression indexing
 // ---------------------------------------------------------------------------
 
-describe('T8b: L2 tries multi-compression indexing', () => {
-  it('L2 makes multiple compress() calls (one per chunk)', async () => {
+describe("T8b: L2 tries multi-compression indexing", () => {
+  it("L2 makes multiple compress() calls (one per chunk)", async () => {
     const compressor = new SlightlyCompressingCompressor();
     const tokenCounter = new GptTokenCounter();
 
@@ -225,8 +227,8 @@ describe('T8b: L2 tries multi-compression indexing', () => {
     // Input with multiple paragraphs separated by double newlines.
     // Each paragraph has ~30-35 words (30-35 tokens) so 4 paragraphs ≈ 120-140 tokens,
     // exceeding the level1TokenLimit of 100.
-    const para = 'cat '.repeat(30).trim(); // 30 tokens per paragraph
-    const longText = [para, para, para, para].join('\n\n'); // 4 paragraphs > 100 tokens
+    const para = "cat ".repeat(30).trim(); // 30 tokens per paragraph
+    const longText = [para, para, para, para].join("\n\n"); // 4 paragraphs > 100 tokens
 
     const inputTokens = tokenCounter.countTokens(longText);
     expect(inputTokens).toBeGreaterThan(100);
@@ -242,8 +244,8 @@ describe('T8b: L2 tries multi-compression indexing', () => {
 // T9: L3 activates when both L1 and L2 fail
 // ---------------------------------------------------------------------------
 
-describe('T9: L3 activates when both L1 and L2 fail', () => {
-  it('L3 activates when expanding compressor makes text longer', async () => {
+describe("T9: L3 activates when both L1 and L2 fail", () => {
+  it("L3 activates when expanding compressor makes text longer", async () => {
     // ExpandingCompressor always returns text LONGER than input
     // Forces both L1 and L2 to fail, triggering L3
     const compressor = new ExpandingCompressor();
@@ -269,8 +271,8 @@ describe('T9: L3 activates when both L1 and L2 fail', () => {
 // T9b: L3 uses zero LLM inference
 // ---------------------------------------------------------------------------
 
-describe('T9b: L3 uses zero LLM inference', () => {
-  it('compressor is NOT called during L3 — only during L1 and L2 attempts', async () => {
+describe("T9b: L3 uses zero LLM inference", () => {
+  it("compressor is NOT called during L3 — only during L1 and L2 attempts", async () => {
     const compressor = new ExpandingCompressor();
     const tokenCounter = new GptTokenCounter();
 
@@ -308,8 +310,8 @@ describe('T9b: L3 uses zero LLM inference', () => {
 // T9c: L3 chunks before truncating
 // ---------------------------------------------------------------------------
 
-describe('T9c: L3 chunks before truncating', () => {
-  it('L3 output contains multiple compressed chunk sections for multi-paragraph input', async () => {
+describe("T9c: L3 chunks before truncating", () => {
+  it("L3 output contains multiple compressed chunk sections for multi-paragraph input", async () => {
     const compressor = new ExpandingCompressor();
     const tokenCounter = new GptTokenCounter();
 
@@ -322,14 +324,14 @@ describe('T9c: L3 chunks before truncating', () => {
 
     // At least 4 paragraphs separated by double newlines
     const paragraphs = [
-      'First paragraph: This is the beginning of the document with substantial content.',
-      'Second paragraph: This section discusses a different topic with additional information.',
-      'Third paragraph: Here we explore another aspect of the subject matter in detail.',
-      'Fourth paragraph: The final section concludes with a summary of the main points.',
+      "First paragraph: This is the beginning of the document with substantial content.",
+      "Second paragraph: This section discusses a different topic with additional information.",
+      "Third paragraph: Here we explore another aspect of the subject matter in detail.",
+      "Fourth paragraph: The final section concludes with a summary of the main points.",
     ];
-    const text = paragraphs.join('\n\n');
+    const text = paragraphs.join("\n\n");
     // Make text long enough to trigger L1
-    const longText = text + '\n\n' + text;
+    const longText = text + "\n\n" + text;
 
     const result = await protocol.escalate(longText);
     expect(result.level).toBe(3);
@@ -344,8 +346,8 @@ describe('T9c: L3 chunks before truncating', () => {
 // T9d: L3 output is <= kTokens
 // ---------------------------------------------------------------------------
 
-describe('T9d: L3 output is <= kTokens', () => {
-  it('L3 output token count is always <= level3KTokens', async () => {
+describe("T9d: L3 output is <= kTokens", () => {
+  it("L3 output token count is always <= level3KTokens", async () => {
     const compressor = new ExpandingCompressor();
     const tokenCounter = new GptTokenCounter();
     const kTokens = 50;
@@ -373,8 +375,8 @@ describe('T9d: L3 output is <= kTokens', () => {
 // T9e: L3 is fully deterministic
 // ---------------------------------------------------------------------------
 
-describe('T9e: L3 is fully deterministic', () => {
-  it('same input always produces byte-identical L3 output', async () => {
+describe("T9e: L3 is fully deterministic", () => {
+  it("same input always produces byte-identical L3 output", async () => {
     const tokenCounter = new GptTokenCounter();
 
     const makeProtocol = () =>
@@ -403,8 +405,8 @@ describe('T9e: L3 is fully deterministic', () => {
 // T9f: L3 falls back to hard truncation when chunks still exceed kTokens
 // ---------------------------------------------------------------------------
 
-describe('T9f: L3 falls back to hard truncation when chunks exceed kTokens', () => {
-  it('with very small kTokens, output is hard-truncated to exactly kTokens tokens', async () => {
+describe("T9f: L3 falls back to hard truncation when chunks exceed kTokens", () => {
+  it("with very small kTokens, output is hard-truncated to exactly kTokens tokens", async () => {
     const compressor = new ExpandingCompressor();
     const tokenCounter = new GptTokenCounter();
     const kTokens = 20; // Very small — ensures hard truncation is needed
@@ -417,10 +419,12 @@ describe('T9f: L3 falls back to hard truncation when chunks exceed kTokens', () 
     });
 
     // 10 paragraphs of substantive content, each contributing multiple tokens
-    const paragraphs = Array.from({ length: 10 }, (_, i) =>
-      `Paragraph ${i + 1}: This section contains substantial content about topic ${i + 1} with many words.`
+    const paragraphs = Array.from(
+      { length: 10 },
+      (_, i) =>
+        `Paragraph ${i + 1}: This section contains substantial content about topic ${i + 1} with many words.`,
     );
-    const text = paragraphs.join('\n\n');
+    const text = paragraphs.join("\n\n");
 
     const result = await protocol.escalate(text);
     expect(result.level).toBe(3);
@@ -435,10 +439,10 @@ describe('T9f: L3 falls back to hard truncation when chunks exceed kTokens', () 
 // T9g: setThresholds updates at runtime
 // ---------------------------------------------------------------------------
 
-describe('T9g: setThresholds updates at runtime', () => {
-  it('L1 does not trigger after raising level1TokenLimit above input size', async () => {
+describe("T9g: setThresholds updates at runtime", () => {
+  it("L1 does not trigger after raising level1TokenLimit above input size", async () => {
     const compressor = new MockCompressor();
-    const compressSpy = vi.spyOn(compressor, 'compress');
+    const compressSpy = vi.spyOn(compressor, "compress");
     const tokenCounter = new GptTokenCounter();
 
     const protocol = new EscalationProtocol(compressor, tokenCounter, {
@@ -468,7 +472,7 @@ describe('T9g: setThresholds updates at runtime', () => {
 // T9h: escalation emits events
 // ---------------------------------------------------------------------------
 
-describe('T9h: escalation emits events', () => {
+describe("T9h: escalation emits events", () => {
   it('protocol emits "escalation" event with level and metadata', async () => {
     const compressor = new MockCompressor();
     const tokenCounter = new GptTokenCounter();
@@ -481,7 +485,7 @@ describe('T9h: escalation emits events', () => {
     });
 
     const events: unknown[] = [];
-    protocol.on('escalation', (event) => events.push(event));
+    protocol.on("escalation", (event) => events.push(event));
 
     const text = generateText(150);
     const result = await protocol.escalate(text);
@@ -491,8 +495,8 @@ describe('T9h: escalation emits events', () => {
 
     // Event should include level and metadata
     const event = events[0] as Record<string, unknown>;
-    expect(event).toHaveProperty('level');
-    expect([1, 2, 3]).toContain(event['level']);
+    expect(event).toHaveProperty("level");
+    expect([1, 2, 3]).toContain(event["level"]);
     expect(result.level).toBeGreaterThanOrEqual(1);
   });
 });

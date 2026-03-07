@@ -1,10 +1,10 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    pool: 'forks',
-    include: ['src/**/*.test.ts'],
-    environment: 'node',
+    pool: "forks",
+    include: ["src/**/*.test.ts"],
+    environment: "node",
     passWithNoTests: true,
   },
 });

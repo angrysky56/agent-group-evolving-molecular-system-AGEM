@@ -2,7 +2,15 @@
 phase: 05-orchestrator
 plan: 02
 subsystem: orchestrator
-tags: [worker_threads, async_hooks, AsyncLocalStorage, llm_map, parallel-dispatch, context-propagation]
+tags:
+  [
+    worker_threads,
+    async_hooks,
+    AsyncLocalStorage,
+    llm_map,
+    parallel-dispatch,
+    context-propagation,
+  ]
 
 # Dependency graph
 requires:
@@ -86,7 +94,7 @@ completed: 2026-03-01
 
 - `src/orchestrator/llm_map.ts` (272 lines) — llm_map function, contextStorage, WorkerInboundMessage, WorkerOutboundMessage, formatTaskForWorker
 - `src/orchestrator/workers/TaskWorker.ts` (208 lines) — ESM worker entry point, worker-local AsyncLocalStorage, stub executor, error sandboxing
-- `src/orchestrator/workers/TaskWorker.mock.mjs` (pure JS) — Mock worker for test isolation: supports delay, shouldFail, value, prompt, _context echo
+- `src/orchestrator/workers/TaskWorker.mock.mjs` (pure JS) — Mock worker for test isolation: supports delay, shouldFail, value, prompt, \_context echo
 - `src/orchestrator/llm_map.test.ts` — 33 tests (T1-T15) with full coverage of dispatch, ordering, partial failures, context propagation, cleanup
 
 ## Decisions Made
@@ -108,6 +116,7 @@ Task message handlers are registered with `on()` and explicitly removed when the
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] TypeScript union type inference in test mixed-payload arrays**
+
 - **Found during:** Task 2 (test compilation)
 - **Issue:** TypeScript inferred `Task<{ value: number }> | Task<{ shouldFail: boolean }>` for heterogeneous arrays, which is not assignable to `readonly Task<T>[]` with any concrete T
 - **Fix:** Annotated mixed-payload arrays as `Task<unknown>[]` at three call sites in T3, T4, and T9 tests
@@ -116,6 +125,7 @@ Task message handlers are registered with `on()` and explicitly removed when the
 - **Committed in:** b33026e (Task 2 commit)
 
 **2. [Rule 1 - Bug] TaskWorker.ts initially imported contextStorage from llm_map.ts**
+
 - **Found during:** Task 2 (worker testing)
 - **Issue:** Worker spawned with `tsx/esm` loader could not resolve `../llm_map.js` → `../llm_map.ts` because the tsx loader doesn't handle this cross-package resolution in worker thread context
 - **Fix:** Replaced import with worker-local `AsyncLocalStorage` instance (`workerContextStorage`); removed dependency on `../llm_map.js`. This is architecturally correct — workers have separate module graphs
@@ -144,5 +154,6 @@ None - no external service configuration required.
 - Context serialization pattern established: `contextStorage.getStore()` → `Object.fromEntries` → `postMessage` → `new Map(Object.entries(context))` in worker
 
 ---
-*Phase: 05-orchestrator*
-*Completed: 2026-03-01*
+
+_Phase: 05-orchestrator_
+_Completed: 2026-03-01_

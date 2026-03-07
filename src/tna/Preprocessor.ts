@@ -22,18 +22,22 @@
  *   - stopword (removeStopwords, eng corpus)
  */
 
-import natural from 'natural';
-import winkLemmatizer from 'wink-lemmatizer';
-import { removeStopwords, eng } from 'stopword';
-import type { TNAConfig, PreprocessResult, DetailedPreprocessResult } from './interfaces.js';
+import natural from "natural";
+import winkLemmatizer from "wink-lemmatizer";
+import { removeStopwords, eng } from "stopword";
+import type {
+  TNAConfig,
+  PreprocessResult,
+  DetailedPreprocessResult,
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Resolve natural module exports (handles ESM interop with CommonJS natural)
 // ---------------------------------------------------------------------------
 
 const { TfIdf, WordTokenizer } = natural as {
-  TfIdf: typeof import('natural').TfIdf;
-  WordTokenizer: typeof import('natural').WordTokenizer;
+  TfIdf: typeof import("natural").TfIdf;
+  WordTokenizer: typeof import("natural").WordTokenizer;
 };
 
 // ---------------------------------------------------------------------------
@@ -44,7 +48,7 @@ const DEFAULT_CONFIG: Required<TNAConfig> = {
   windowSize: 4,
   minTfidfWeight: 0.1,
   louvainSeed: 42,
-  language: 'en',
+  language: "en",
 };
 
 // ---------------------------------------------------------------------------
@@ -124,7 +128,9 @@ export class Preprocessor {
 
     // Pick the shortest result — this gives the most reduced canonical form.
     // Sort by length ascending and pick first.
-    const shortest = lemmatized.reduce((a, b) => (a.length <= b.length ? a : b));
+    const shortest = lemmatized.reduce((a, b) =>
+      a.length <= b.length ? a : b,
+    );
 
     // If the shortest form is the same as input, it means wink didn't lemmatize.
     // Keep the word as-is (it's already in canonical form).
@@ -153,7 +159,7 @@ export class Preprocessor {
     const rawTokens: string[] = this.#tokenizer.tokenize(text) ?? [];
 
     // Step 2: Lowercase.
-    const lowercased = rawTokens.map(t => t.toLowerCase());
+    const lowercased = rawTokens.map((t) => t.toLowerCase());
 
     // Step 3: Remove stopwords.
     const withoutStopwords = removeStopwords(lowercased, eng);
@@ -204,7 +210,7 @@ export class Preprocessor {
 
     // Step 5: Compute TF-IDF scores for this document.
     const tempTfidf = new TfIdf();
-    tempTfidf.addDocument(lemmatizedTokens.join(' '));
+    tempTfidf.addDocument(lemmatizedTokens.join(" "));
 
     const scores = new Map<string, number>();
     const uniqueTerms = new Set(lemmatizedTokens);
@@ -215,9 +221,12 @@ export class Preprocessor {
     }
 
     // Step 6: Filter tokens below minTfidfWeight threshold.
-    const filtered = this.#config.minTfidfWeight <= 0.0
-      ? lemmatizedTokens
-      : lemmatizedTokens.filter(t => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight);
+    const filtered =
+      this.#config.minTfidfWeight <= 0.0
+        ? lemmatizedTokens
+        : lemmatizedTokens.filter(
+            (t) => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight,
+          );
 
     return {
       tokens: filtered,
@@ -261,7 +270,7 @@ export class Preprocessor {
 
     // Compute TF-IDF scores.
     const tempTfidf = new TfIdf();
-    tempTfidf.addDocument(lemmatizedTokens.join(' '));
+    tempTfidf.addDocument(lemmatizedTokens.join(" "));
 
     const scores = new Map<string, number>();
     const uniqueTerms = new Set(lemmatizedTokens);
@@ -272,9 +281,12 @@ export class Preprocessor {
     }
 
     // Filter tokens below threshold.
-    const filtered = this.#config.minTfidfWeight <= 0.0
-      ? lemmatizedTokens
-      : lemmatizedTokens.filter(t => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight);
+    const filtered =
+      this.#config.minTfidfWeight <= 0.0
+        ? lemmatizedTokens
+        : lemmatizedTokens.filter(
+            (t) => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight,
+          );
 
     return {
       tokens: filtered,
@@ -301,7 +313,7 @@ export class Preprocessor {
     const { lemmatizedTokens } = this.#runPipeline(text);
 
     if (lemmatizedTokens.length > 0) {
-      this.#tfidf.addDocument(lemmatizedTokens.join(' '));
+      this.#tfidf.addDocument(lemmatizedTokens.join(" "));
     }
   }
 
@@ -329,8 +341,9 @@ export class Preprocessor {
     }
 
     // Add this document to the corpus temporarily for scoring.
-    const docIndex = (this.#tfidf as unknown as { documents: unknown[] }).documents.length;
-    this.#tfidf.addDocument(lemmatizedTokens.join(' '));
+    const docIndex = (this.#tfidf as unknown as { documents: unknown[] })
+      .documents.length;
+    this.#tfidf.addDocument(lemmatizedTokens.join(" "));
 
     // Compute corpus-aware TF-IDF scores.
     const scores = new Map<string, number>();
@@ -342,9 +355,12 @@ export class Preprocessor {
     }
 
     // Filter below threshold.
-    const filtered = this.#config.minTfidfWeight <= 0.0
-      ? lemmatizedTokens
-      : lemmatizedTokens.filter(t => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight);
+    const filtered =
+      this.#config.minTfidfWeight <= 0.0
+        ? lemmatizedTokens
+        : lemmatizedTokens.filter(
+            (t) => (scores.get(t) ?? 0) >= this.#config.minTfidfWeight,
+          );
 
     return {
       tokens: filtered,

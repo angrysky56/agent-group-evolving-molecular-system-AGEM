@@ -2,7 +2,15 @@
 phase: 06-p2-enhancements
 plan: 01
 subsystem: soc
-tags: [regime-validation, stability-classification, phase-transition, pearson-correlation, rolling-window, event-emission]
+tags:
+  [
+    regime-validation,
+    stability-classification,
+    phase-transition,
+    pearson-correlation,
+    rolling-window,
+    event-emission,
+  ]
 
 # Dependency graph
 requires:
@@ -139,12 +147,14 @@ None — no external service configuration required. All Phase 6 components are 
 - **SOC isolation**: All 4 isolation tests pass; RegimeValidator.ts has zero imports from tna/, lcm/, orchestrator/, sheaf/.
 
 ---
-*Phase: 06-p2-enhancements*
-*Completed: 2026-03-06*
+
+_Phase: 06-p2-enhancements_
+_Completed: 2026-03-06_
 
 ## Self-Check: PASSED
 
 All key files present:
+
 - `src/soc/RegimeValidator.ts` — FOUND
 - `src/soc/RegimeValidator.test.ts` — FOUND
 - `src/soc/interfaces.ts` — FOUND
@@ -152,6 +162,7 @@ All key files present:
 - `src/soc/SOCTracker.ts` — FOUND
 
 All task commits present:
+
 - `f0359d0` feat(06-01): define interfaces and event types — FOUND
 - `8f9c18e` feat(06-01): implement RegimeValidator and RegimeAnalyzer — FOUND
 - `3a68577` feat(06-01): extend SOCTracker — FOUND

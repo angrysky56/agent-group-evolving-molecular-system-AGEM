@@ -34,7 +34,7 @@
  *   - An edge is surprising IFF: (a) cross-community AND (b) cosineSimilarity < threshold.
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from "events";
 import type {
   SOCInputs,
   SOCMetrics,
@@ -42,16 +42,20 @@ import type {
   MetricsTrend,
   RegimeStability,
   RegimeMetrics,
-} from './interfaces.js';
+} from "./interfaces.js";
 import type {
   SOCMetricsEvent,
   SOCPhaseTransitionEvent,
   PhaseTransitionConfirmedEvent,
   RegimeClassificationEvent,
-} from '../types/Events.js';
-import { vonNeumannEntropy, embeddingEntropy, cosineSimilarity } from './entropy.js';
-import { pearsonCorrelation, linearSlope } from './correlation.js';
-import { RegimeValidator, RegimeAnalyzer } from './RegimeValidator.js';
+} from "../types/Events.js";
+import {
+  vonNeumannEntropy,
+  embeddingEntropy,
+  cosineSimilarity,
+} from "./entropy.js";
+import { pearsonCorrelation, linearSlope } from "./correlation.js";
+import { RegimeValidator, RegimeAnalyzer } from "./RegimeValidator.js";
 
 // ---------------------------------------------------------------------------
 // SOCConfig defaults
@@ -112,8 +116,12 @@ export class SOCTracker extends EventEmitter {
     this.#deltaSemantic = [];
 
     // Phase 6: Instantiate regime components with optional config overrides
-    this.#regimeValidator = new RegimeValidator(config.regimeValidatorConfig ?? {});
-    this.#regimeAnalyzer = new RegimeAnalyzer(config.regimeAnalyzerConfig ?? {});
+    this.#regimeValidator = new RegimeValidator(
+      config.regimeValidatorConfig ?? {},
+    );
+    this.#regimeAnalyzer = new RegimeAnalyzer(
+      config.regimeAnalyzerConfig ?? {},
+    );
     this.#currentH1Dimension = 0;
     this.#latestRegimeMetrics = undefined;
   }
@@ -137,7 +145,14 @@ export class SOCTracker extends EventEmitter {
    * @returns Computed SOCMetrics for this iteration.
    */
   computeAndEmit(inputs: SOCInputs): SOCMetrics {
-    const { nodeCount, edges, embeddings, communityAssignments, newEdges, iteration } = inputs;
+    const {
+      nodeCount,
+      edges,
+      embeddings,
+      communityAssignments,
+      newEdges,
+      iteration,
+    } = inputs;
 
     // Step 1: Von Neumann entropy
     const vne = vonNeumannEntropy(nodeCount, edges);
@@ -154,7 +169,7 @@ export class SOCTracker extends EventEmitter {
       embeddings,
       communityAssignments,
       newEdges,
-      iteration
+      iteration,
     );
 
     // Step 5: Phase transition detection
@@ -209,11 +224,14 @@ export class SOCTracker extends EventEmitter {
     this.#history.push(metrics);
 
     // Update correlation history AFTER computing this iteration's transition flag
-    this.#previousCorrelation = correlationCoefficient !== 0 ? correlationCoefficient : this.#previousCorrelation;
+    this.#previousCorrelation =
+      correlationCoefficient !== 0
+        ? correlationCoefficient
+        : this.#previousCorrelation;
 
     // Emit soc:metrics event
     const metricsEvent: SOCMetricsEvent = {
-      type: 'soc:metrics',
+      type: "soc:metrics",
       iteration,
       timestamp: metrics.timestamp,
       vonNeumannEntropy: vne,
@@ -223,18 +241,18 @@ export class SOCTracker extends EventEmitter {
       correlationCoefficient,
       isPhaseTransition,
     };
-    this.emit('soc:metrics', metricsEvent);
+    this.emit("soc:metrics", metricsEvent);
 
     // Emit phase:transition event if detected
     if (isPhaseTransition) {
       const transitionEvent: SOCPhaseTransitionEvent = {
-        type: 'phase:transition',
+        type: "phase:transition",
         iteration,
         centeredAtIteration: iteration - Math.floor(windowSize / 2),
         correlationCoefficient,
         previousCorrelation: this.#previousCorrelation ?? 0,
       };
-      this.emit('phase:transition', transitionEvent);
+      this.emit("phase:transition", transitionEvent);
     }
 
     // Phase 6: Regime validation (SOC-06)
@@ -247,12 +265,12 @@ export class SOCTracker extends EventEmitter {
     if (isPhaseTransition || candidate.startIteration !== null) {
       const validationResult = this.#regimeValidator.validateTransition(
         this.#currentH1Dimension,
-        iteration
+        iteration,
       );
       if (validationResult.confirmed) {
         isTransitionConfirmed = true;
         const confirmedEvent: PhaseTransitionConfirmedEvent = {
-          type: 'phase:transition-confirmed',
+          type: "phase:transition-confirmed",
           iteration,
           centeredAtIteration: iteration - Math.floor(windowSize / 2),
           coherence: validationResult.coherence,
@@ -260,22 +278,25 @@ export class SOCTracker extends EventEmitter {
           correlationCoefficient,
           previousCorrelation: this.#previousCorrelation ?? 0,
         };
-        this.emit('phase:transition-confirmed', confirmedEvent);
+        this.emit("phase:transition-confirmed", confirmedEvent);
       }
     }
 
     // Phase 6: Regime stability analysis (SOC-07) — emit every iteration
-    const regimeMetrics = this.#regimeAnalyzer.analyzeRegime(metrics, isTransitionConfirmed);
+    const regimeMetrics = this.#regimeAnalyzer.analyzeRegime(
+      metrics,
+      isTransitionConfirmed,
+    );
     this.#latestRegimeMetrics = regimeMetrics;
     const classificationEvent: RegimeClassificationEvent = {
-      type: 'regime:classification',
+      type: "regime:classification",
       iteration,
       regime: regimeMetrics.regime,
       cdpVariance: regimeMetrics.cdpVariance,
       correlationConsistency: regimeMetrics.correlationConsistency,
       persistenceIterations: regimeMetrics.persistenceIterations,
     };
-    this.emit('regime:classification', classificationEvent);
+    this.emit("regime:classification", classificationEvent);
 
     return metrics;
   }
@@ -338,12 +359,16 @@ export class SOCTracker extends EventEmitter {
     _inputs: SOCInputs,
     embeddings: ReadonlyMap<string, Float64Array>,
     communityAssignments: ReadonlyMap<string, number>,
-    newEdges: ReadonlyArray<{ source: string; target: string; createdAtIteration: number }>,
-    currentIteration: number
+    newEdges: ReadonlyArray<{
+      source: string;
+      target: string;
+      createdAtIteration: number;
+    }>,
+    currentIteration: number,
   ): number {
     // Filter to current iteration only (Pitfall 3 guard)
     const currentEdges = newEdges.filter(
-      (e) => e.createdAtIteration === currentIteration
+      (e) => e.createdAtIteration === currentIteration,
     );
 
     if (currentEdges.length === 0) return 0;
@@ -356,7 +381,8 @@ export class SOCTracker extends EventEmitter {
       const targetCommunity = communityAssignments.get(edge.target);
 
       // Criterion (b): cross-community check
-      if (sourceCommunity === undefined || targetCommunity === undefined) continue;
+      if (sourceCommunity === undefined || targetCommunity === undefined)
+        continue;
       if (sourceCommunity === targetCommunity) continue; // intra-community → not surprising
 
       // Criterion (c): semantic similarity check

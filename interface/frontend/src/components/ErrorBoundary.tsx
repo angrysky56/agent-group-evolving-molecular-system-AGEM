@@ -26,32 +26,44 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          padding: "2rem",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: "var(--text-danger)",
-          background: "var(--surface-sunken)",
-          fontFamily: "var(--font-mono)",
-        }}>
+        <div
+          style={{
+            padding: "2rem",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: "var(--text-danger)",
+            background: "var(--surface-sunken)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
           <h2>Something went wrong.</h2>
-          <details style={{ whiteSpace: "pre-wrap", marginTop: "1rem", textAlign: "left", background: "var(--surface-raised)", padding: "1rem", borderRadius: "8px" }}>
+          <details
+            style={{
+              whiteSpace: "pre-wrap",
+              marginTop: "1rem",
+              textAlign: "left",
+              background: "var(--surface-raised)",
+              padding: "1rem",
+              borderRadius: "8px",
+            }}
+          >
             {this.state.error && this.state.error.toString()}
           </details>
-          <button 
+          <button
             onClick={() => this.setState({ hasError: false })}
-            style={{ 
-              marginTop: "2rem", 
-              padding: "0.5rem 1rem", 
-              background: "var(--brand-primary)", 
-              color: "white", 
-              border: "none", 
-              borderRadius: "4px", 
-              cursor: "pointer" 
-            }}>
+            style={{
+              marginTop: "2rem",
+              padding: "0.5rem 1rem",
+              background: "var(--brand-primary)",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
             Try again
           </button>
         </div>

@@ -20,8 +20,13 @@
  * The flat counterpart is flatSheafFactory (task w1-t6).
  */
 
-import { CellularSheaf } from '../CellularSheaf.js';
-import type { VertexId, EdgeId, SheafVertex, SheafEdge } from '../../types/index.js';
+import { CellularSheaf } from "../CellularSheaf.js";
+import type {
+  VertexId,
+  EdgeId,
+  SheafVertex,
+  SheafEdge,
+} from "../../types/index.js";
 
 /**
  * buildThreeCycleInconsistentSheaf — canonical H^1 test configuration.
@@ -45,20 +50,20 @@ import type { VertexId, EdgeId, SheafVertex, SheafEdge } from '../../types/index
  */
 export function buildThreeCycleInconsistentSheaf(): CellularSheaf {
   // Vertex IDs.
-  const v0 = 'v0' as VertexId;
-  const v1 = 'v1' as VertexId;
-  const v2 = 'v2' as VertexId;
+  const v0 = "v0" as VertexId;
+  const v1 = "v1" as VertexId;
+  const v2 = "v2" as VertexId;
 
   // Edge IDs.
-  const e01 = 'e01' as EdgeId;
-  const e12 = 'e12' as EdgeId;
-  const e20 = 'e20' as EdgeId;
+  const e01 = "e01" as EdgeId;
+  const e12 = "e12" as EdgeId;
+  const e20 = "e20" as EdgeId;
 
   // Vertices: all R^2.
   const vertices: SheafVertex[] = [
-    { id: v0, stalkSpace: { dim: 2, label: 'v0' } },
-    { id: v1, stalkSpace: { dim: 2, label: 'v1' } },
-    { id: v2, stalkSpace: { dim: 2, label: 'v2' } },
+    { id: v0, stalkSpace: { dim: 2, label: "v0" } },
+    { id: v1, stalkSpace: { dim: 2, label: "v1" } },
+    { id: v2, stalkSpace: { dim: 2, label: "v2" } },
   ];
 
   // Projection vectors.
@@ -71,7 +76,7 @@ export function buildThreeCycleInconsistentSheaf(): CellularSheaf {
     id: e01,
     sourceVertex: v0,
     targetVertex: v1,
-    stalkSpace: { dim: 1, label: 'e01' },
+    stalkSpace: { dim: 1, label: "e01" },
     sourceRestriction: {
       sourceVertexId: v0,
       edgeId: e01,
@@ -94,7 +99,7 @@ export function buildThreeCycleInconsistentSheaf(): CellularSheaf {
     id: e12,
     sourceVertex: v1,
     targetVertex: v2,
-    stalkSpace: { dim: 1, label: 'e12' },
+    stalkSpace: { dim: 1, label: "e12" },
     sourceRestriction: {
       sourceVertexId: v1,
       edgeId: e12,
@@ -117,7 +122,7 @@ export function buildThreeCycleInconsistentSheaf(): CellularSheaf {
     id: e20,
     sourceVertex: v2,
     targetVertex: v0,
-    stalkSpace: { dim: 1, label: 'e20' },
+    stalkSpace: { dim: 1, label: "e20" },
     sourceRestriction: {
       sourceVertexId: v2,
       edgeId: e20,

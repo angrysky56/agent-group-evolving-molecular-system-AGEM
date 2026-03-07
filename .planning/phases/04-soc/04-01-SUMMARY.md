@@ -2,7 +2,16 @@
 phase: 04-soc
 plan: 01
 subsystem: soc
-tags: [mathjs, ml-matrix, von-neumann-entropy, embedding-entropy, normalized-laplacian, eigendecomposition, tdd]
+tags:
+  [
+    mathjs,
+    ml-matrix,
+    von-neumann-entropy,
+    embedding-entropy,
+    normalized-laplacian,
+    eigendecomposition,
+    tdd,
+  ]
 
 # Dependency graph
 requires:
@@ -79,7 +88,7 @@ completed: 2026-02-28
 
 - SOCMetricsEvent and SOCPhaseTransitionEvent event types added to src/types/Events.ts with their own SOCEventType / SOCEvent discriminated union (separate from Sheaf events)
 - SOCInputs, SOCMetrics, SOCConfig, MetricsTrend interfaces created in src/soc/interfaces.ts with zero cross-module imports
-- vonNeumannEntropy() pure function: builds L_norm from adjacency list, normalizes via trace, eigendecomposes rho via math.eigs(), computes S = -Σ p_i * ln(p_i)
+- vonNeumannEntropy() pure function: builds L_norm from adjacency list, normalizes via trace, eigendecomposes rho via math.eigs(), computes S = -Σ p_i \* ln(p_i)
 - embeddingEntropy() pure function: builds Σ = (1/n)E^T E, eigendecomposes via ml-matrix, clamps negatives, normalizes, computes entropy
 - 11 mathematical correctness guard tests all passing (T-VN-01..05, T-EE-01..05 + T-VN-02b)
 - Full test suite: 220 tests passing (11 new), zero regressions
@@ -133,6 +142,7 @@ None — no external service configuration required.
 ## Next Phase Readiness
 
 Wave 2 (04-02-PLAN.md) can proceed immediately:
+
 - `vonNeumannEntropy()` and `embeddingEntropy()` are ready for SOCTracker integration
 - `cosineSimilarity()` is available for surprising edge ratio computation
 - `SOCInputs`, `SOCMetrics`, `SOCConfig` interfaces define the full typed contract for SOCTracker
@@ -141,20 +151,21 @@ Wave 2 (04-02-PLAN.md) can proceed immediately:
 
 ## Self-Check: PASSED
 
-| Item | Status |
-|------|--------|
-| src/soc/interfaces.ts | FOUND |
-| src/soc/entropy.ts | FOUND |
-| src/soc/entropy.test.ts | FOUND |
-| src/types/Events.ts | FOUND |
-| .planning/phases/04-soc/04-01-SUMMARY.md | FOUND |
-| Commit fb42d4d (Task 1: types) | FOUND |
-| Commit e27a864 (Task 2 RED: tests) | FOUND |
-| Commit 40754b6 (Task 2 GREEN: implementation) | FOUND |
-| npx tsc --noEmit | PASSED (0 errors) |
-| npx vitest run src/soc/ | PASSED (11/11 tests) |
-| Full suite: npx vitest run | PASSED (220/220 tests) |
+| Item                                          | Status                 |
+| --------------------------------------------- | ---------------------- |
+| src/soc/interfaces.ts                         | FOUND                  |
+| src/soc/entropy.ts                            | FOUND                  |
+| src/soc/entropy.test.ts                       | FOUND                  |
+| src/types/Events.ts                           | FOUND                  |
+| .planning/phases/04-soc/04-01-SUMMARY.md      | FOUND                  |
+| Commit fb42d4d (Task 1: types)                | FOUND                  |
+| Commit e27a864 (Task 2 RED: tests)            | FOUND                  |
+| Commit 40754b6 (Task 2 GREEN: implementation) | FOUND                  |
+| npx tsc --noEmit                              | PASSED (0 errors)      |
+| npx vitest run src/soc/                       | PASSED (11/11 tests)   |
+| Full suite: npx vitest run                    | PASSED (220/220 tests) |
 
 ---
-*Phase: 04-soc*
-*Completed: 2026-02-28*
+
+_Phase: 04-soc_
+_Completed: 2026-02-28_

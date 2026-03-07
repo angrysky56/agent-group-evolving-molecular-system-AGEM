@@ -21,17 +21,17 @@
  *   any changes to any test that imports this module.
  */
 
-import * as math from 'mathjs';
-import { CellularSheaf } from './CellularSheaf.js';
+import * as math from "mathjs";
+import { CellularSheaf } from "./CellularSheaf.js";
 
 // ---------------------------------------------------------------------------
 // Result types
 // ---------------------------------------------------------------------------
 
 export interface ADMMStepResult {
-  readonly x: Float64Array;         // Updated C^0 vector
-  readonly primalResidual: number;  // ||Bx - z||
-  readonly dualResidual: number;    // ||rho * B^T(z - z_prev)||
+  readonly x: Float64Array; // Updated C^0 vector
+  readonly primalResidual: number; // ||Bx - z||
+  readonly dualResidual: number; // ||rho * B^T(z - z_prev)||
 }
 
 export interface ConvergenceResult {
@@ -42,10 +42,10 @@ export interface ConvergenceResult {
 }
 
 export interface ConsensusResult {
-  readonly x: Float64Array;         // Final C^0 vector (all agent states)
+  readonly x: Float64Array; // Final C^0 vector (all agent states)
   readonly converged: boolean;
   readonly iterations: number;
-  readonly finalEnergy: number;     // Dirichlet energy = x^T L x
+  readonly finalEnergy: number; // Dirichlet energy = x^T L x
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ export class ADMMSolver {
 
   constructor(
     sheaf: CellularSheaf,
-    options?: { maxIterations?: number; tolerance?: number; rho?: number }
+    options?: { maxIterations?: number; tolerance?: number; rho?: number },
   ) {
     this.sheaf = sheaf;
     this.maxIterations = options?.maxIterations ?? 1000;
@@ -110,7 +110,7 @@ export class ADMMSolver {
       const LxRaw = math.multiply(L, xArray);
       const Lx: number[] = Array.isArray(LxRaw)
         ? (LxRaw as number[])
-        : (LxRaw as math.Matrix).toArray() as number[];
+        : ((LxRaw as math.Matrix).toArray() as number[]);
 
       // Compute gradient norm ||L * x||.
       let gradNormSq = 0;
@@ -156,7 +156,7 @@ export class ADMMSolver {
     const LxRaw = math.multiply(L, xArray);
     const Lx: number[] = Array.isArray(LxRaw)
       ? (LxRaw as number[])
-      : (LxRaw as math.Matrix).toArray() as number[];
+      : ((LxRaw as math.Matrix).toArray() as number[]);
 
     // energy = x^T * Lx = sum_i x[i] * Lx[i]
     let energy = 0;

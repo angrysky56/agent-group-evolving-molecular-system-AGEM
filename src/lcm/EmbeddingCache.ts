@@ -21,7 +21,7 @@
  *   - No ImmutableStore dependency — pure embedding concern, storage-agnostic.
  */
 
-import type { IEmbedder } from './interfaces.js';
+import type { IEmbedder } from "./interfaces.js";
 
 export class EmbeddingCache {
   /**

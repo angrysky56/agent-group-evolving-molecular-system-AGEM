@@ -36,7 +36,7 @@ export class MCPManager {
         await this.connectServer(name, serverConfig);
       }
     } catch (error: any) {
-      if (error.code === 'ENOENT') {
+      if (error.code === "ENOENT") {
         console.log("[MCP] No mcp.json found, skipping MCP initialization.");
       } else {
         console.error("[MCP] Failed to initialize MCP:", error.message);
@@ -54,7 +54,7 @@ export class MCPManager {
 
     const client = new Client(
       { name: "agem-mcp-client", version: "0.1.0" },
-      { capabilities: {} }
+      { capabilities: {} },
     );
 
     try {
@@ -63,7 +63,10 @@ export class MCPManager {
       this.transports.set(name, transport);
       console.log(`[MCP] Successfully connected to '${name}'`);
     } catch (error: any) {
-      console.error(`[MCP] Failed to connect to server '${name}':`, error.message);
+      console.error(
+        `[MCP] Failed to connect to server '${name}':`,
+        error.message,
+      );
     }
   }
 
@@ -84,7 +87,10 @@ export class MCPManager {
           });
         }
       } catch (error: any) {
-        console.error(`[MCP] Failed to list tools for '${name}':`, error.message);
+        console.error(
+          `[MCP] Failed to list tools for '${name}':`,
+          error.message,
+        );
       }
     }
     return allTools;
@@ -111,7 +117,10 @@ export class MCPManager {
       }
       return "Executed successfully, but no text response returned.";
     } catch (error: any) {
-      console.error(`[MCP] Error executing tool '${toolName}' on '${serverName}':`, error.message);
+      console.error(
+        `[MCP] Error executing tool '${toolName}' on '${serverName}':`,
+        error.message,
+      );
       throw error;
     }
   }

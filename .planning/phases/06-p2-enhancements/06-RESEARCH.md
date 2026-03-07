@@ -19,6 +19,7 @@ Phase 6 adds six advanced features to AGEM after the core mathematical propertie
 ### Current State (Phase 5)
 
 SOCTracker already implements basic phase transition detection:
+
 - Computes rolling Pearson correlation between `ΔS_structural` (Von Neumann entropy deltas) and `ΔS_semantic` (embedding entropy deltas)
 - Detects sign change in correlation coefficient (indicates decoupling of structural and semantic complexity)
 - Emits `phase:transition` event when correlation magnitude > 0.1 and sign changes
@@ -30,6 +31,7 @@ SOCTracker already implements basic phase transition detection:
 The Phase 5 implementation detects **instantaneous** phase transitions. Phase 6 adds **regime validation**:
 
 **What to implement:**
+
 1. **Regime persistence tracking** — A phase transition candidate (sign change) must persist for N consecutive iterations before triggering a "confirmed" phase transition event
    - Default window: 3-5 iterations
    - Prevents noise-induced false positives from brief correlation fluctuations
@@ -59,9 +61,14 @@ interface RegimeState {
 class RegimeValidator {
   #regimes: Map<number, RegimeState> = new Map(); // phase number -> state
 
-  validateTransition(correlationCoeff: number, previousCoeff: number, h1Dimension: number): boolean {
+  validateTransition(
+    correlationCoeff: number,
+    previousCoeff: number,
+    h1Dimension: number,
+  ): boolean {
     // 1. Check sign change
-    const signChanged = Math.sign(correlationCoeff) !== Math.sign(previousCoeff);
+    const signChanged =
+      Math.sign(correlationCoeff) !== Math.sign(previousCoeff);
 
     // 2. Check H^1 magnitude threshold
     const h1Validated = h1Dimension >= 2;
@@ -81,11 +88,11 @@ class RegimeValidator {
 
 ### Edge Cases & Validation
 
-| Case | Handling |
-|------|----------|
-| Noisy correlation (frequent sign flips) | Require N consecutive same-sign iterations before confirming transition |
-| H^1 spikes briefly above threshold | Require H^1 > threshold for window persistence, not just instantaneous spike |
-| Multiple simultaneous transitions | Treat each as independent regime (tracked separately) |
+| Case                                    | Handling                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------- |
+| Noisy correlation (frequent sign flips) | Require N consecutive same-sign iterations before confirming transition         |
+| H^1 spikes briefly above threshold      | Require H^1 > threshold for window persistence, not just instantaneous spike    |
+| Multiple simultaneous transitions       | Treat each as independent regime (tracked separately)                           |
 | No transitions occur in 400+ iterations | Valid state; system remains in single regime (emit event documenting stability) |
 
 ---
@@ -101,15 +108,16 @@ SOCTracker computes and emits `soc:metrics` every iteration with 8 fields includ
 **What to implement:**
 
 1. **Regime stability classification**:
+
    ```typescript
-   type RegimeStability = 'nascent' | 'stable' | 'critical' | 'transitioning';
+   type RegimeStability = "nascent" | "stable" | "critical" | "transitioning";
 
    interface RegimeMetrics {
      regime: RegimeStability;
-     cdpVariance: number;        // variance of CDP over last N iterations
+     cdpVariance: number; // variance of CDP over last N iterations
      correlationConsistency: number; // std dev of correlation coefficient
-     persistenceIterations: number;  // how long has system been in this regime?
-     metrics: SOCMetrics[];       // snapshot of the current window
+     persistenceIterations: number; // how long has system been in this regime?
+     metrics: SOCMetrics[]; // snapshot of the current window
    }
    ```
 
@@ -131,7 +139,7 @@ SOCTracker computes and emits `soc:metrics` every iteration with 8 fields includ
 ```typescript
 // Pseudocode
 class RegimeAnalyzer {
-  #currentRegime: RegimeStability = 'nascent';
+  #currentRegime: RegimeStability = "nascent";
   #regimeStartIteration: number = 0;
   #metricsWindow: SOCMetrics[] = [];
 
@@ -141,36 +149,49 @@ class RegimeAnalyzer {
       this.#metricsWindow.shift();
     }
 
-    const cdpVariance = variance(this.#metricsWindow.map(m => m.cdp));
-    const corrConsistency = stdDev(this.#metricsWindow.map(m => m.correlationCoefficient));
+    const cdpVariance = variance(this.#metricsWindow.map((m) => m.cdp));
+    const corrConsistency = stdDev(
+      this.#metricsWindow.map((m) => m.correlationCoefficient),
+    );
     const persistence = metrics.iteration - this.#regimeStartIteration;
 
     // Classify stability
-    const regime = this.#classifyRegime(cdpVariance, corrConsistency, persistence);
+    const regime = this.#classifyRegime(
+      cdpVariance,
+      corrConsistency,
+      persistence,
+    );
 
     if (regime !== this.#currentRegime) {
       this.#currentRegime = regime;
       this.#regimeStartIteration = metrics.iteration;
     }
 
-    return { regime, cdpVariance, correlationConsistency: corrConsistency, persistenceIterations: persistence, metrics: this.#metricsWindow };
+    return {
+      regime,
+      cdpVariance,
+      correlationConsistency: corrConsistency,
+      persistenceIterations: persistence,
+      metrics: this.#metricsWindow,
+    };
   }
 }
 ```
 
 **Integration:**
+
 - Instantiate RegimeAnalyzer in ObstructionHandler or ComposeRootModule
 - Call `analyzeRegime()` after each `soc:metrics` event
 - Emit new `regime:classification` event with RegimeMetrics payload
 
 ### Edge Cases
 
-| Case | Handling |
-|------|----------|
-| CDP volatile but correlation stable | Classify as "transitioning" (structural flux but semantic coherence maintained) |
-| Both CDP and correlation stable for 400+ iterations | Classify as "stable"; emit stability confirmation event |
-| Single iteration with extreme CDP spike | Smooth with rolling median filter before computing variance |
-| Regime never stabilizes in observation window | Valid; emit "critical" classification with full metrics for operator review |
+| Case                                                | Handling                                                                        |
+| --------------------------------------------------- | ------------------------------------------------------------------------------- |
+| CDP volatile but correlation stable                 | Classify as "transitioning" (structural flux but semantic coherence maintained) |
+| Both CDP and correlation stable for 400+ iterations | Classify as "stable"; emit stability confirmation event                         |
+| Single iteration with extreme CDP spike             | Smooth with rolling median filter before computing variance                     |
+| Regime never stabilizes in observation window       | Valid; emit "critical" classification with full metrics for operator review     |
 
 ---
 
@@ -187,6 +208,7 @@ ObstructionHandler subscribes to `'sheaf:h1-obstruction-detected'` events and sp
 **Concept: "Van der Waals agents"**
 
 In the Molecular-CoT framework (Phase 3), bonds are classified:
+
 - **Covalent:** Strong, cascade-invalidating
 - **Hydrogen:** Moderate, similarity-threshold gated
 - **Van der Waals:** Weak, temporary exploration probes
@@ -196,13 +218,14 @@ In the Molecular-CoT framework (Phase 3), bonds are classified:
 **What to implement:**
 
 1. **H^1-based spawn trigger parametrization**:
+
    ```typescript
    interface VdWSpawnParams {
-     h1Dimension: number;           // from obstruction event
-     gapCount: number;              // from GapDetector
-     spanDensity: number;           // average inter-community density of gaps
-     agentBudgetTokens: number;     // LLM context budget for this agent
-     trajectoryMinLength: number;   // minimum trajectory length (5.0 from ORCH-03)
+     h1Dimension: number; // from obstruction event
+     gapCount: number; // from GapDetector
+     spanDensity: number; // average inter-community density of gaps
+     agentBudgetTokens: number; // LLM context budget for this agent
+     trajectoryMinLength: number; // minimum trajectory length (5.0 from ORCH-03)
    }
 
    // Spawn logic:
@@ -233,13 +256,17 @@ class VdWAgentSpawner {
   readonly #agentPool: AgentPool;
   readonly #regimeState: RegimeStability; // from SOC-07
 
-  async spawnAgents(obstruction: SheafH1ObstructionEvent, regime: RegimeStability): Promise<void> {
+  async spawnAgents(
+    obstruction: SheafH1ObstructionEvent,
+    regime: RegimeStability,
+  ): Promise<void> {
     const { h1Dimension } = obstruction;
     const gaps = this.#gapDetector.findGaps();
 
     if (h1Dimension < 2 || gaps.length === 0) return; // no spawn condition met
 
-    const agentCount = regime === 'critical' ? Math.min(gaps.length * 2, 10) : gaps.length;
+    const agentCount =
+      regime === "critical" ? Math.min(gaps.length * 2, 10) : gaps.length;
     const tokenBudget = Math.max(500, 5000 / h1Dimension); // inverse scaling
 
     for (let i = 0; i < Math.min(agentCount, 10); i++) {
@@ -253,10 +280,10 @@ class VdWAgentSpawner {
 
       await this.#agentPool.add(agent);
       this.#eventBus.emit({
-        type: 'orch:vdw-agent-spawned',
+        type: "orch:vdw-agent-spawned",
         agentId: agent.id,
         h1Dimension,
-        gapId: gap.communityA + '_' + gap.communityB,
+        gapId: gap.communityA + "_" + gap.communityB,
       });
     }
   }
@@ -264,6 +291,7 @@ class VdWAgentSpawner {
 ```
 
 **Integration points:**
+
 - ObstructionHandler calls `spawnAgents()` when H^1 obstruction detected
 - Pass both obstruction event AND current regime state (from SOC-07)
 - VdW agent runs self-contained reasoning loop (10-20 iterations max)
@@ -271,13 +299,13 @@ class VdWAgentSpawner {
 
 ### Edge Cases & Validation
 
-| Case | Handling |
-|------|----------|
-| H^1 oscillates between 1 and 3 (boundary crossing) | Require hysteresis: spawn agents only when H^1 >= 2 for 2+ consecutive iterations |
-| Gap detected but has no bridge candidates | Spawn agent with reduced budget (500 tokens max) for speculative bridging |
-| Multiple agents spawned simultaneously | Queue them; run serially to avoid graph mutation race conditions |
-| VdW agent produces no synthetic queries (LLM failure) | Mark agent as failed; decrement spawn budget for next iteration; do not retry same gap |
-| Agent trajectory length < 5.0 (from ORCH-03 Van der Waals invariant) | Reject agent output; classify as non-compliant with bond type rules |
+| Case                                                                 | Handling                                                                               |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| H^1 oscillates between 1 and 3 (boundary crossing)                   | Require hysteresis: spawn agents only when H^1 >= 2 for 2+ consecutive iterations      |
+| Gap detected but has no bridge candidates                            | Spawn agent with reduced budget (500 tokens max) for speculative bridging              |
+| Multiple agents spawned simultaneously                               | Queue them; run serially to avoid graph mutation race conditions                       |
+| VdW agent produces no synthetic queries (LLM failure)                | Mark agent as failed; decrement spawn budget for next iteration; do not retry same gap |
+| Agent trajectory length < 5.0 (from ORCH-03 Van der Waals invariant) | Reject agent output; classify as non-compliant with bond type rules                    |
 
 ---
 
@@ -305,13 +333,14 @@ GraphRAG (Graph Retrieval-Augmented Generation) is a technique combining graph t
    - Higher distance = larger semantic void
 
 2. **Catalyst question templates**:
+
    ```typescript
    interface CatalystQuestion {
      gap: GapMetrics;
-     template: string;           // "How does [concept_A] relate to [concept_B]?"
+     template: string; // "How does [concept_A] relate to [concept_B]?"
      seedNodes: [string, string]; // [concept_from_commA, concept_from_commB]
-     semanticDistance: number;   // 0-1; 1 = maximum void
-     priority: number;           // for agent reasoning order
+     semanticDistance: number; // 0-1; 1 = maximum void
+     priority: number; // for agent reasoning order
    }
 
    // Example generation:
@@ -336,7 +365,9 @@ class CatalystQuestionGenerator {
   readonly #lcmClient: LCMClient;
   readonly #llmMap: typeof llm_map; // from orchestrator
 
-  async generateCatalystQuestions(gap: GapMetrics): Promise<CatalystQuestion[]> {
+  async generateCatalystQuestions(
+    gap: GapMetrics,
+  ): Promise<CatalystQuestion[]> {
     // 1. Extract representative nodes
     const nodesA = this.#getRepresentativeNodes(gap.communityA, 3);
     const nodesB = this.#getRepresentativeNodes(gap.communityB, 3);
@@ -355,8 +386,8 @@ class CatalystQuestionGenerator {
 
     // 6. Store in LCM for reuse
     await this.#lcmClient.append({
-      type: 'catalyst_question',
-      gapId: gap.communityA + '_' + gap.communityB,
+      type: "catalyst_question",
+      gapId: gap.communityA + "_" + gap.communityB,
       questions,
       timestamp: Date.now(),
     });
@@ -368,28 +399,32 @@ class CatalystQuestionGenerator {
     // Get top betweenness centrality nodes in community
     return this.#cooccurrenceGraph
       .getNodes()
-      .filter(n => n.communityId === communityId)
-      .sort((a, b) => (b.betweennessCentrality ?? 0) - (a.betweennessCentrality ?? 0))
+      .filter((n) => n.communityId === communityId)
+      .sort(
+        (a, b) =>
+          (b.betweennessCentrality ?? 0) - (a.betweennessCentrality ?? 0),
+      )
       .slice(0, count)
-      .map(n => n.lemma);
+      .map((n) => n.lemma);
   }
 }
 ```
 
 **Integration:**
+
 - Call CatalystQuestionGenerator from ObstructionHandler when spawning VdW agents
 - Pass questions to agent as reasoning priors (update agent context via llm_map)
 - Track question-to-answer mappings in LCM for feedback
 
 ### Edge Cases
 
-| Case | Handling |
-|------|----------|
-| Community has < 3 nodes | Use all available nodes as representative set |
-| Semantic distance is 0 (fully redundant communities) | Generate "reconciliation" questions instead ("How do these two perspectives align?") |
-| LLM fails to generate questions | Return empty array; mark gap as "pending LLM retry"; do not block agent spawn |
-| Generated question is generic or uninformative | Filter via embedding similarity: new question must be > 0.3 away from community labels to be retained |
-| Gap disappears in next iteration (communities merged) | Mark cached questions as stale; do not reuse without revalidation |
+| Case                                                  | Handling                                                                                              |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Community has < 3 nodes                               | Use all available nodes as representative set                                                         |
+| Semantic distance is 0 (fully redundant communities)  | Generate "reconciliation" questions instead ("How do these two perspectives align?")                  |
+| LLM fails to generate questions                       | Return empty array; mark gap as "pending LLM retry"; do not block agent spawn                         |
+| Generated question is generic or uninformative        | Filter via embedding similarity: new question must be > 0.3 away from community labels to be retained |
+| Gap disappears in next iteration (communities merged) | Mark cached questions as stale; do not reuse without revalidation                                     |
 
 ---
 
@@ -402,6 +437,7 @@ CooccurrenceGraph stores topology (nodes, edges, weights, community assignments)
 ### Phase 6 Enhancement: Force-Directed Layout with Physics Simulation
 
 **Concept: Force-Atlas is a force-directed graph layout algorithm that positions nodes such that:**
+
 - Similar nodes (short edges, same community) cluster together
 - Dissimilar nodes (long edges, different communities) repel
 - Layout emerges from spring-physics simulation (attractive edge forces, repulsive node forces)
@@ -414,6 +450,7 @@ CooccurrenceGraph stores topology (nodes, edges, weights, community assignments)
    - **Option C:** Custom physics engine (higher effort, more control)
 
 2. **Layout computation integration**:
+
    ```typescript
    interface NodePosition {
      x: number;
@@ -421,9 +458,9 @@ CooccurrenceGraph stores topology (nodes, edges, weights, community assignments)
    }
 
    interface LayoutOutput {
-     positions: Map<string, NodePosition>;  // nodeId -> {x, y}
-     energy: number;                         // convergence metric
-     iterations: number;                     // physics steps executed
+     positions: Map<string, NodePosition>; // nodeId -> {x, y}
+     energy: number; // convergence metric
+     iterations: number; // physics steps executed
    }
 
    class ForceAtlasLayout {
@@ -450,7 +487,7 @@ CooccurrenceGraph stores topology (nodes, edges, weights, community assignments)
 
 ```typescript
 // Pseudocode
-import ForceAtlas2 from 'graphology-layout-forceatlas2';
+import ForceAtlas2 from "graphology-layout-forceatlas2";
 
 class LayoutComputer {
   readonly #cooccurrenceGraph: CooccurrenceGraph;
@@ -461,18 +498,21 @@ class LayoutComputer {
     // Configure physics parameters
     const config = {
       iterations,
-      barnesHutOptimize: true,        // O(n log n) instead of O(n^2)
-      linLogMode: false,              // spring-based, not log-based
-      strongGravityMode: false,       // weaker gravity pulls towards center
+      barnesHutOptimize: true, // O(n log n) instead of O(n^2)
+      linLogMode: false, // spring-based, not log-based
+      strongGravityMode: false, // weaker gravity pulls towards center
       gravity: 1.0,
       slowDown: 1.0,
-      edgeWeightInfluence: 1.0,       // respect edge weights from 4-gram window
-      scalingRatio: 2.0,              // relative strength of repulsion
-      theta: 0.5,                     // Barnes-Hut accuracy (0.5-1.0)
+      edgeWeightInfluence: 1.0, // respect edge weights from 4-gram window
+      scalingRatio: 2.0, // relative strength of repulsion
+      theta: 0.5, // Barnes-Hut accuracy (0.5-1.0)
     };
 
     // Run simulation
-    const positions = ForceAtlas2(graph, { iterations: config.iterations, ...config });
+    const positions = ForceAtlas2(graph, {
+      iterations: config.iterations,
+      ...config,
+    });
 
     // Compute convergence energy
     const energy = this.#computeEnergy(graph, positions);
@@ -482,10 +522,17 @@ class LayoutComputer {
       this.#cooccurrenceGraph.updateNodePosition(nodeId, pos);
     }
 
-    return { positions: new Map(Object.entries(positions)), energy, iterations };
+    return {
+      positions: new Map(Object.entries(positions)),
+      energy,
+      iterations,
+    };
   }
 
-  #computeEnergy(graph: any, positions: Record<string, [number, number]>): number {
+  #computeEnergy(
+    graph: any,
+    positions: Record<string, [number, number]>,
+  ): number {
     // Sum of squared forces across all nodes (convergence indicator)
     let energy = 0;
     // ... compute total kinetic energy of system
@@ -495,21 +542,23 @@ class LayoutComputer {
 ```
 
 **Integration:**
+
 - Call `computeLayout()` after every 10-20 iterations of the main reasoning loop
 - Emit `tna:layout-updated` event with LayoutOutput for visualization consumers
 - Store layout in LCM for checkpoint/recovery
 
 ### Edge Cases
 
-| Case | Handling |
-|------|----------|
-| Graph has < 3 nodes | Skip layout (not meaningful); return single-node trivial layout |
-| Graph is fully disconnected (no edges) | All nodes repel equally; layout spreads across space (valid but semantically flat) |
-| New nodes added mid-simulation | Restart layout with N/2 iterations to integrate newcomers without full recompute |
-| Layout diverges (energy growing) | Reduce scaling ratio; restart with tuned parameters |
-| Two communities perfectly overlap in layout | Valid output (indicates high semantic similarity); document in metadata |
+| Case                                        | Handling                                                                           |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Graph has < 3 nodes                         | Skip layout (not meaningful); return single-node trivial layout                    |
+| Graph is fully disconnected (no edges)      | All nodes repel equally; layout spreads across space (valid but semantically flat) |
+| New nodes added mid-simulation              | Restart layout with N/2 iterations to integrate newcomers without full recompute   |
+| Layout diverges (energy growing)            | Reduce scaling ratio; restart with tuned parameters                                |
+| Two communities perfectly overlap in layout | Valid output (indicates high semantic similarity); document in metadata            |
 
 **Library selection rationale:**
+
 - `graphology-layout-forceatlas2`: No external dependencies beyond graphology (already used); pure JS; configurable physics
 - `sigma.js`: Higher-level abstraction; includes rendering; adds complexity for visualization-only task
 - Custom physics: Overkill for Phase 6 (can defer to Phase 7+ optimization phase)
@@ -533,11 +582,12 @@ CentralityAnalyzer computes normalized betweenness centrality for all nodes in a
 **What to implement:**
 
 1. **Centrality time series**:
+
    ```typescript
    interface CentralityTimeSeries {
      nodeId: string;
      scores: Array<{ iteration: number; score: number }>;
-     trend: 'rising' | 'falling' | 'stable' | 'oscillating';
+     trend: "rising" | "falling" | "stable" | "oscillating";
      peak: { iteration: number; score: number };
      valley: { iteration: number; score: number };
    }
@@ -572,13 +622,15 @@ class CentralityTimeSeriesTracker {
 
   updateCentrality(currentIteration: number, regime: RegimeStability): void {
     // 1. Determine if recomputation is needed
-    const shouldRecompute = currentIteration - this.#lastComputationIteration >= this.#computationInterval;
+    const shouldRecompute =
+      currentIteration - this.#lastComputationIteration >=
+      this.#computationInterval;
     if (!shouldRecompute) return;
 
     // 2. Adjust interval based on regime
-    if (regime === 'transitioning' || regime === 'critical') {
+    if (regime === "transitioning" || regime === "critical") {
       this.#computationInterval = 5;
-    } else if (regime === 'stable') {
+    } else if (regime === "stable") {
       this.#computationInterval = 20;
     }
 
@@ -588,7 +640,13 @@ class CentralityTimeSeriesTracker {
 
     // 4. Update time series
     for (const [nodeId, score] of scores) {
-      const series = this.#timeSeries.get(nodeId) ?? { nodeId, scores: [], trend: 'stable', peak: null, valley: null };
+      const series = this.#timeSeries.get(nodeId) ?? {
+        nodeId,
+        scores: [],
+        trend: "stable",
+        peak: null,
+        valley: null,
+      };
       series.scores.push({ iteration: currentIteration, score });
 
       // Compute trend
@@ -602,29 +660,38 @@ class CentralityTimeSeriesTracker {
     this.#lastComputationIteration = currentIteration;
   }
 
-  #computeTrend(scores: Array<{ iteration: number; score: number }>): 'rising' | 'falling' | 'stable' | 'oscillating' {
-    if (scores.length < 3) return 'stable';
+  #computeTrend(
+    scores: Array<{ iteration: number; score: number }>,
+  ): "rising" | "falling" | "stable" | "oscillating" {
+    if (scores.length < 3) return "stable";
 
     const recent = scores.slice(-3);
     const slope = (recent[2]!.score - recent[0]!.score) / 2;
 
-    if (Math.abs(slope) < 0.05) return 'stable';
-    if (slope > 0.1) return 'rising';
-    if (slope < -0.1) return 'falling';
-    return 'oscillating';
+    if (Math.abs(slope) < 0.05) return "stable";
+    if (slope > 0.1) return "rising";
+    if (slope < -0.1) return "falling";
+    return "oscillating";
   }
 
   #findPeak(scores: Array<{ iteration: number; score: number }>): any {
-    return scores.reduce((max, curr) => (curr.score > max.score ? curr : max), scores[0]);
+    return scores.reduce(
+      (max, curr) => (curr.score > max.score ? curr : max),
+      scores[0],
+    );
   }
 
   #findValley(scores: Array<{ iteration: number; score: number }>): any {
-    return scores.reduce((min, curr) => (curr.score < min.score ? curr : min), scores[0]);
+    return scores.reduce(
+      (min, curr) => (curr.score < min.score ? curr : min),
+      scores[0],
+    );
   }
 }
 ```
 
 **Integration:**
+
 - Instantiate CentralityTimeSeriesTracker in ComposeRootModule
 - Call `updateCentrality()` each iteration (checks internally if recompute is needed)
 - Emit `tna:centrality-change-detected` event when rapid changes observed
@@ -632,13 +699,13 @@ class CentralityTimeSeriesTracker {
 
 ### Edge Cases
 
-| Case | Handling |
-|------|----------|
-| Node appears in iteration 50, has no prior history | Initialize trend as 'nascent' (special marker); do not include in rising/falling comparisons until 3 data points |
-| Node disappears (removed from graph) | Mark as 'retired'; exclude from future trend computation |
-| Centrality spike due to temporary high-degree node | Smooth time series with moving median (window size 3) before computing trend |
-| All nodes equally central (flat distribution) | Valid; trend = 'stable' for all nodes (document as "undifferentiated topology") |
-| Two nodes swap centrality ranks (0.8 → 0.1 and 0.1 → 0.8) | Detect as major structural shift; emit `tna:topology-reorganized` event for operator awareness |
+| Case                                                      | Handling                                                                                                         |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Node appears in iteration 50, has no prior history        | Initialize trend as 'nascent' (special marker); do not include in rising/falling comparisons until 3 data points |
+| Node disappears (removed from graph)                      | Mark as 'retired'; exclude from future trend computation                                                         |
+| Centrality spike due to temporary high-degree node        | Smooth time series with moving median (window size 3) before computing trend                                     |
+| All nodes equally central (flat distribution)             | Valid; trend = 'stable' for all nodes (document as "undifferentiated topology")                                  |
+| Two nodes swap centrality ranks (0.8 → 0.1 and 0.1 → 0.8) | Detect as major structural shift; emit `tna:topology-reorganized` event for operator awareness                   |
 
 ---
 
@@ -690,16 +757,16 @@ TNA-09 (Centrality Time Series)
 
 New Phase 6 events (all extend existing `AnyEvent` discriminated union in `src/types/Events.ts`):
 
-| Event Type | Emitter | Subscribers | Payload |
-|------------|---------|-------------|---------|
-| `phase:transition-confirmed` | SOC-06 | ORCH-06, Logging | `{ iteration, centeredAtIteration, coherence, h1Dimension }` |
-| `regime:classification` | SOC-07 | ORCH-06, TNA-09, Logging | `{ regime, cdpVariance, persistenceIterations, metrics }` |
-| `orch:vdw-agent-spawned` | ORCH-06 | Logging, Monitoring | `{ agentId, h1Dimension, gapId, tokenBudget }` |
-| `orch:vdw-agent-complete` | ORCH-06 | TNA (graph update), Logging | `{ agentId, synthQueries, entitiesAdded, relationsAdded }` |
-| `tna:catalyst-questions-generated` | TNA-07 | ORCH-06 (feeds to agents) | `{ gapId, questions, semanticDistance }` |
-| `tna:layout-updated` | TNA-08 | Visualization consumers | `{ positions, energy, iterations }` |
-| `tna:centrality-change-detected` | TNA-09 | TNA-07 (priority), Logging | `{ nodeId, trend, deltaScore, iteration }` |
-| `tna:topology-reorganized` | TNA-09 | Logging, Operator alerts | `{ majorNodeSwaps, timestamp }` |
+| Event Type                         | Emitter | Subscribers                 | Payload                                                      |
+| ---------------------------------- | ------- | --------------------------- | ------------------------------------------------------------ |
+| `phase:transition-confirmed`       | SOC-06  | ORCH-06, Logging            | `{ iteration, centeredAtIteration, coherence, h1Dimension }` |
+| `regime:classification`            | SOC-07  | ORCH-06, TNA-09, Logging    | `{ regime, cdpVariance, persistenceIterations, metrics }`    |
+| `orch:vdw-agent-spawned`           | ORCH-06 | Logging, Monitoring         | `{ agentId, h1Dimension, gapId, tokenBudget }`               |
+| `orch:vdw-agent-complete`          | ORCH-06 | TNA (graph update), Logging | `{ agentId, synthQueries, entitiesAdded, relationsAdded }`   |
+| `tna:catalyst-questions-generated` | TNA-07  | ORCH-06 (feeds to agents)   | `{ gapId, questions, semanticDistance }`                     |
+| `tna:layout-updated`               | TNA-08  | Visualization consumers     | `{ positions, energy, iterations }`                          |
+| `tna:centrality-change-detected`   | TNA-09  | TNA-07 (priority), Logging  | `{ nodeId, trend, deltaScore, iteration }`                   |
+| `tna:topology-reorganized`         | TNA-09  | Logging, Operator alerts    | `{ majorNodeSwaps, timestamp }`                              |
 
 ---
 
@@ -708,21 +775,25 @@ New Phase 6 events (all extend existing `AnyEvent` discriminated union in `src/t
 ### Execution Order (Waves)
 
 **Wave 1: Metrics & Stability (2-3 days)**
+
 1. SOC-06: Extend SOCTracker with `RegimeValidator` (rolling persistence check)
 2. SOC-07: Implement `RegimeAnalyzer` class (stability classification)
 3. Integrate: Update EventBus with new event types; wire to ComposeRootModule
 
 **Wave 2: Obstruction Coupling (2-3 days)**
+
 1. ORCH-06: Implement `VdWAgentSpawner` in ObstructionHandler
 2. Parameterize: Agent spawn decisions based on H^1 magnitude + regime state
 3. Testing: Unit tests for spawn trigger logic; integration with GapDetector
 
 **Wave 3: Semantic Bridging (3-4 days)**
+
 1. TNA-07: Implement `CatalystQuestionGenerator` with graph analysis
 2. LLM integration: Call llm_map for question generation; cache in LCM
 3. Testing: Unit tests with synthetic gaps; integration with VdW agents
 
 **Wave 4: Visualization & Tracking (2-3 days)**
+
 1. TNA-08: Integrate graphology-layout-forceatlas2; expose layout JSON
 2. TNA-09: Implement `CentralityTimeSeriesTracker`; couple to regime state
 3. Integration: Wire time series to TNA-07 for priority questioning
@@ -731,16 +802,17 @@ New Phase 6 events (all extend existing `AnyEvent` discriminated union in `src/t
 
 ### Blockers & Mitigations
 
-| Blocker | Mitigation | Owner |
-|---------|-----------|-------|
-| LLM inference availability (for TNA-07) | Implement synthetic question template fallback (no LLM call); stubs for Phase 6 planning | TNA-07 |
-| H^1 dimension oscillation (frequent spawn/suppress cycles) | Implement 2-iteration hysteresis (require sustained H^1 >= 2); smooth via exponential moving average | ORCH-06 |
-| Force-Atlas convergence (non-deterministic layout) | Use fixed random seed in physics simulation; document layout is advisory (not required for correctness) | TNA-08 |
-| Centrality recomputation cost (O(n^2) for 400+ node graph) | Cache previous centrality; compute deltas incrementally (10-iteration sampling); use graphology-metrics built-in optimizations | TNA-09 |
+| Blocker                                                    | Mitigation                                                                                                                     | Owner   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| LLM inference availability (for TNA-07)                    | Implement synthetic question template fallback (no LLM call); stubs for Phase 6 planning                                       | TNA-07  |
+| H^1 dimension oscillation (frequent spawn/suppress cycles) | Implement 2-iteration hysteresis (require sustained H^1 >= 2); smooth via exponential moving average                           | ORCH-06 |
+| Force-Atlas convergence (non-deterministic layout)         | Use fixed random seed in physics simulation; document layout is advisory (not required for correctness)                        | TNA-08  |
+| Centrality recomputation cost (O(n^2) for 400+ node graph) | Cache previous centrality; compute deltas incrementally (10-iteration sampling); use graphology-metrics built-in optimizations | TNA-09  |
 
 ### Trade-offs & Deferral
 
 **In-scope for Phase 6:**
+
 - Dynamic phase transition detection with regime persistence
 - H^1-parameterized agent spawn logic
 - Structural gap question generation framework
@@ -748,6 +820,7 @@ New Phase 6 events (all extend existing `AnyEvent` discriminated union in `src/t
 - Centrality trend analysis
 
 **Out-of-scope (defer to Phase 7+):**
+
 - Web UI visualization (layout + graph rendering)
 - Advanced LLM prompting strategies (multi-turn dialogue with agents)
 - Centrality prediction (forecasting future bridge importance)
@@ -782,6 +855,6 @@ These will be finalized during Phase 5 retrospective based on empirical system b
 
 ---
 
-*Research completed: 2026-03-01*
-*Confidence level: HIGH*
-*Based on: Phase 5 reference implementation (370 tests, all v1 requirements met), codebase patterns analysis, architectural review*
+_Research completed: 2026-03-01_
+_Confidence level: HIGH_
+_Based on: Phase 5 reference implementation (370 tests, all v1 requirements met), codebase patterns analysis, architectural review_

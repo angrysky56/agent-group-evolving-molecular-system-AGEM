@@ -28,7 +28,7 @@
  * StepId — opaque branded string type for reasoning step IDs.
  * Matches the VertexId/EdgeId/TextNodeId pattern from GraphTypes.ts.
  */
-export type StepId = string & { readonly __brand: 'StepId' };
+export type StepId = string & { readonly __brand: "StepId" };
 
 // ---------------------------------------------------------------------------
 // Bond type discriminant
@@ -37,7 +37,7 @@ export type StepId = string & { readonly __brand: 'StepId' };
 /**
  * BondType — string literal union for the three Molecular-CoT bond classifications.
  */
-export type BondType = 'covalent' | 'hydrogen' | 'vanDerWaals';
+export type BondType = "covalent" | "hydrogen" | "vanDerWaals";
 
 // ---------------------------------------------------------------------------
 // Bond type constants
@@ -75,7 +75,7 @@ export const VAN_DER_WAALS_MIN_TRAJECTORY = 5.0;
  * re-derived (and anything that depends on B, transitively).
  */
 export interface CovalentBond {
-  readonly type: 'covalent';
+  readonly type: "covalent";
   readonly source: StepId;
   readonly target: StepId;
   /**
@@ -95,7 +95,7 @@ export interface CovalentBond {
  * Hydrogen bonds are non-structural — removing one does NOT cascade.
  */
 export interface HydrogenBond {
-  readonly type: 'hydrogen';
+  readonly type: "hydrogen";
   readonly source: StepId;
   readonly target: StepId;
   /**
@@ -115,7 +115,7 @@ export interface HydrogenBond {
  * trajectory (>= 5 steps). Short trajectories don't have meaningful proximity.
  */
 export interface VanDerWaalsBond {
-  readonly type: 'vanDerWaals';
+  readonly type: "vanDerWaals";
   readonly source: StepId;
   readonly target: StepId;
   /**
@@ -155,8 +155,10 @@ export class BondGraph {
     hydrogenThreshold?: number;
     vdwMinTrajectory?: number;
   }) {
-    this.#hydrogenThreshold = options?.hydrogenThreshold ?? HYDROGEN_DISTANCE_THRESHOLD;
-    this.#vdwMinTrajectory = options?.vdwMinTrajectory ?? VAN_DER_WAALS_MIN_TRAJECTORY;
+    this.#hydrogenThreshold =
+      options?.hydrogenThreshold ?? HYDROGEN_DISTANCE_THRESHOLD;
+    this.#vdwMinTrajectory =
+      options?.vdwMinTrajectory ?? VAN_DER_WAALS_MIN_TRAJECTORY;
   }
 
   // -------------------------------------------------------------------------
@@ -171,8 +173,12 @@ export class BondGraph {
    * @param target - The step derived from source.
    * @param strength - Dependency strength (0.0 to 1.0).
    */
-  addCovalentBond(source: StepId, target: StepId, strength: number): CovalentBond {
-    const bond: CovalentBond = { type: 'covalent', source, target, strength };
+  addCovalentBond(
+    source: StepId,
+    target: StepId,
+    strength: number,
+  ): CovalentBond {
+    const bond: CovalentBond = { type: "covalent", source, target, strength };
     this.#bonds.set(`${source}:${target}`, bond);
     return bond;
   }
@@ -186,14 +192,23 @@ export class BondGraph {
    * @param target - Target step (semantically related).
    * @param semanticDistance - Semantic distance (0.0 to 1.0).
    */
-  addHydrogenBond(source: StepId, target: StepId, semanticDistance: number): HydrogenBond {
+  addHydrogenBond(
+    source: StepId,
+    target: StepId,
+    semanticDistance: number,
+  ): HydrogenBond {
     if (semanticDistance > this.#hydrogenThreshold) {
       throw new Error(
         `HydrogenBond rejected: semanticDistance ${semanticDistance} exceeds threshold ${this.#hydrogenThreshold}. ` +
-          `Steps are too semantically distant for a hydrogen bond.`
+          `Steps are too semantically distant for a hydrogen bond.`,
       );
     }
-    const bond: HydrogenBond = { type: 'hydrogen', source, target, semanticDistance };
+    const bond: HydrogenBond = {
+      type: "hydrogen",
+      source,
+      target,
+      semanticDistance,
+    };
     this.#bonds.set(`${source}:${target}`, bond);
     return bond;
   }
@@ -207,14 +222,23 @@ export class BondGraph {
    * @param target - Target step (appeared nearby in trajectory).
    * @param trajectoryLength - Length of the reasoning trajectory.
    */
-  addVanDerWaalsBond(source: StepId, target: StepId, trajectoryLength: number): VanDerWaalsBond {
+  addVanDerWaalsBond(
+    source: StepId,
+    target: StepId,
+    trajectoryLength: number,
+  ): VanDerWaalsBond {
     if (trajectoryLength < this.#vdwMinTrajectory) {
       throw new Error(
         `VanDerWaalsBond rejected: trajectoryLength ${trajectoryLength} is below minimum ${this.#vdwMinTrajectory}. ` +
-          `Trajectory too short for a meaningful proximity association.`
+          `Trajectory too short for a meaningful proximity association.`,
       );
     }
-    const bond: VanDerWaalsBond = { type: 'vanDerWaals', source, target, trajectoryLength };
+    const bond: VanDerWaalsBond = {
+      type: "vanDerWaals",
+      source,
+      target,
+      trajectoryLength,
+    };
     this.#bonds.set(`${source}:${target}`, bond);
     return bond;
   }
@@ -239,10 +263,10 @@ export class BondGraph {
   removeCovalentBond(source: StepId, target: StepId): StepId[] {
     const key = `${source}:${target}`;
     const bond = this.#bonds.get(key);
-    if (!bond || bond.type !== 'covalent') {
+    if (!bond || bond.type !== "covalent") {
       throw new Error(
         `No covalent bond found from ${source} to ${target}. ` +
-          `Cannot cascade invalidate.`
+          `Cannot cascade invalidate.`,
       );
     }
 
@@ -263,7 +287,7 @@ export class BondGraph {
 
       // Find all covalent bonds where current is the source.
       for (const [, b] of this.#bonds) {
-        if (b.type === 'covalent' && (b.source as string) === currentStr) {
+        if (b.type === "covalent" && (b.source as string) === currentStr) {
           stack.push(b.target);
         }
       }
@@ -299,7 +323,7 @@ export class BondGraph {
     // Find immediate covalent dependents of stepId.
     const stepIdStr = stepId as string;
     for (const [, b] of this.#bonds) {
-      if (b.type === 'covalent' && (b.source as string) === stepIdStr) {
+      if (b.type === "covalent" && (b.source as string) === stepIdStr) {
         stack.push(b.target);
       }
     }
@@ -312,7 +336,7 @@ export class BondGraph {
       dependents.push(current);
 
       for (const [, b] of this.#bonds) {
-        if (b.type === 'covalent' && (b.source as string) === currentStr) {
+        if (b.type === "covalent" && (b.source as string) === currentStr) {
           stack.push(b.target);
         }
       }

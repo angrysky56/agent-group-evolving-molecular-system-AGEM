@@ -11,7 +11,7 @@
  * Wave 3: SVD-based cohomology computation.
  */
 
-import * as math from 'mathjs';
+import * as math from "mathjs";
 import type {
   VertexId,
   EdgeId,
@@ -19,8 +19,8 @@ import type {
   SheafEdge,
   RestrictionMap,
   SheafEigenspectrum,
-} from '../types/index.js';
-import { SheafLaplacian } from './SheafLaplacian.js';
+} from "../types/index.js";
+import { SheafLaplacian } from "./SheafLaplacian.js";
 
 export class CellularSheaf {
   // Protected to allow Wave 2 to access without rewriting.
@@ -89,27 +89,37 @@ export class CellularSheaf {
     // Validate that referenced vertices exist.
     if (!this._vertices.has(edge.sourceVertex)) {
       throw new Error(
-        `CellularSheaf: edge '${edge.id}' references non-existent source vertex '${edge.sourceVertex}'`
+        `CellularSheaf: edge '${edge.id}' references non-existent source vertex '${edge.sourceVertex}'`,
       );
     }
     if (!this._vertices.has(edge.targetVertex)) {
       throw new Error(
-        `CellularSheaf: edge '${edge.id}' references non-existent target vertex '${edge.targetVertex}'`
+        `CellularSheaf: edge '${edge.id}' references non-existent target vertex '${edge.targetVertex}'`,
       );
     }
 
     const sourceVertex = this._vertices.get(edge.sourceVertex)!;
     const targetVertex = this._vertices.get(edge.targetVertex)!;
 
-    this._validateRestrictionMap(edge.sourceRestriction, edge, sourceVertex.stalkSpace.dim, 'source');
-    this._validateRestrictionMap(edge.targetRestriction, edge, targetVertex.stalkSpace.dim, 'target');
+    this._validateRestrictionMap(
+      edge.sourceRestriction,
+      edge,
+      sourceVertex.stalkSpace.dim,
+      "source",
+    );
+    this._validateRestrictionMap(
+      edge.targetRestriction,
+      edge,
+      targetVertex.stalkSpace.dim,
+      "target",
+    );
   }
 
   private _validateRestrictionMap(
     map: RestrictionMap,
     edge: SheafEdge,
     expectedSourceDim: number,
-    role: 'source' | 'target'
+    role: "source" | "target",
   ): void {
     const edgeDim = edge.stalkSpace.dim;
     const { sourceDim, targetDim, entries } = map;
@@ -118,7 +128,7 @@ export class CellularSheaf {
     if (sourceDim !== expectedSourceDim) {
       throw new Error(
         `CellularSheaf: dimension mismatch on edge '${edge.id}' ${role}Restriction: ` +
-          `sourceDim=${sourceDim} does not match ${role} vertex stalkSpace.dim=${expectedSourceDim}`
+          `sourceDim=${sourceDim} does not match ${role} vertex stalkSpace.dim=${expectedSourceDim}`,
       );
     }
 
@@ -126,7 +136,7 @@ export class CellularSheaf {
     if (targetDim !== edgeDim) {
       throw new Error(
         `CellularSheaf: dimension mismatch on edge '${edge.id}' ${role}Restriction: ` +
-          `targetDim=${targetDim} does not match edge stalkSpace.dim=${edgeDim}`
+          `targetDim=${targetDim} does not match edge stalkSpace.dim=${edgeDim}`,
       );
     }
 
@@ -135,7 +145,7 @@ export class CellularSheaf {
     if (entries.length !== expectedLength) {
       throw new Error(
         `CellularSheaf: dimension mismatch on edge '${edge.id}' ${role}Restriction: ` +
-          `entries.length=${entries.length} does not match targetDim*sourceDim=${expectedLength}`
+          `entries.length=${entries.length} does not match targetDim*sourceDim=${expectedLength}`,
       );
     }
 
@@ -144,7 +154,7 @@ export class CellularSheaf {
       if (!isFinite(entries[i])) {
         throw new Error(
           `CellularSheaf: dimension mismatch on edge '${edge.id}' ${role}Restriction: ` +
-            `entries[${i}]=${entries[i]} is not a finite number`
+            `entries[${i}]=${entries[i]} is not a finite number`,
         );
       }
     }
@@ -237,7 +247,10 @@ export class CellularSheaf {
   /**
    * getEdgeRestrictions — convenience accessor for both restriction maps of an edge.
    */
-  getEdgeRestrictions(edgeId: EdgeId): { source: RestrictionMap; target: RestrictionMap } {
+  getEdgeRestrictions(edgeId: EdgeId): {
+    source: RestrictionMap;
+    target: RestrictionMap;
+  } {
     const edge = this.getEdge(edgeId);
     return { source: edge.sourceRestriction, target: edge.targetRestriction };
   }

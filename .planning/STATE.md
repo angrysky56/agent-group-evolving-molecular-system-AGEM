@@ -6,14 +6,14 @@
 
 ## Status Snapshot
 
-| Phase | Name | Status | Requirements | Success Criteria Met |
-|-------|------|--------|--------------|----------------------|
-| 1 | Sheaf-Theoretic Coordination | **COMPLETE** | SHEAF-01 through SHEAF-06 | **5 / 5** |
-| 2 | LCM Dual-Memory Architecture | **COMPLETE** | LCM-01 through LCM-05 | **5 / 5** |
-| 3 | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export) | TNA-01 through TNA-06, ORCH-03 | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied) |
-| 4 | Self-Organized Criticality Tracking | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel) | SOC-01 through SOC-05 | **5 / 5** |
-| 5 | Orchestrator Integration | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied) |
-| 6 | P2 Enhancements | **COMPLETE** (Plan 04/04 done) | ORCH-06 + TNA-07/08/09 + SOC-06/07 | Plans 01-04: RegimeValidator+RegimeAnalyzer+VdWAgentSpawner+CatalystQuestionGenerator+CentralityAnalyzer+LayoutComputer done |
+| Phase | Name                                  | Status                                                                                                          | Requirements                                | Success Criteria Met                                                                                                         |
+| ----- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Sheaf-Theoretic Coordination          | **COMPLETE**                                                                                                    | SHEAF-01 through SHEAF-06                   | **5 / 5**                                                                                                                    |
+| 2     | LCM Dual-Memory Architecture          | **COMPLETE**                                                                                                    | LCM-01 through LCM-05                       | **5 / 5**                                                                                                                    |
+| 3     | Text Network Analysis + Molecular-CoT | **COMPLETE** (Plan 03/03 done: GapDetector + barrel export)                                                     | TNA-01 through TNA-06, ORCH-03              | **6 / 6** (TNA-01–06 + ORCH-03 all satisfied)                                                                                |
+| 4     | Self-Organized Criticality Tracking   | **COMPLETE** (Plan 02/02 done: SOCTracker + isolation + barrel)                                                 | SOC-01 through SOC-05                       | **5 / 5**                                                                                                                    |
+| 5     | Orchestrator Integration              | **COMPLETE** (Plan 03/03 done: Composition root + ObstructionHandler + isolation test + 131 orchestrator tests) | ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05 | **5 / 5** (all ROADMAP criteria satisfied)                                                                                   |
+| 6     | P2 Enhancements                       | **COMPLETE** (Plan 04/04 done)                                                                                  | ORCH-06 + TNA-07/08/09 + SOC-06/07          | Plans 01-04: RegimeValidator+RegimeAnalyzer+VdWAgentSpawner+CatalystQuestionGenerator+CentralityAnalyzer+LayoutComputer done |
 
 **Overall v1 requirements:** 25 / 25 implemented + P2 enhancements complete (SHEAF-01–06; LCM-01–05; TNA-01–09; SOC-01–07; ORCH-01–06 — PHASE 6 DONE with 574 total tests passing, all 6 P2 requirements satisfied)
 
@@ -78,139 +78,139 @@ No additional planned phases. Phase 7+ (P3 enhancements, LLM integration, semant
 
 ## Active Decisions
 
-| Decision | Date | Detail |
-|----------|------|--------|
-| TypeScript 5.9.3 + Node.js 22 LTS | 2026-02-27 | Strict null checks mandatory; worker_threads for llm_map |
-| graphology 0.26.0 | 2026-02-27 | TNA semantic graph and Sheaf base space |
-| mathjs 15.1.1 | 2026-02-27 | Sheaf Laplacian, eigenvalue decomposition, Von Neumann entropy |
-| vitest 4.0.18 | 2026-02-27 | Native ESM test runner; pool:forks for native module isolation; passWithNoTests:true |
-| Phase 1 = Sheaf (not LCM) | 2026-02-27 | Highest mathematical failure risk; silent wrong results if done late |
-| ORCH-03 in Phase 3 | 2026-02-27 | Bond type invariants must be in type system before reasoning loop code exists |
-| No LLM inference in LCM primitives | 2026-02-27 | Determinism guarantee; retrieval path must be pure data operations |
-| Zero cross-imports between core modules | 2026-02-27 | Only orchestrator imports from multiple modules; enforced by lint |
-| Branded string types for VertexId/EdgeId | 2026-02-27 | Catches ID misuse at compile time; zero runtime cost |
-| CellularSheaf internals are protected (not private) | 2026-02-27 | Allows Wave 2 Laplacian methods to extend without rewriting the class |
-| RestrictionMap entries: row-major Float64Array | 2026-02-27 | entry[r*sourceDim+c] = row r, col c; consistent with ml-matrix SVD input format |
-| Coboundary orientation: source=NEGATIVE, target=POSITIVE | 2026-02-27 | B[eRow, srcCol] = -F_{u<-e}, B[eRow, tgtCol] = +F_{v<-e}; enforced by T3d |
-| ADMM Phase 1 stub = gradient descent | 2026-02-27 | alpha = 0.5/max_eigenvalue; replacing with true ADMM requires no test changes |
-| B assembly via 2D array (not math.subset) | 2026-02-27 | Avoids mathjs indexing quirks; simpler to verify against hand computation |
-| ml-matrix SVD boundary: CohomologyAnalyzer.ts only | 2026-02-27 | mathjs for matrix assembly (Waves 1-2), ml-matrix for SVD (Wave 3 only); interop via B.toArray() |
-| Tolerance formula: MATLAB rank() default | 2026-02-27 | max(S)*max(N0,N1)*Number.EPSILON; not hardcoded 1e-6; documented in code comments |
-| T7 canonical H^1=1 sheaf: flat 1D triangle | 2026-02-27 | threeCycleInconsistentSheaf has rank(B)=3 (full row rank), h1=0; research doc had wrong rank=2 claim; flat 1D triangle (incidence matrix of cycle) gives rank=2, h1=1 |
-| getAll() returns Object.freeze([...#entries]) | 2026-02-28 | Frozen shallow copy: runtime mutation throws TypeError without preventing future appends to backing array; compile-time ReadonlyArray not sufficient alone |
-| EmbeddingCache forward-declared in Wave 1 | 2026-02-28 | LCMClient wiring test (T1d) runs in Wave 1; full EmbeddingCache implementation in plan 02-04 (Wave 2) |
-| MockEmbedder: SHA-256 seed + Math.sin(seed+i) + L2-normalize | 2026-02-28 | Deterministic 384-dim embeddings without model loading; consistent with 02-RESEARCH.md spec |
-| SummaryNode content frozen via Object.defineProperties | 2026-02-28 | Non-writable/configurable on content+id; metrics mutable-but-tracked via updateMetric() with MetricUpdate audit trail |
-| ContextDAG cycle detection via DFS over intermediateCompressions.childIds | 2026-02-28 | Simple visited-set DFS sufficient for Phase 2 linear summarization; self-references caught immediately |
-| cosineSimilarity() uses full dot/(normA*normB) formula | 2026-02-28 | Correct for any embedder (not simplified dot-only which assumes L2-normalized inputs) |
-| getParentSummary() is O(n) scan | 2026-02-28 | Acceptable for Phase 2 linear summarization; Wave 3 can optimize if needed |
-| L3 uses 50% per-chunk token slicing — no ICompressor calls | 2026-02-28 | Hard convergence guarantee; L3 path uses encode+slice+decode only; CONTEXT.md locked decision: chunk first, hard-truncate as fallback |
-| EscalationResult.level: 0 for no escalation | 2026-02-28 | Distinguishes no-escalation from levels 1-3; 0 means input was under threshold, no action taken |
-| Test token helper uses "cat" (1 BPE token each) | 2026-02-28 | gpt-tokenizer BPE for "cat" is exactly 1 token — gives predictable counts for threshold-sensitive tests |
-| No Porter stemmer fallback in lemmatize() | 2026-02-28 | Porter("analyze")="analyz" vs wink.verb("analyzing")="analyze" — two nodes for one concept; wink result or identity used instead |
-| DetailedPreprocessResult with surfaceToLemma | 2026-02-28 | Synchronous surface form tracking in Preprocessor pipeline; avoids async re-tokenization in CooccurrenceGraph |
-| GraphConstructor cast for graphology NodeNext ESM | 2026-02-28 | cast via AbstractGraph as type annotation — avoids "Cannot use namespace as a type" in strict NodeNext mode |
-| BondGraph class (not interface) for behavioral invariants | 2026-02-28 | Covalent cascade invalidate + hydrogen distance threshold + VdW trajectory minimum enforced at creation time, not as runtime metadata |
-| Mulberry32 PRNG seeded via rng option (Louvain determinism) | 2026-02-28 | graphology-communities-louvain natively supports rng parameter; Mulberry32(seed) passed as rng — no Math.random patching needed |
-| createRequire CJS interop for graphology-metrics + louvain | 2026-02-28 | graphology-metrics has no package.json exports (NodeNext subpath fails); louvain.detailed() needs CJS require to expose attached methods; createRequire(import.meta.url) is the established pattern |
-| S(K_n) = ln(n-1) for normalized Laplacian density matrix | 2026-02-28 | rho = L_norm/trace(L_norm) gives eigenvalues [0, 1/(n-1) x (n-1 times)]; S = ln(n-1). ROADMAP stated ln(n) but math gives ln(n-1); RESEARCH.md §Pattern 1 acknowledged discrepancy. Tests corrected to ln(n-1). |
-| SOCInputs uses plain types (not TNA class instances) | 2026-02-28 | ReadonlyMap<string, Float64Array> and ReadonlyArray for edges — zero compile-time SOC-to-TNA dependency; enables synthetic testing |
-| SOCEvent / SOCEventType separate from SheafEventType | 2026-02-28 | SOC events (soc:metrics, phase:transition) have their own discriminated union; not merged into SheafEventType |
-| SOCTracker phase transition noise filter |r|>0.1 | 2026-03-01 | Sign change on near-zero correlations (e.g., 0.001→-0.001) is false positive; both |prevR| and |currR| must exceed 0.1 threshold |
-| previousCorrelation only updated when r !== 0 | 2026-03-01 | Avoids overwriting meaningful correlation with 0 (insufficient data) during window warmup period |
-| T-PT-01 uses blended embeddings for independent VNE/EE control | 2026-03-01 | v[0]=sqrt(1-t) (shared) + v[k]=sqrt(t) (unique), normalized; path-graph length controls VNE independently; verified sign change fires at iter 9 (r: +0.906 to -0.664) |
-| EventBus is standalone class (not extends EventEmitter) | 2026-03-01 | emit() signature incompatible with EventEmitter base (TS2416); composition used instead — private #emitter field held for future Node.js integration |
-| CRITICAL → NORMAL (not CRITICAL → OBSTRUCTED) | 2026-03-01 | When H^1 drops below obs threshold from CRITICAL, state returns to NORMAL directly; OBSTRUCTED is only entered from NORMAL going up |
-| AgentPool heartbeat skips terminated agents | 2026-03-01 | #runHeartbeat filters agents by status !== 'terminated' before issuing heartbeat; avoids calling heartbeat() on dead agents |
-| TaskWorker uses worker-local AsyncLocalStorage | 2026-03-01 | Worker threads have separate module graphs; cross-thread AsyncLocalStorage sharing is impossible; workers restore context from postMessage plain object using their own local AsyncLocalStorage instance |
-| TaskWorker.mock.mjs is pure JavaScript (.mjs) | 2026-03-01 | tsx/esm loader does not resolve .js→.ts for imports inside worker threads spawned from vitest; pure JS mock avoids compilation dependency in tests |
-| effectivePoolSize clamped to [1, tasks.length] | 2026-03-01 | No excess workers spawned for small task batches; prevents unnecessary thread overhead when poolSize > task count |
-| buildFlatSheaf(2, 1) as Phase 5 test sheaf | 2026-03-01 | 2-vertex path sheaf with 1-dim identity restrictions: H^0=1, H^1=0 (consensus fires every iteration); in Phase 6 sheaf topology would be dynamically constructed from TNA graph |
-| GptTokenCounter injected into ImmutableStore | 2026-03-01 | ImmutableStore(tokenCounter) requires ITokenCounter arg — plan pseudocode showed no-arg constructor; fixed by injecting GptTokenCounter in Orchestrator |
-| Isolation test uses from-clause regex extraction | 2026-03-01 | `\bfrom\s+['"]([^'"]+)['"]` handles TypeScript multiline import blocks; segment equality check (`path.split('/').some(seg => seg === module)`) correctly matches all relative path styles |
-| ObstructionHandler stores subscription callback as class field | 2026-03-01 | `#obstructionHandler` field stores the arrow function reference for EventBus.unsubscribe() in shutdown() — required since unsubscribe uses reference equality |
-| RegimeAnalyzer persistence gate applies only in initial nascent state | 2026-03-06 | persistence < persistenceThreshold returns 'nascent' ONLY while #currentRegime === 'nascent'; prevents oscillation bug where every regime change reset persistence to 1, causing system to never graduate from nascent |
-| H^1 coupling via updateH1Dimension() (no sheaf import in SOC) | 2026-03-06 | SOCTracker.updateH1Dimension(h1Dim) receives H^1 from orchestrator; SOC module never imports sheaf; maintains strict module isolation invariant |
-| Phase 6 regime events are additive (not replacements) | 2026-03-06 | 'phase:transition-confirmed' and 'regime:classification' emit alongside existing 'phase:transition' and 'soc:metrics'; zero backward-compatibility breaks |
-| VdWAgentSpawner receives regime as string (not RegimeStability import) | 2026-03-06 | VdWAgentSpawner.updateRegime(regime: string) receives regime as plain string — never imports from soc/; maintains module isolation (at-most-1-module rule) |
-| AnyEvent union extended to include OrchestratorEvent | 2026-03-06 | AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent in interfaces.ts; enables VdW events to flow through EventBus type system |
-| VdW agents serialized in runAgents() (not parallel) | 2026-03-06 | runAgents() processes agents one at a time to avoid graph mutation races when integrating entity results into TNA graph |
-| Token budget inverse scaling: max(500, 5000/h1Dimension) | 2026-03-06 | Higher obstruction → more exploratory agents → smaller budget each; H^1=2→2500, H^1=10→500, capped at 500 minimum |
-| Phase 6 TNA-07 semantic distance = TF-IDF weight proxy | 2026-03-06 | Deterministic, no LLM required; Phase 7 replaces with 1 - cosine_similarity(centroid_A_embedding, centroid_B_embedding) |
-| computeIfDue() gates O(n^3) betweenness centrality | 2026-03-06 | Regime-adaptive intervals: critical/transitioning=5, default=10, stable=20; direct compute() still available for tests |
-| CatalystQuestionGenerator gapId format: communityA_communityB | 2026-03-06 | Consistent with VdWAgentSpawner gap tracking; cache invalidation uses same key; batch map keyed by gapId |
-| CentralityTimeSeries capped at 50 entries per node | 2026-03-06 | Circular buffer via splice(); prevents unbounded memory growth; sufficient for trend/peak/valley detection |
-| Rapid change multiplier 3x (rapidChangeMultiplier default) | 2026-03-06 | Calibrated to avoid noise from minor graph updates; configurable for regime-specific tuning |
-| computeIfDue warm-up always runs on first call (hasComputedInitial guard) | 2026-03-06 | Without warm-up guard, first call at iteration=0 would always skip (elapsed=0 < any interval). Initial full layout is always required before incremental updates begin |
-| LayoutComputer trivial layout for < 3 nodes: hash positions, 0 iterations, no event | 2026-03-06 | FA2 requires >= 3 nodes for meaningful physics; small graphs get deterministic hash-based positions instead |
-| Layout convergence energy = mean squared displacement from previous positions | 2026-03-06 | First run returns Infinity (no reference). Non-monotone across runs (FA2 positions oscillate before settling). Finite energy indicates layout is being tracked |
-| Hash-based deterministic seeding: Bernstein hash for x, FNV-variant for y | 2026-03-06 | Same node ID always maps to same starting position; orthogonal hash functions prevent x/y correlation |
-| createRequire CJS interop for graphology-layout-forceatlas2 (no exports field) | 2026-03-06 | Package has no package.json exports field; bundled index.d.ts uses old CJS import style incompatible with NodeNext. createRequire + vendor-types.d.ts declaration is consistent with graphology-metrics pattern |
+| Decision                                                                            | Date       | Detail                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------- | ----- | --- | ----- | ------------------------- |
+| TypeScript 5.9.3 + Node.js 22 LTS                                                   | 2026-02-27 | Strict null checks mandatory; worker_threads for llm_map                                                                                                                                                               |
+| graphology 0.26.0                                                                   | 2026-02-27 | TNA semantic graph and Sheaf base space                                                                                                                                                                                |
+| mathjs 15.1.1                                                                       | 2026-02-27 | Sheaf Laplacian, eigenvalue decomposition, Von Neumann entropy                                                                                                                                                         |
+| vitest 4.0.18                                                                       | 2026-02-27 | Native ESM test runner; pool:forks for native module isolation; passWithNoTests:true                                                                                                                                   |
+| Phase 1 = Sheaf (not LCM)                                                           | 2026-02-27 | Highest mathematical failure risk; silent wrong results if done late                                                                                                                                                   |
+| ORCH-03 in Phase 3                                                                  | 2026-02-27 | Bond type invariants must be in type system before reasoning loop code exists                                                                                                                                          |
+| No LLM inference in LCM primitives                                                  | 2026-02-27 | Determinism guarantee; retrieval path must be pure data operations                                                                                                                                                     |
+| Zero cross-imports between core modules                                             | 2026-02-27 | Only orchestrator imports from multiple modules; enforced by lint                                                                                                                                                      |
+| Branded string types for VertexId/EdgeId                                            | 2026-02-27 | Catches ID misuse at compile time; zero runtime cost                                                                                                                                                                   |
+| CellularSheaf internals are protected (not private)                                 | 2026-02-27 | Allows Wave 2 Laplacian methods to extend without rewriting the class                                                                                                                                                  |
+| RestrictionMap entries: row-major Float64Array                                      | 2026-02-27 | entry[r*sourceDim+c] = row r, col c; consistent with ml-matrix SVD input format                                                                                                                                        |
+| Coboundary orientation: source=NEGATIVE, target=POSITIVE                            | 2026-02-27 | B[eRow, srcCol] = -F*{u<-e}, B[eRow, tgtCol] = +F*{v<-e}; enforced by T3d                                                                                                                                              |
+| ADMM Phase 1 stub = gradient descent                                                | 2026-02-27 | alpha = 0.5/max_eigenvalue; replacing with true ADMM requires no test changes                                                                                                                                          |
+| B assembly via 2D array (not math.subset)                                           | 2026-02-27 | Avoids mathjs indexing quirks; simpler to verify against hand computation                                                                                                                                              |
+| ml-matrix SVD boundary: CohomologyAnalyzer.ts only                                  | 2026-02-27 | mathjs for matrix assembly (Waves 1-2), ml-matrix for SVD (Wave 3 only); interop via B.toArray()                                                                                                                       |
+| Tolerance formula: MATLAB rank() default                                            | 2026-02-27 | max(S)*max(N0,N1)*Number.EPSILON; not hardcoded 1e-6; documented in code comments                                                                                                                                      |
+| T7 canonical H^1=1 sheaf: flat 1D triangle                                          | 2026-02-27 | threeCycleInconsistentSheaf has rank(B)=3 (full row rank), h1=0; research doc had wrong rank=2 claim; flat 1D triangle (incidence matrix of cycle) gives rank=2, h1=1                                                  |
+| getAll() returns Object.freeze([...#entries])                                       | 2026-02-28 | Frozen shallow copy: runtime mutation throws TypeError without preventing future appends to backing array; compile-time ReadonlyArray not sufficient alone                                                             |
+| EmbeddingCache forward-declared in Wave 1                                           | 2026-02-28 | LCMClient wiring test (T1d) runs in Wave 1; full EmbeddingCache implementation in plan 02-04 (Wave 2)                                                                                                                  |
+| MockEmbedder: SHA-256 seed + Math.sin(seed+i) + L2-normalize                        | 2026-02-28 | Deterministic 384-dim embeddings without model loading; consistent with 02-RESEARCH.md spec                                                                                                                            |
+| SummaryNode content frozen via Object.defineProperties                              | 2026-02-28 | Non-writable/configurable on content+id; metrics mutable-but-tracked via updateMetric() with MetricUpdate audit trail                                                                                                  |
+| ContextDAG cycle detection via DFS over intermediateCompressions.childIds           | 2026-02-28 | Simple visited-set DFS sufficient for Phase 2 linear summarization; self-references caught immediately                                                                                                                 |
+| cosineSimilarity() uses full dot/(normA\*normB) formula                             | 2026-02-28 | Correct for any embedder (not simplified dot-only which assumes L2-normalized inputs)                                                                                                                                  |
+| getParentSummary() is O(n) scan                                                     | 2026-02-28 | Acceptable for Phase 2 linear summarization; Wave 3 can optimize if needed                                                                                                                                             |
+| L3 uses 50% per-chunk token slicing — no ICompressor calls                          | 2026-02-28 | Hard convergence guarantee; L3 path uses encode+slice+decode only; CONTEXT.md locked decision: chunk first, hard-truncate as fallback                                                                                  |
+| EscalationResult.level: 0 for no escalation                                         | 2026-02-28 | Distinguishes no-escalation from levels 1-3; 0 means input was under threshold, no action taken                                                                                                                        |
+| Test token helper uses "cat" (1 BPE token each)                                     | 2026-02-28 | gpt-tokenizer BPE for "cat" is exactly 1 token — gives predictable counts for threshold-sensitive tests                                                                                                                |
+| No Porter stemmer fallback in lemmatize()                                           | 2026-02-28 | Porter("analyze")="analyz" vs wink.verb("analyzing")="analyze" — two nodes for one concept; wink result or identity used instead                                                                                       |
+| DetailedPreprocessResult with surfaceToLemma                                        | 2026-02-28 | Synchronous surface form tracking in Preprocessor pipeline; avoids async re-tokenization in CooccurrenceGraph                                                                                                          |
+| GraphConstructor cast for graphology NodeNext ESM                                   | 2026-02-28 | cast via AbstractGraph as type annotation — avoids "Cannot use namespace as a type" in strict NodeNext mode                                                                                                            |
+| BondGraph class (not interface) for behavioral invariants                           | 2026-02-28 | Covalent cascade invalidate + hydrogen distance threshold + VdW trajectory minimum enforced at creation time, not as runtime metadata                                                                                  |
+| Mulberry32 PRNG seeded via rng option (Louvain determinism)                         | 2026-02-28 | graphology-communities-louvain natively supports rng parameter; Mulberry32(seed) passed as rng — no Math.random patching needed                                                                                        |
+| createRequire CJS interop for graphology-metrics + louvain                          | 2026-02-28 | graphology-metrics has no package.json exports (NodeNext subpath fails); louvain.detailed() needs CJS require to expose attached methods; createRequire(import.meta.url) is the established pattern                    |
+| S(K_n) = ln(n-1) for normalized Laplacian density matrix                            | 2026-02-28 | rho = L_norm/trace(L_norm) gives eigenvalues [0, 1/(n-1) x (n-1 times)]; S = ln(n-1). ROADMAP stated ln(n) but math gives ln(n-1); RESEARCH.md §Pattern 1 acknowledged discrepancy. Tests corrected to ln(n-1).        |
+| SOCInputs uses plain types (not TNA class instances)                                | 2026-02-28 | ReadonlyMap<string, Float64Array> and ReadonlyArray for edges — zero compile-time SOC-to-TNA dependency; enables synthetic testing                                                                                     |
+| SOCEvent / SOCEventType separate from SheafEventType                                | 2026-02-28 | SOC events (soc:metrics, phase:transition) have their own discriminated union; not merged into SheafEventType                                                                                                          |
+| SOCTracker phase transition noise filter                                            | r          | >0.1                                                                                                                                                                                                                   | 2026-03-01 | Sign change on near-zero correlations (e.g., 0.001→-0.001) is false positive; both          | prevR | and | currR | must exceed 0.1 threshold |
+| previousCorrelation only updated when r !== 0                                       | 2026-03-01 | Avoids overwriting meaningful correlation with 0 (insufficient data) during window warmup period                                                                                                                       |
+| T-PT-01 uses blended embeddings for independent VNE/EE control                      | 2026-03-01 | v[0]=sqrt(1-t) (shared) + v[k]=sqrt(t) (unique), normalized; path-graph length controls VNE independently; verified sign change fires at iter 9 (r: +0.906 to -0.664)                                                  |
+| EventBus is standalone class (not extends EventEmitter)                             | 2026-03-01 | emit() signature incompatible with EventEmitter base (TS2416); composition used instead — private #emitter field held for future Node.js integration                                                                   |
+| CRITICAL → NORMAL (not CRITICAL → OBSTRUCTED)                                       | 2026-03-01 | When H^1 drops below obs threshold from CRITICAL, state returns to NORMAL directly; OBSTRUCTED is only entered from NORMAL going up                                                                                    |
+| AgentPool heartbeat skips terminated agents                                         | 2026-03-01 | #runHeartbeat filters agents by status !== 'terminated' before issuing heartbeat; avoids calling heartbeat() on dead agents                                                                                            |
+| TaskWorker uses worker-local AsyncLocalStorage                                      | 2026-03-01 | Worker threads have separate module graphs; cross-thread AsyncLocalStorage sharing is impossible; workers restore context from postMessage plain object using their own local AsyncLocalStorage instance               |
+| TaskWorker.mock.mjs is pure JavaScript (.mjs)                                       | 2026-03-01 | tsx/esm loader does not resolve .js→.ts for imports inside worker threads spawned from vitest; pure JS mock avoids compilation dependency in tests                                                                     |
+| effectivePoolSize clamped to [1, tasks.length]                                      | 2026-03-01 | No excess workers spawned for small task batches; prevents unnecessary thread overhead when poolSize > task count                                                                                                      |
+| buildFlatSheaf(2, 1) as Phase 5 test sheaf                                          | 2026-03-01 | 2-vertex path sheaf with 1-dim identity restrictions: H^0=1, H^1=0 (consensus fires every iteration); in Phase 6 sheaf topology would be dynamically constructed from TNA graph                                        |
+| GptTokenCounter injected into ImmutableStore                                        | 2026-03-01 | ImmutableStore(tokenCounter) requires ITokenCounter arg — plan pseudocode showed no-arg constructor; fixed by injecting GptTokenCounter in Orchestrator                                                                |
+| Isolation test uses from-clause regex extraction                                    | 2026-03-01 | `\bfrom\s+['"]([^'"]+)['"]` handles TypeScript multiline import blocks; segment equality check (`path.split('/').some(seg => seg === module)`) correctly matches all relative path styles                              |
+| ObstructionHandler stores subscription callback as class field                      | 2026-03-01 | `#obstructionHandler` field stores the arrow function reference for EventBus.unsubscribe() in shutdown() — required since unsubscribe uses reference equality                                                          |
+| RegimeAnalyzer persistence gate applies only in initial nascent state               | 2026-03-06 | persistence < persistenceThreshold returns 'nascent' ONLY while #currentRegime === 'nascent'; prevents oscillation bug where every regime change reset persistence to 1, causing system to never graduate from nascent |
+| H^1 coupling via updateH1Dimension() (no sheaf import in SOC)                       | 2026-03-06 | SOCTracker.updateH1Dimension(h1Dim) receives H^1 from orchestrator; SOC module never imports sheaf; maintains strict module isolation invariant                                                                        |
+| Phase 6 regime events are additive (not replacements)                               | 2026-03-06 | 'phase:transition-confirmed' and 'regime:classification' emit alongside existing 'phase:transition' and 'soc:metrics'; zero backward-compatibility breaks                                                              |
+| VdWAgentSpawner receives regime as string (not RegimeStability import)              | 2026-03-06 | VdWAgentSpawner.updateRegime(regime: string) receives regime as plain string — never imports from soc/; maintains module isolation (at-most-1-module rule)                                                             |
+| AnyEvent union extended to include OrchestratorEvent                                | 2026-03-06 | AnyEvent = SheafEvent                                                                                                                                                                                                  | SOCEvent   | OrchestratorEvent in interfaces.ts; enables VdW events to flow through EventBus type system |
+| VdW agents serialized in runAgents() (not parallel)                                 | 2026-03-06 | runAgents() processes agents one at a time to avoid graph mutation races when integrating entity results into TNA graph                                                                                                |
+| Token budget inverse scaling: max(500, 5000/h1Dimension)                            | 2026-03-06 | Higher obstruction → more exploratory agents → smaller budget each; H^1=2→2500, H^1=10→500, capped at 500 minimum                                                                                                      |
+| Phase 6 TNA-07 semantic distance = TF-IDF weight proxy                              | 2026-03-06 | Deterministic, no LLM required; Phase 7 replaces with 1 - cosine_similarity(centroid_A_embedding, centroid_B_embedding)                                                                                                |
+| computeIfDue() gates O(n^3) betweenness centrality                                  | 2026-03-06 | Regime-adaptive intervals: critical/transitioning=5, default=10, stable=20; direct compute() still available for tests                                                                                                 |
+| CatalystQuestionGenerator gapId format: communityA_communityB                       | 2026-03-06 | Consistent with VdWAgentSpawner gap tracking; cache invalidation uses same key; batch map keyed by gapId                                                                                                               |
+| CentralityTimeSeries capped at 50 entries per node                                  | 2026-03-06 | Circular buffer via splice(); prevents unbounded memory growth; sufficient for trend/peak/valley detection                                                                                                             |
+| Rapid change multiplier 3x (rapidChangeMultiplier default)                          | 2026-03-06 | Calibrated to avoid noise from minor graph updates; configurable for regime-specific tuning                                                                                                                            |
+| computeIfDue warm-up always runs on first call (hasComputedInitial guard)           | 2026-03-06 | Without warm-up guard, first call at iteration=0 would always skip (elapsed=0 < any interval). Initial full layout is always required before incremental updates begin                                                 |
+| LayoutComputer trivial layout for < 3 nodes: hash positions, 0 iterations, no event | 2026-03-06 | FA2 requires >= 3 nodes for meaningful physics; small graphs get deterministic hash-based positions instead                                                                                                            |
+| Layout convergence energy = mean squared displacement from previous positions       | 2026-03-06 | First run returns Infinity (no reference). Non-monotone across runs (FA2 positions oscillate before settling). Finite energy indicates layout is being tracked                                                         |
+| Hash-based deterministic seeding: Bernstein hash for x, FNV-variant for y           | 2026-03-06 | Same node ID always maps to same starting position; orthogonal hash functions prevent x/y correlation                                                                                                                  |
+| createRequire CJS interop for graphology-layout-forceatlas2 (no exports field)      | 2026-03-06 | Package has no package.json exports field; bundled index.d.ts uses old CJS import style incompatible with NodeNext. createRequire + vendor-types.d.ts declaration is consistent with graphology-metrics pattern        |
 
 ## Resolved Questions
 
-| Question | Resolution | Date |
-|----------|------------|------|
+| Question                                     | Resolution                                                                                                                                    | Date       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | ADMM restriction map interface compatibility | Resolved: getCoboundaryMatrix, getSheafLaplacian, getVertexOffset, getEdgeOffset, getEdgeDim, getEdgeRestrictions all public on CellularSheaf | 2026-02-27 |
-| threeCycleInconsistentSheaf h1 value | Resolved: h1=0 (rank(B)=3, full row rank). Research doc claimed rank=2 incorrectly. T7 uses flat 1D triangle instead (rank=2, h1=1). | 2026-02-27 |
+| threeCycleInconsistentSheaf h1 value         | Resolved: h1=0 (rank(B)=3, full row rank). Research doc claimed rank=2 incorrectly. T7 uses flat 1D triangle instead (rank=2, h1=1).          | 2026-02-27 |
 
 ## Open Questions
 
 These must be resolved before the relevant phase starts:
 
-| Question | Needed By | Notes |
-|----------|-----------|-------|
+| Question                                                 | Needed By             | Notes                                                                                                                                              |
+| -------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Embedding model selection: same or different for SOC/TNA | Before Phase 4 starts | `all-MiniLM-L6-v2` (384-dim) for SOC entropy probes vs. `text-embedding-3-small` (1536-dim) for TNA semantic similarity; schema conflicts if mixed |
-| Surprising edge threshold calibration (`δ_surprising`) | Before Phase 4 SOC-04 | Not specified in paper beyond 12% target; empirical calibration against known corpus needed |
-| LangGraph StateGraph vs. Network topology | Before Phase 5 starts | Supervisor (coordinator-worker for Sheaf rounds) vs. Network (peer-to-peer for Van der Waals agents); may be both depending on operating mode |
-| Three-mode state machine transition conditions | Before Phase 5 starts | Exact conditions for NORMAL → OBSTRUCTED, and whether CRITICAL is re-entrant or terminal |
+| Surprising edge threshold calibration (`δ_surprising`)   | Before Phase 4 SOC-04 | Not specified in paper beyond 12% target; empirical calibration against known corpus needed                                                        |
+| LangGraph StateGraph vs. Network topology                | Before Phase 5 starts | Supervisor (coordinator-worker for Sheaf rounds) vs. Network (peer-to-peer for Van der Waals agents); may be both depending on operating mode      |
+| Three-mode state machine transition conditions           | Before Phase 5 starts | Exact conditions for NORMAL → OBSTRUCTED, and whether CRITICAL is re-entrant or terminal                                                           |
 
 ## Pitfall Watch
 
 High-priority pitfalls to catch early. See `.planning/research/PITFALLS.md` for full treatment.
 
-| Pitfall | Phase | Warning Sign | Status |
-|---------|-------|--------------|--------|
-| Sheaf Laplacian = standard graph Laplacian | 1 | Consensus converges in 1-2 steps regardless of initial disagreement | **RESOLVED: T5b discrimination test guards this permanently** |
-| Flat sheaf (H^1 always zero) | 1 | Obstruction code path never triggers in any test | **RESOLVED: T7 (h1=1) and T7c (h1=2) guard this permanently** |
-| H^1 wrong numerical tolerance | 1 | Tolerance set to 1e-6+ without documented justification | **RESOLVED: MATLAB formula + NumericalTolerance.test.ts validates calibration** |
-| LCM store is mutable | 2 | Test isolation requires clearing store between tests | **RESOLVED: T1b (TypeError on mutation) + T6 (frozen getAll snapshot) guard permanently** |
-| Embedding cold start in tests | 2 | ONNX model loading occurs during test suite | **RESOLVED: MockEmbedder injected everywhere; T11c source-level guard in LCMGrep.ts** |
-| Escalation L3 missing | 2 | Context management has no hard truncation path | **RESOLVED: T9 (L3 activation) + T9b (zero LLM) + T9c (chunking) + T9d (kToken bound) + T9f (hard fallback) guard permanently** |
-| 4-gram window without lemmatization | 3 | Node count grows proportionally to total word count | **RESOLVED: T6b (80 tokens → ≤2 nodes) guards permanently** |
-| Bond types as metadata only | 3 | Bond invariants checked at runtime rather than type-system level | **RESOLVED: BondGraph class enforces invariants at creation time; creation throws on violation** |
-| Non-deterministic Louvain (Pitfall 5) | 3 | Different runs produce different community assignments for same graph | **RESOLVED: T9 (10 runs same seed = identical) guards permanently; Mulberry32 PRNG via rng option** |
-| Von Neumann entropy from adjacency matrix | 4 | Entropy exceeds `ln(n)`; entropy barely changes as graph grows | **RESOLVED: T-VN-01..05 guard S(K_n)=ln(n-1) for normalized Laplacian density matrix; T-VN-05 confirms entropy <= ln(n)** |
-| Embedding entropy = token Shannon entropy | 4 | Semantic entropy tracks node count linearly; CDP always positive | **RESOLVED: T-EE-01 (identical→0) + T-EE-02 (orthogonal→ln(d)) guard permanently** |
-| Phase transition hard-coded to iteration 400 | 4 | Literal `400` appears in production code path | **RESOLVED: T-ISO-03 (no literal 400) + T-PT-01 (dynamic sign change) guard permanently** |
-| Surprising edge ratio cumulative | 4 | Ratio is stable at exactly 12% from iteration 1 | **RESOLVED: T-SE-05 (per-iteration isolation, Pitfall 3 guard) permanently enforced** |
+| Pitfall                                      | Phase | Warning Sign                                                          | Status                                                                                                                          |
+| -------------------------------------------- | ----- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Sheaf Laplacian = standard graph Laplacian   | 1     | Consensus converges in 1-2 steps regardless of initial disagreement   | **RESOLVED: T5b discrimination test guards this permanently**                                                                   |
+| Flat sheaf (H^1 always zero)                 | 1     | Obstruction code path never triggers in any test                      | **RESOLVED: T7 (h1=1) and T7c (h1=2) guard this permanently**                                                                   |
+| H^1 wrong numerical tolerance                | 1     | Tolerance set to 1e-6+ without documented justification               | **RESOLVED: MATLAB formula + NumericalTolerance.test.ts validates calibration**                                                 |
+| LCM store is mutable                         | 2     | Test isolation requires clearing store between tests                  | **RESOLVED: T1b (TypeError on mutation) + T6 (frozen getAll snapshot) guard permanently**                                       |
+| Embedding cold start in tests                | 2     | ONNX model loading occurs during test suite                           | **RESOLVED: MockEmbedder injected everywhere; T11c source-level guard in LCMGrep.ts**                                           |
+| Escalation L3 missing                        | 2     | Context management has no hard truncation path                        | **RESOLVED: T9 (L3 activation) + T9b (zero LLM) + T9c (chunking) + T9d (kToken bound) + T9f (hard fallback) guard permanently** |
+| 4-gram window without lemmatization          | 3     | Node count grows proportionally to total word count                   | **RESOLVED: T6b (80 tokens → ≤2 nodes) guards permanently**                                                                     |
+| Bond types as metadata only                  | 3     | Bond invariants checked at runtime rather than type-system level      | **RESOLVED: BondGraph class enforces invariants at creation time; creation throws on violation**                                |
+| Non-deterministic Louvain (Pitfall 5)        | 3     | Different runs produce different community assignments for same graph | **RESOLVED: T9 (10 runs same seed = identical) guards permanently; Mulberry32 PRNG via rng option**                             |
+| Von Neumann entropy from adjacency matrix    | 4     | Entropy exceeds `ln(n)`; entropy barely changes as graph grows        | **RESOLVED: T-VN-01..05 guard S(K_n)=ln(n-1) for normalized Laplacian density matrix; T-VN-05 confirms entropy <= ln(n)**       |
+| Embedding entropy = token Shannon entropy    | 4     | Semantic entropy tracks node count linearly; CDP always positive      | **RESOLVED: T-EE-01 (identical→0) + T-EE-02 (orthogonal→ln(d)) guard permanently**                                              |
+| Phase transition hard-coded to iteration 400 | 4     | Literal `400` appears in production code path                         | **RESOLVED: T-ISO-03 (no literal 400) + T-PT-01 (dynamic sign change) guard permanently**                                       |
+| Surprising edge ratio cumulative             | 4     | Ratio is stable at exactly 12% from iteration 1                       | **RESOLVED: T-SE-05 (per-iteration isolation, Pitfall 3 guard) permanently enforced**                                           |
 
 ## Performance Metrics
 
-| Phase | Plan | Duration | Tasks | Files | Date |
-|-------|------|----------|-------|-------|------|
-| 01 | 02 | ~5 min | 8/8 | 11 created | 2026-02-27 |
-| 01 | 03 | ~7 min | 7/7 | 6 created, 1 modified | 2026-02-27 |
-| 01 | 04 | ~15 min | 7/7 | 5 created | 2026-02-27 |
-| 02 | 03 | ~6 min | 2/2 | 6 created, 1 modified | 2026-02-28 |
-| 02 | 04 | ~5 min | 2/2 | 5 created, 1 modified | 2026-02-28 |
-| 02 | 05 | ~6 min | 3/3 | 6 created | 2026-02-28 |
-| 03 | 01 | ~20 min | 2/2 | 7 created, 2 modified | 2026-02-28 |
-| 03 | 02 | ~8 min | 2/2 | 4 created, 1 modified | 2026-02-28 |
-| 03 | 03 | ~8 min | 2/2 | 4 created | 2026-03-01 |
-| 04 | 01 | ~7 min | 2/2 | 3 created, 1 modified | 2026-02-28 |
-| Phase 04 P01 | 7min | 2 tasks | 4 files |
-| 04 | 02 | 9 min | 2/2 | 5 created | 2026-03-01 |
-| Phase 04 P02 | 9 | 2 tasks | 5 files |
-| 05 | 01 | ~7 min | 4/4 | 7 created | 2026-03-01 |
-| 05 | 02 | 6 min | 2/2 | 4 created | 2026-03-01 |
-| Phase 05 P02 | 6 | 2 tasks | 4 files |
-| 05 | 03 | ~25 min | 3/3 | 6 created | 2026-03-01 |
-| 06 | 01 | 9 min | 5/5 | 5 created, 2 modified | 2026-03-06 |
-| 06 | 02 | 9 min | 5/5 | 2 created, 6 modified | 2026-03-06 |
-| 06 | 03 | 11 min | 5/5 | 2 created, 7 modified | 2026-03-06 |
-| Phase 06 P03 | 11 | 5 tasks | 9 files |
-| 06 | 04 | 12 min | 6/6 | 2 created, 7 modified | 2026-03-06 |
+| Phase        | Plan | Duration | Tasks   | Files                 | Date       |
+| ------------ | ---- | -------- | ------- | --------------------- | ---------- |
+| 01           | 02   | ~5 min   | 8/8     | 11 created            | 2026-02-27 |
+| 01           | 03   | ~7 min   | 7/7     | 6 created, 1 modified | 2026-02-27 |
+| 01           | 04   | ~15 min  | 7/7     | 5 created             | 2026-02-27 |
+| 02           | 03   | ~6 min   | 2/2     | 6 created, 1 modified | 2026-02-28 |
+| 02           | 04   | ~5 min   | 2/2     | 5 created, 1 modified | 2026-02-28 |
+| 02           | 05   | ~6 min   | 3/3     | 6 created             | 2026-02-28 |
+| 03           | 01   | ~20 min  | 2/2     | 7 created, 2 modified | 2026-02-28 |
+| 03           | 02   | ~8 min   | 2/2     | 4 created, 1 modified | 2026-02-28 |
+| 03           | 03   | ~8 min   | 2/2     | 4 created             | 2026-03-01 |
+| 04           | 01   | ~7 min   | 2/2     | 3 created, 1 modified | 2026-02-28 |
+| Phase 04 P01 | 7min | 2 tasks  | 4 files |
+| 04           | 02   | 9 min    | 2/2     | 5 created             | 2026-03-01 |
+| Phase 04 P02 | 9    | 2 tasks  | 5 files |
+| 05           | 01   | ~7 min   | 4/4     | 7 created             | 2026-03-01 |
+| 05           | 02   | 6 min    | 2/2     | 4 created             | 2026-03-01 |
+| Phase 05 P02 | 6    | 2 tasks  | 4 files |
+| 05           | 03   | ~25 min  | 3/3     | 6 created             | 2026-03-01 |
+| 06           | 01   | 9 min    | 5/5     | 5 created, 2 modified | 2026-03-06 |
+| 06           | 02   | 9 min    | 5/5     | 2 created, 6 modified | 2026-03-06 |
+| 06           | 03   | 11 min   | 5/5     | 2 created, 7 modified | 2026-03-06 |
+| Phase 06 P03 | 11   | 5 tasks  | 9 files |
+| 06           | 04   | 12 min   | 6/6     | 2 created, 7 modified | 2026-03-06 |
 
 ## File Map
 
@@ -348,6 +348,7 @@ src/
 ```
 
 ---
-*State initialized: 2026-02-27*
-*Last session: 2026-03-06 — Completed Phase 6, Plan 06-04 (TNA-08 LayoutComputer ForceAtlas2 + 42 new tests — 574 total passing, tsc --noEmit clean, all isolation tests pass — PHASE 6 COMPLETE)*
-*Update this file at the start and end of each work session*
+
+_State initialized: 2026-02-27_
+_Last session: 2026-03-06 — Completed Phase 6, Plan 06-04 (TNA-08 LayoutComputer ForceAtlas2 + 42 new tests — 574 total passing, tsc --noEmit clean, all isolation tests pass — PHASE 6 COMPLETE)_
+_Update this file at the start and end of each work session_

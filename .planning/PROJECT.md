@@ -17,12 +17,14 @@ Enable autonomous multi-agent systems to generate novel cross-domain insights th
 ### Active
 
 #### Lossless Context Management (LCM)
+
 - [ ] Deterministic context state tracking with zero information loss
 - [ ] Hierarchical context nesting and unwinding mechanism
 - [ ] Context consistency verification across agent operations
 - [ ] Integration with llm_map primitive for horizontal scaling
 
 #### Sheaf-Theoretic Multi-Agent Coordination
+
 - [ ] Cellular sheaf construction over agent communication graphs
 - [ ] Vertex and edge stalk space definitions for heterogeneous agents
 - [ ] Restriction map (consistency map) computation between agent states
@@ -30,12 +32,14 @@ Enable autonomous multi-agent systems to generate novel cross-domain insights th
 - [ ] Sheaf Cohomology analysis for obstruction detection
 
 #### Molecular Chain-of-Thought (Molecular-CoT) Reasoning
+
 - [ ] Covalent bond logic (deep reasoning, primary logical sequences)
 - [ ] Hydrogen bond logic (self-reflection, logical consistency verification)
 - [ ] Van der Waals exploratory logic (hypothesis space expansion)
 - [ ] Dynamic topology reconfiguration based on cohomology signals
 
 #### Text Network Analysis & Semantic Dynamics
+
 - [ ] TF-IDF and lemmatization preprocessing for semantic entities
 - [ ] 4-gram sliding window for contextual relationship extraction
 - [ ] Force-Atlas layout for semantic graph spatialization
@@ -45,6 +49,7 @@ Enable autonomous multi-agent systems to generate novel cross-domain insights th
 - [ ] GraphRAG integration for catalyst question generation at gaps
 
 #### Self-Organized Criticality (SOC) Tracking
+
 - [ ] Von Neumann entropy calculation (structural complexity)
 - [ ] Embedding entropy calculation (semantic richness)
 - [ ] Dimensionless Critical Discovery Parameter (CDP) computation
@@ -63,6 +68,7 @@ Enable autonomous multi-agent systems to generate novel cross-domain insights th
 ## Context
 
 This framework represents a paradigm shift in multi-agent AI by uniting:
+
 - **Deterministic memory** (LCM) replacing stochastic context degradation
 - **Topological reasoning** (Molecular-CoT) using chemical bond metaphors for logical integrity
 - **Algebraic-topological mathematics** (Sheaf Theory) for rigorous distributed coordination
@@ -81,12 +87,13 @@ The reference implementation demonstrates all five components integrated and wor
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| TypeScript/JavaScript for reference impl | Accessibility, modern tooling, ease of integration with AI systems | — Pending |
-| Modular component architecture | Each layer independently testable and verifiable | — Pending |
-| All core components in v1 | Reference implementation must demonstrate full integration | — Pending |
-| Focus on correctness over performance | Clarity of mathematical properties more important than optimization | — Pending |
+| Decision                                 | Rationale                                                           | Outcome   |
+| ---------------------------------------- | ------------------------------------------------------------------- | --------- |
+| TypeScript/JavaScript for reference impl | Accessibility, modern tooling, ease of integration with AI systems  | — Pending |
+| Modular component architecture           | Each layer independently testable and verifiable                    | — Pending |
+| All core components in v1                | Reference implementation must demonstrate full integration          | — Pending |
+| Focus on correctness over performance    | Clarity of mathematical properties more important than optimization | — Pending |
 
 ---
-*Last updated: 2026-02-27 after initialization*
+
+_Last updated: 2026-02-27 after initialization_

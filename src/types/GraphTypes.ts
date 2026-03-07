@@ -16,12 +16,12 @@
  * VertexId — opaque string type alias for agent node IDs.
  * Use string literals or uuid strings in practice.
  */
-export type VertexId = string & { readonly __brand: 'VertexId' };
+export type VertexId = string & { readonly __brand: "VertexId" };
 
 /**
  * EdgeId — opaque string type alias for communication channel IDs.
  */
-export type EdgeId = string & { readonly __brand: 'EdgeId' };
+export type EdgeId = string & { readonly __brand: "EdgeId" };
 
 // ---------------------------------------------------------------------------
 // Stalk types

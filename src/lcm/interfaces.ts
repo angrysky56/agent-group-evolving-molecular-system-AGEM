@@ -8,8 +8,8 @@
  * ZERO LLM inference occurs in this file — pure types and deterministic implementations only.
  */
 
-import { createHash } from 'node:crypto';
-import { encode } from 'gpt-tokenizer';
+import { createHash } from "node:crypto";
+import { encode } from "gpt-tokenizer";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -82,9 +82,9 @@ export interface EscalationThresholds {
  * Each variant carries the content relevant to that expansion level.
  */
 export type ExpandLevel =
-  | { kind: 'summary'; nodeId: string; content: string }
-  | { kind: 'compression'; level: number; content: string; pointsTo: string[] }
-  | { kind: 'entry'; entryId: string; content: string; tokenCount: number };
+  | { kind: "summary"; nodeId: string; content: string }
+  | { kind: "compression"; level: number; content: string; pointsTo: string[] }
+  | { kind: "entry"; entryId: string; content: string; tokenCount: number };
 
 // ---------------------------------------------------------------------------
 // Metric update and summary node
@@ -112,7 +112,11 @@ export interface SummaryNode {
   version: number;
   metrics: Record<string, unknown>;
   metricHistory: readonly MetricUpdate[];
-  intermediateCompressions: readonly { level: number; content: string; childIds: string[] }[];
+  intermediateCompressions: readonly {
+    level: number;
+    content: string;
+    childIds: string[];
+  }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +175,7 @@ export class GptTokenCounter implements ITokenCounter {
 export class MockEmbedder implements IEmbedder {
   async embed(text: string): Promise<Float64Array> {
     // Derive a numeric seed from the text content via SHA-256.
-    const hashHex = createHash('sha256').update(text, 'utf8').digest('hex');
+    const hashHex = createHash("sha256").update(text, "utf8").digest("hex");
     const seed = parseInt(hashHex.slice(0, 8), 16);
 
     // Produce EMBEDDING_DIM floats using Math.sin for pseudo-randomness.

@@ -22,22 +22,35 @@ export default function App() {
       <ErrorBoundary>
         <Sidebar />
       </ErrorBoundary>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
         <Header onOpenSettings={() => setSettingsOpen(true)} />
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
           <ErrorBoundary>
             <ChatPanel />
           </ErrorBoundary>
-          <div style={{ flex: 1, borderLeft: "1px solid var(--border-default)", display: "flex", flexDirection: "column", background: "var(--surface-sunken)" }}>
-             <ErrorBoundary>
-               <GraphVisualization />
-             </ErrorBoundary>
+          <div
+            style={{
+              flex: 1,
+              borderLeft: "1px solid var(--border-default)",
+              display: "flex",
+              flexDirection: "column",
+              background: "var(--surface-sunken)",
+            }}
+          >
+            <ErrorBoundary>
+              <GraphVisualization />
+            </ErrorBoundary>
           </div>
         </div>
       </div>
-      {settingsOpen && (
-        <SettingsPanel onClose={() => setSettingsOpen(false)} />
-      )}
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

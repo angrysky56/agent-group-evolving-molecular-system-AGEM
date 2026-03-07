@@ -81,12 +81,14 @@ Output: Three fully-tested modules (EventBus, AgentPool, OrchestratorState) that
 @.planning/phases/05-orchestrator/05-RESEARCH.md
 
 # Prior phase summaries (for reference patterns only):
+
 @.planning/phases/01-sheaf/04-SUMMARY.md
 @.planning/phases/02-lcm/02-05-SUMMARY.md
 @.planning/phases/03-tna-molecular-cot/03-03-SUMMARY.md
 @.planning/phases/04-soc/04-02-SUMMARY.md
 
 # Existing types used by this phase:
+
 @src/types/Events.ts
 @src/types/MolecularCoT.ts
 </context>
@@ -129,13 +131,13 @@ Create src/orchestrator/interfaces.ts with the following exports (per 05-RESEARC
    - Union of SheafEvent | SOCEvent from src/types/Events.js
 
 Use strict readonly modifiers on all immutable fields. No external dependencies beyond src/types/. Add JSDoc comments explaining Agent lifecycle stages and configuration defaults. Export all types and interfaces (barrel-friendly).
-  </action>
-  <verify>
+</action>
+<verify>
 Compile check: tsc --noEmit src/orchestrator/interfaces.ts
 
 Export verification: Confirm all 6 types are exported from the module
-  </verify>
-  <done>src/orchestrator/interfaces.ts exists with Agent, PoolConfig, Task, TaskResult, EventSubscriber, and AnyEvent fully typed and documented; compilation succeeds</done>
+</verify>
+<done>src/orchestrator/interfaces.ts exists with Agent, PoolConfig, Task, TaskResult, EventSubscriber, and AnyEvent fully typed and documented; compilation succeeds</done>
 </task>
 
 <task type="auto">
@@ -145,11 +147,13 @@ Export verification: Confirm all 6 types are exported from the module
 Create src/orchestrator/EventBus.ts implementing ORCH-04 (event-driven coordination bus) per 05-RESEARCH.md Pattern 1:
 
 EventBus class:
+
 - Extend EventEmitter (from 'events')
 - Private field: #subscribers: Map<string, EventSubscriber[]> = new Map()
 - Constructor(): no parameters
 
 Methods:
+
 1. subscribe(eventType: string, handler: EventSubscriber): void
    - If eventType not in map, create empty array
    - Push handler to array for that type
@@ -172,6 +176,7 @@ Methods:
    - Used in tests to verify subscriber management
 
 Critical implementation notes:
+
 - Do NOT use EventEmitter.on/off — we implement our own subscribe/unsubscribe logic
 - EventBus IS an EventEmitter but we don't use its .on/.off methods; this is for future extension
 - Import AnyEvent from './interfaces.js'
@@ -182,6 +187,7 @@ Critical implementation notes:
 Create src/orchestrator/EventBus.test.ts with tests:
 
 T1: Single subscriber receives emitted event
+
 - Create EventBus
 - Create mock handler (jest.fn or vitest.fn)
 - Subscribe handler to 'soc:metrics'
@@ -189,6 +195,7 @@ T1: Single subscriber receives emitted event
 - Assert handler was called with event
 
 T2: Multiple subscribers for same event receive in parallel
+
 - Create EventBus
 - Create 3 handlers
 - Subscribe all to 'soc:metrics'
@@ -196,6 +203,7 @@ T2: Multiple subscribers for same event receive in parallel
 - Assert all 3 handlers called
 
 T3: Different event types route to different subscribers
+
 - Create EventBus
 - Handler A subscribed to 'sheaf:consensus-reached'
 - Handler B subscribed to 'soc:metrics'
@@ -203,6 +211,7 @@ T3: Different event types route to different subscribers
 - Assert only A called, not B
 
 T4: Unsubscribe prevents further events
+
 - Create EventBus
 - Subscribe handler to 'soc:metrics'
 - Emit first event (assert called once)
@@ -211,6 +220,7 @@ T4: Unsubscribe prevents further events
 - Assert handler not called for second event
 
 T5: Async handlers in emit() all await
+
 - Create EventBus
 - Handler 1: Promise that resolves after 10ms
 - Handler 2: Promise that resolves after 5ms
@@ -218,11 +228,13 @@ T5: Async handlers in emit() all await
 - Await emit() and verify both resolved (total time ~10ms, not sequential 15ms)
 
 T6: emit() with no subscribers succeeds silently
+
 - Create EventBus
 - Emit event with no subscribers
 - Assert no error thrown
 
 T7: Handler that throws is caught and propagated via Promise.all() rejection
+
 - Create EventBus
 - Handler throws Error('test error')
 - emit() should reject with that error
@@ -231,13 +243,13 @@ T7: Handler that throws is caught and propagated via Promise.all() rejection
 T8-T10: Edge cases (multiple subscribe/unsubscribe of same handler, eventType case-sensitive, getSubscriberCount accuracy)
 
 Use realistic SOCMetricsEvent and SheafConsensusReachedEvent objects as test data.
-  </action>
-  <verify>
+</action>
+<verify>
 npm test -- src/orchestrator/EventBus.test.ts
 
 All tests T1-T10 pass. No type errors. getSubscriberCount returns correct numbers. Parallel execution verified (timing assertions show parallel, not sequential).
-  </verify>
-  <done>EventBus class fully implements subscribe/emit/unsubscribe with async handler dispatch; 10+ tests passing; all subscribers receive all routed events</done>
+</verify>
+<done>EventBus class fully implements subscribe/emit/unsubscribe with async handler dispatch; 10+ tests passing; all subscribers receive all routed events</done>
 </task>
 
 <task type="auto">
@@ -247,6 +259,7 @@ All tests T1-T10 pass. No type errors. getSubscriberCount returns correct number
 Create src/orchestrator/AgentPool.ts implementing ORCH-01 (agent pool with lifecycle management) per 05-RESEARCH.md Pattern 2:
 
 AgentPool class:
+
 - Private fields:
   - #config: PoolConfig
   - #agents: Agent[] = []
@@ -265,11 +278,11 @@ AgentPool class:
 
 - Private async #runHeartbeat(): Promise<void>
   - Construct promises array: agents.map(agent => Promise.race([
-      agent.heartbeat(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Heartbeat timeout')), config.heartbeatTimeoutMs))
+    agent.heartbeat(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Heartbeat timeout')), config.heartbeatTimeoutMs))
     ]).catch(err => {
-      console.error(`Agent ${agent.id} heartbeat failed:`, err);
-      agent.status = 'terminated';  // Mark as dead on timeout or error
+    console.error(`Agent ${agent.id} heartbeat failed:`, err);
+    agent.status = 'terminated'; // Mark as dead on timeout or error
     }))
   - await Promise.all(promises) to complete all heartbeats (or timeouts) in parallel
   - Do NOT propagate heartbeat errors up; catch and mark agent as terminated
@@ -290,6 +303,7 @@ AgentPool class:
   - Return #agents.length
 
 Key implementation notes:
+
 - Per-agent timeouts (Promise.race) are CRITICAL: prevents one slow agent from blocking heartbeat checks for others (05-RESEARCH.md Pitfall 4)
 - Heartbeat errors are caught and logged, not propagated (graceful degradation)
 - Idempotent shutdown: calling shutdown() twice is safe
@@ -298,26 +312,30 @@ Key implementation notes:
 Create src/orchestrator/AgentPool.test.ts with tests:
 
 T1: initialize() spawns all agents and marks them active
+
 - Create pool with 3 agents via factory
 - Call initialize()
 - Assert all agents have status 'active'
 - Assert agents are stored in pool
 
 T2: getIdleAgents() returns only idle agents
+
 - Create pool with 4 agents
 - initialize()
 - Manually set 2 agents to 'idle' status
 - Assert getIdleAgents() returns exactly 2
 
 T3: Heartbeat interval fires periodically and calls heartbeat() on all agents
+
 - Create pool with 2 agents
 - Mock heartbeat() via jest.spyOn/vitest.spyOn
 - initialize()
-- Wait 2.5 * heartbeatIntervalMs (config with short interval)
+- Wait 2.5 \* heartbeatIntervalMs (config with short interval)
 - Assert heartbeat() called at least 2 times on each agent
 - shutdown()
 
 T4: Per-agent heartbeat timeout doesn't block other agents
+
 - Create pool with 2 agents
 - Agent 1: heartbeat() hangs forever
 - Agent 2: heartbeat() succeeds immediately
@@ -327,6 +345,7 @@ T4: Per-agent heartbeat timeout doesn't block other agents
 - Assert Agent 2 still 'active' (not blocked by Agent 1's timeout)
 
 T5: shutdown() calls cleanup() on all agents
+
 - Create pool with 2 agents
 - Mock cleanup() via spyOn
 - initialize() then shutdown()
@@ -334,15 +353,18 @@ T5: shutdown() calls cleanup() on all agents
 - Assert agents can't be re-spawned after shutdown (idempotent)
 
 T6: Idempotent shutdown — calling shutdown() twice is safe
+
 - Create pool, initialize(), shutdown(), shutdown() again
 - Assert no error thrown
 
 T7: getAgents() returns all agents including terminated ones
+
 - Create pool, initialize()
 - Mark some agents terminated
 - Assert getAgents() includes terminated agents (pool doesn't filter them)
 
 T8: Agent status transitions: spawning -> active -> idle -> terminated
+
 - Create pool with 1 agent
 - Verify initial status
 - After initialize(), status is 'active'
@@ -350,6 +372,7 @@ T8: Agent status transitions: spawning -> active -> idle -> terminated
 - Call shutdown(), set to 'terminated'
 
 T9: Heartbeat failure doesn't crash pool
+
 - Create pool with 1 agent
 - Agent.heartbeat() throws Error
 - initialize()
@@ -357,28 +380,37 @@ T9: Heartbeat failure doesn't crash pool
 - Assert Error caught, agent marked terminated, pool still responsive
 
 T10: Multiple shutdown calls don't duplicate cleanup work
+
 - Create pool with mock cleanup
 - initialize()
 - Call shutdown() twice
 - Assert cleanup() called exactly once per agent (not twice)
 
 Use simple MockAgent for tests:
+
 ```typescript
 class MockAgent implements Agent {
   id: string;
-  status: Agent['status'] = 'spawning';
-  async spawn() { this.status = 'active'; }
-  async heartbeat() { /* success by default */ }
-  async cleanup() { this.status = 'terminated'; }
+  status: Agent["status"] = "spawning";
+  async spawn() {
+    this.status = "active";
+  }
+  async heartbeat() {
+    /* success by default */
+  }
+  async cleanup() {
+    this.status = "terminated";
+  }
 }
 ```
+
   </action>
   <verify>
 npm test -- src/orchestrator/AgentPool.test.ts
 
 All tests T1-T10 pass. Heartbeat timing verified (parallel, not sequential). Per-agent timeouts work correctly (one timeout doesn't block others). Shutdown is idempotent. No type errors.
-  </verify>
-  <done>AgentPool class fully manages agent lifecycle with initialize/shutdown; per-agent heartbeat timeouts prevent pool-wide hangs; 10+ tests passing</done>
+</verify>
+<done>AgentPool class fully manages agent lifecycle with initialize/shutdown; per-agent heartbeat timeouts prevent pool-wide hangs; 10+ tests passing</done>
 </task>
 
 <task type="auto">
@@ -388,18 +420,20 @@ All tests T1-T10 pass. Heartbeat timing verified (parallel, not sequential). Per
 Create src/orchestrator/OrchestratorState.ts implementing state machine for orchestrator operational modes per ROADMAP criteria #4:
 
 1. OrchestratorState enum:
+
    ```typescript
    export enum OrchestratorState {
-     NORMAL = 'NORMAL',
-     OBSTRUCTED = 'OBSTRUCTED',
-     CRITICAL = 'CRITICAL',
+     NORMAL = "NORMAL",
+     OBSTRUCTED = "OBSTRUCTED",
+     CRITICAL = "CRITICAL",
    }
    ```
 
 2. State change event type:
+
    ```typescript
    export interface StateChangeEvent {
-     type: 'orch:state-changed';
+     type: "orch:state-changed";
      oldState: OrchestratorState;
      newState: OrchestratorState;
      timestamp: number;
@@ -448,10 +482,11 @@ Create src/orchestrator/OrchestratorState.ts implementing state machine for orch
      - Return #lastStateChangeTime
 
 Key implementation notes:
+
 - State machine is ONE-DIRECTIONAL in certain ways:
-  * NORMAL → OBSTRUCTED → CRITICAL only go forward by H^1 increase
-  * CRITICAL → OBSTRUCTED → NORMAL only go backward if H^1 drops below thresholds
-  * No jumping from CRITICAL directly to OBSTRUCTED (must pass through intermediate)
+  - NORMAL → OBSTRUCTED → CRITICAL only go forward by H^1 increase
+  - CRITICAL → OBSTRUCTED → NORMAL only go backward if H^1 drops below thresholds
+  - No jumping from CRITICAL directly to OBSTRUCTED (must pass through intermediate)
 - updateMetrics() is called by Orchestrator after each Sheaf analysis iteration
 - Events are emitted through EventBus for decoupling (other components can listen)
 - Thresholds are configurable per constructor (testable)
@@ -460,6 +495,7 @@ Key implementation notes:
 Create src/orchestrator/OrchestratorState.test.ts with 5+ tests:
 
 T1: NORMAL → OBSTRUCTED transition when H1 crosses threshold
+
 - Create OrchestratorStateManager with defaults (threshold=2)
 - Assert initial state is NORMAL
 - Call updateMetrics(2) (H1 = threshold)
@@ -467,6 +503,7 @@ T1: NORMAL → OBSTRUCTED transition when H1 crosses threshold
 - Assert state change event emitted with oldState=NORMAL, newState=OBSTRUCTED, h1Metric=2
 
 T2: OBSTRUCTED → CRITICAL transition when H1 exceeds critical threshold
+
 - Create OrchestratorStateManager (obstructionThreshold=2, criticalThreshold=5)
 - updateMetrics(2) → OBSTRUCTED
 - updateMetrics(5) → CRITICAL
@@ -474,6 +511,7 @@ T2: OBSTRUCTED → CRITICAL transition when H1 exceeds critical threshold
 - Assert event emitted with reason mentioning critical threshold
 
 T3: CRITICAL → NORMAL transition when H1 drops below obstruction threshold
+
 - Create OrchestratorStateManager
 - updateMetrics(5) → CRITICAL (skips OBSTRUCTED via direct path)
 - updateMetrics(1) → NORMAL (H1 < 2)
@@ -481,6 +519,7 @@ T3: CRITICAL → NORMAL transition when H1 drops below obstruction threshold
 - Assert event emitted
 
 T4: State change event emissions (payload structure)
+
 - Create OrchestratorStateManager
 - Setup event listener on eventBus for 'orch:state-changed'
 - Call updateMetrics(3)
@@ -488,6 +527,7 @@ T4: State change event emissions (payload structure)
 - Assert timestamp is recent (within 1 second)
 
 T5: getState() and getLastStateChangeTime() return correct values
+
 - Create OrchestratorStateManager
 - Assert getState() === NORMAL initially
 - updateMetrics(2)
@@ -499,6 +539,7 @@ T5: getState() and getLastStateChangeTime() return correct values
 - Assert time2 > time1 (state change time updated)
 
 T6: No transition if already in target state (idempotent)
+
 - Create OrchestratorStateManager
 - updateMetrics(2) → OBSTRUCTED
 - Listen for state change events
@@ -507,12 +548,14 @@ T6: No transition if already in target state (idempotent)
 - Assert no new event (already OBSTRUCTED)
 
 T7: Thresholds are configurable
+
 - Create OrchestratorStateManager(eventBus, 5, 10)
 - updateMetrics(3) → NORMAL (below custom threshold of 5)
 - updateMetrics(5) → OBSTRUCTED (crosses custom threshold)
 - Assert state is OBSTRUCTED (using custom thresholds)
 
 T8: H1 = 0 always results in NORMAL state
+
 - Create OrchestratorStateManager
 - updateMetrics(100) → CRITICAL
 - updateMetrics(0) → NORMAL
@@ -520,6 +563,7 @@ T8: H1 = 0 always results in NORMAL state
 - Assert event reason mentions H1 returning to zero
 
 Helpers:
+
 - createMockEventBus(): Mock EventBus with subscribe/emit
 - createStateManager(threshold?, critical?): Convenience factory
 
@@ -528,8 +572,8 @@ Helpers:
 npm test -- src/orchestrator/OrchestratorState.test.ts
 
 All tests T1-T8 pass. State transitions verified. Event emissions verified. No type errors.
-  </verify>
-  <done>OrchestratorState enum and OrchestratorStateManager class fully implement state machine with NORMAL/OBSTRUCTED/CRITICAL transitions driven by H^1 metrics; 8+ tests passing</done>
+</verify>
+<done>OrchestratorState enum and OrchestratorStateManager class fully implement state machine with NORMAL/OBSTRUCTED/CRITICAL transitions driven by H^1 metrics; 8+ tests passing</done>
 </task>
 
 </tasks>
@@ -581,7 +625,7 @@ All tests T1-T8 pass. State transitions verified. Event emissions verified. No t
    - [ ] Agent.status enum documented with state descriptions
    - [ ] EventBus.subscribe/emit/unsubscribe documented with examples in comments
    - [ ] OrchestratorState enum and transitions documented
-</verification>
+         </verification>
 
 <success_criteria>
 **After Plan 01 completion:**
@@ -594,12 +638,13 @@ All tests T1-T8 pass. State transitions verified. Event emissions verified. No t
 6. State machine is deterministic: same H^1 metric input always produces same state transition
 
 **Code characteristics:**
+
 - All event subscribers run in parallel (Promise.all), not serialized
 - Heartbeat timeouts are per-agent (via Promise.race), preventing cascading hangs
 - Shutdown is idempotent (safe to call multiple times)
 - State transitions are synchronous (no async operations)
 - No external npm dependencies beyond node:events (built-in)
-</success_criteria>
+  </success_criteria>
 
 <output>
 After completion, create `.planning/phases/05-orchestrator/05-01-SUMMARY.md` with:
@@ -614,6 +659,7 @@ After completion, create `.planning/phases/05-orchestrator/05-01-SUMMARY.md` wit
 ## Revision Notes
 
 Revised by gsd-planner on 2026-02-28
+
 - Added Task 4: OrchestratorState enum + state machine (ORCH-03)
 - All 5 ROADMAP success criteria now explicitly covered in Phase 5
 - Test count increased: ~35 tests in Wave 1 (was ~20)

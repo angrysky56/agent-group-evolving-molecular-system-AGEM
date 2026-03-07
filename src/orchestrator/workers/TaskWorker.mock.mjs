@@ -17,22 +17,22 @@
  * - Otherwise → returns { taskId, success: true, result: { _value: 'OK', _context } }
  */
 
-import { parentPort } from 'node:worker_threads';
+import { parentPort } from "node:worker_threads";
 
 if (parentPort === null) {
-  throw new Error('TaskWorker.mock.mjs must be run as a worker thread');
+  throw new Error("TaskWorker.mock.mjs must be run as a worker thread");
 }
 
 // Worker-local message count for tracking (used in round-robin tests)
 let messageCount = 0;
 
-parentPort.on('message', async ({ task, context }) => {
+parentPort.on("message", async ({ task, context }) => {
   messageCount++;
   const payload = task.payload ?? {};
   const contextEntries = context ?? {};
 
   // Simulate async delay if requested (for order preservation tests T2)
-  const delay = typeof payload.delay === 'number' ? payload.delay : 0;
+  const delay = typeof payload.delay === "number" ? payload.delay : 0;
   if (delay > 0) {
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -48,7 +48,7 @@ parentPort.on('message', async ({ task, context }) => {
   }
 
   // Value doubling
-  if (typeof payload.value === 'number') {
+  if (typeof payload.value === "number") {
     parentPort.postMessage({
       taskId: task.id,
       success: true,
@@ -62,7 +62,7 @@ parentPort.on('message', async ({ task, context }) => {
   }
 
   // Prompt echo
-  if (typeof payload.prompt === 'string') {
+  if (typeof payload.prompt === "string") {
     parentPort.postMessage({
       taskId: task.id,
       success: true,
@@ -80,7 +80,7 @@ parentPort.on('message', async ({ task, context }) => {
     taskId: task.id,
     success: true,
     result: {
-      _value: 'OK',
+      _value: "OK",
       workerMessageCount: messageCount,
       _context: contextEntries,
     },

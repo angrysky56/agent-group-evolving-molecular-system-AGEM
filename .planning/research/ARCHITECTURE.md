@@ -37,13 +37,13 @@
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| **LCM** | Deterministic memory: Immutable Store + Active Context DAG + three-level summarization protocol | Append-only log (SQLite or file-backed), in-memory DAG of SummaryNode objects, `lcm_grep` / `lcm_expand` primitives |
-| **Sheaf Coordinator** | Multi-agent state consensus: vertex/edge stalks, restriction maps, Sheaf Laplacian diffusion, cohomology obstruction detection | Sparse matrix library (mathjs), ADMM solver, graph adjacency with typed stalk spaces |
-| **TNA / Semantic** | Semantic graph construction from agent text output: TF-IDF + lemmatization, 4-gram windowing, Force-Atlas layout, Louvain clustering, betweenness centrality, structural gap detection, GraphRAG query generation | Natural-language toolkit (natural / compromise), graph library (graphology), Louvain plugin |
-| **SOC Metrics** | Criticality tracking: Von Neumann (structural) entropy, embedding entropy, Critical Discovery Parameter (CDP), surprising-edge ratio, phase-transition detection at iteration ~400 | Eigenvalue computation (numeric.js / mathjs), embedding similarity (cosine), time-series correlation tracker |
-| **Orchestrator** | Iteration loop, agent spawn/teardown, `llm_map` parallel dispatch, cross-component wiring, session persistence | Async event loop (Node.js), typed event bus (EventEmitter or rxjs), lifecycle hooks |
+| Component             | Responsibility                                                                                                                                                                                                    | Typical Implementation                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **LCM**               | Deterministic memory: Immutable Store + Active Context DAG + three-level summarization protocol                                                                                                                   | Append-only log (SQLite or file-backed), in-memory DAG of SummaryNode objects, `lcm_grep` / `lcm_expand` primitives |
+| **Sheaf Coordinator** | Multi-agent state consensus: vertex/edge stalks, restriction maps, Sheaf Laplacian diffusion, cohomology obstruction detection                                                                                    | Sparse matrix library (mathjs), ADMM solver, graph adjacency with typed stalk spaces                                |
+| **TNA / Semantic**    | Semantic graph construction from agent text output: TF-IDF + lemmatization, 4-gram windowing, Force-Atlas layout, Louvain clustering, betweenness centrality, structural gap detection, GraphRAG query generation | Natural-language toolkit (natural / compromise), graph library (graphology), Louvain plugin                         |
+| **SOC Metrics**       | Criticality tracking: Von Neumann (structural) entropy, embedding entropy, Critical Discovery Parameter (CDP), surprising-edge ratio, phase-transition detection at iteration ~400                                | Eigenvalue computation (numeric.js / mathjs), embedding similarity (cosine), time-series correlation tracker        |
+| **Orchestrator**      | Iteration loop, agent spawn/teardown, `llm_map` parallel dispatch, cross-component wiring, session persistence                                                                                                    | Async event loop (Node.js), typed event bus (EventEmitter or rxjs), lifecycle hooks                                 |
 
 ## Recommended Project Structure
 
@@ -122,6 +122,7 @@ src/
 **Trade-offs:** Requires discipline at PR review to reject cross-module imports. Adds a small indirection cost for data sharing (event bus round-trips). Pays off with independent deployability and test isolation.
 
 **Example:**
+
 ```typescript
 // orchestrator/EventBus.ts
 type CriticalityEvent = {
@@ -153,6 +154,7 @@ eventBus.on('criticality:update', (e) => orchestrator.handleCriticality(e));
 **Trade-offs:** Store grows without bound — must plan for long-running sessions. Reads require `lcm_grep` search primitives rather than simple lookups. The cost is worth it: any agent can reconstruct state deterministically from the store alone.
 
 **Example:**
+
 ```typescript
 // lcm/ImmutableStore.ts
 class ImmutableStore {
@@ -162,7 +164,7 @@ class ImmutableStore {
   }
 
   grep(pattern: RegExp): InteractionRecord[] {
-    return this.log.filter(r => pattern.test(r.content));
+    return this.log.filter((r) => pattern.test(r.content));
   }
 }
 
@@ -185,15 +187,16 @@ class ContextDAG {
 **Trade-offs:** Requires the orchestrator to maintain a state machine with at least three modes: NORMAL (diffusion), OBSTRUCTED (gap-targeted exploration), CRITICAL (post-transition open-ended synthesis).
 
 **Example:**
+
 ```typescript
 // orchestrator/AGEMOrchestrator.ts
-cohomologyAnalyzer.on('h1:non-trivial', async (obstruction) => {
+cohomologyAnalyzer.on("h1:non-trivial", async (obstruction) => {
   const gap = await tna.gapDetector.findNearestGap(obstruction.agentSubgraph);
   const catalystQuestion = await tna.graphRAG.generateCatalyst(gap);
   await agentPool.spawnExploratoryAgent({
-    mode: 'VanDerWaals',
+    mode: "VanDerWaals",
     target: gap,
-    seed: catalystQuestion
+    seed: catalystQuestion,
   });
   sheaf.resetTopology(agentPool.currentGraph());
 });
@@ -277,11 +280,11 @@ cohomologyAnalyzer.on('h1:non-trivial', async (obstruction) => {
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| Single session, 1-10 agents | In-process, in-memory stores; no infrastructure needed. Full reference implementation as written. |
-| Multi-session, 10-100 agents | Replace in-memory ImmutableStore with SQLite or LevelDB. Extract AgentPool to worker threads (Node.js worker_threads). Sheaf Laplacian still fits in-process. |
-| 100+ agents, long-horizon | Distributed store (PostgreSQL), message queue for event bus (Redis pub/sub), Sheaf computation on partitioned graph (ADMM already decentralized). TNA graph sharding by Louvain community. |
+| Scale                        | Architecture Adjustments                                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Single session, 1-10 agents  | In-process, in-memory stores; no infrastructure needed. Full reference implementation as written.                                                                                          |
+| Multi-session, 10-100 agents | Replace in-memory ImmutableStore with SQLite or LevelDB. Extract AgentPool to worker threads (Node.js worker_threads). Sheaf Laplacian still fits in-process.                              |
+| 100+ agents, long-horizon    | Distributed store (PostgreSQL), message queue for event bus (Redis pub/sub), Sheaf computation on partitioned graph (ADMM already decentralized). TNA graph sharding by Louvain community. |
 
 ### Scaling Priorities
 
@@ -326,23 +329,23 @@ cohomologyAnalyzer.on('h1:non-trivial', async (obstruction) => {
 
 ### External Services
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| LLM provider (OpenAI, Anthropic, etc.) | HTTP client wrapped in AgentPool; all calls go through `llm_map` primitive | Never call LLM directly from LCM, Sheaf, TNA, or SOC. All inference is orchestrated. |
-| Embedding model | HTTP client in TNA/EmbeddingEntropy; called to vectorize agent text output | Used by EmbeddingEntropy (SOC) and GapDetector (TNA). Same provider as LLM or dedicated embedding endpoint. |
-| Persistent store (optional SQLite) | Adapter pattern behind ImmutableStore interface | Swap from in-memory to file-backed without changing LCM API surface. |
+| Service                                | Integration Pattern                                                        | Notes                                                                                                       |
+| -------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| LLM provider (OpenAI, Anthropic, etc.) | HTTP client wrapped in AgentPool; all calls go through `llm_map` primitive | Never call LLM directly from LCM, Sheaf, TNA, or SOC. All inference is orchestrated.                        |
+| Embedding model                        | HTTP client in TNA/EmbeddingEntropy; called to vectorize agent text output | Used by EmbeddingEntropy (SOC) and GapDetector (TNA). Same provider as LLM or dedicated embedding endpoint. |
+| Persistent store (optional SQLite)     | Adapter pattern behind ImmutableStore interface                            | Swap from in-memory to file-backed without changing LCM API surface.                                        |
 
 ### Internal Boundaries
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Orchestrator -> LCM | Direct method calls (`store.append()`, `dag.expand()`) | LCM is synchronous; no events needed. Orchestrator is the only caller. |
-| Orchestrator -> Sheaf | Direct method calls (`sheaf.addAgent()`, `laplacian.iterate()`, `cohomology.analyze()`) | Sheaf runs per-iteration; orchestrator drives it. |
-| Orchestrator -> TNA | Direct method calls for ingestion (`preprocessor.ingest(text)`); event for gap signals | TNA gap events are async; orchestrator handles `gap:detected` events to spawn agents. |
-| Sheaf -> SOC | Orchestrator reads Sheaf graph and passes eigenspectrum to VonNeumannEntropy; Sheaf does not know SOC exists | Decoupled via orchestrator relay. |
-| TNA -> SOC | Orchestrator reads SemanticGraph diversity and passes to EmbeddingEntropy; TNA does not know SOC exists | Decoupled via orchestrator relay. |
-| SOC -> Orchestrator | Event: `criticality:phase-transition` | SOC is the only outbound signaler; orchestrator decides what to do. |
-| All components -> LCM | Only Orchestrator writes to LCM on behalf of all components; components themselves do not write | Enforces single writer for the Immutable Store. |
+| Boundary              | Communication                                                                                                | Notes                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Orchestrator -> LCM   | Direct method calls (`store.append()`, `dag.expand()`)                                                       | LCM is synchronous; no events needed. Orchestrator is the only caller.                |
+| Orchestrator -> Sheaf | Direct method calls (`sheaf.addAgent()`, `laplacian.iterate()`, `cohomology.analyze()`)                      | Sheaf runs per-iteration; orchestrator drives it.                                     |
+| Orchestrator -> TNA   | Direct method calls for ingestion (`preprocessor.ingest(text)`); event for gap signals                       | TNA gap events are async; orchestrator handles `gap:detected` events to spawn agents. |
+| Sheaf -> SOC          | Orchestrator reads Sheaf graph and passes eigenspectrum to VonNeumannEntropy; Sheaf does not know SOC exists | Decoupled via orchestrator relay.                                                     |
+| TNA -> SOC            | Orchestrator reads SemanticGraph diversity and passes to EmbeddingEntropy; TNA does not know SOC exists      | Decoupled via orchestrator relay.                                                     |
+| SOC -> Orchestrator   | Event: `criticality:phase-transition`                                                                        | SOC is the only outbound signaler; orchestrator decides what to do.                   |
+| All components -> LCM | Only Orchestrator writes to LCM on behalf of all components; components themselves do not write              | Enforces single writer for the Immutable Store.                                       |
 
 ## Build Order
 
@@ -386,5 +389,6 @@ types/
 - Agentic deep graph reasoning: arXiv 2502.13025v1
 
 ---
-*Architecture research for: RLM-LCM Molecular-CoT Group Evolving Agents — TypeScript/JavaScript reference implementation*
-*Researched: 2026-02-27*
+
+_Architecture research for: RLM-LCM Molecular-CoT Group Evolving Agents — TypeScript/JavaScript reference implementation_
+_Researched: 2026-02-27_

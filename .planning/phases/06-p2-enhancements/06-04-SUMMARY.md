@@ -6,13 +6,19 @@ tags: [layout, forceatlas2, visualization, force-directed, tna-08, phase6]
 dependency_graph:
   requires: ["06-03"]
   provides: ["tna-08-layout", "force-atlas2-positions", "layout-json-export"]
-  affects: ["orchestrator/ComposeRootModule", "tna/CooccurrenceGraph", "tna/index"]
+  affects:
+    ["orchestrator/ComposeRootModule", "tna/CooccurrenceGraph", "tna/index"]
 tech_stack:
   added: ["graphology-layout-forceatlas2@0.10.1"]
-  patterns: ["ForceAtlas2 force-directed layout", "hash-based deterministic seeding",
-             "incremental layout updates", "regime-adaptive intervals",
-             "convergence energy metric (mean squared displacement)",
-             "JSON export for D3.js/Sigma.js"]
+  patterns:
+    [
+      "ForceAtlas2 force-directed layout",
+      "hash-based deterministic seeding",
+      "incremental layout updates",
+      "regime-adaptive intervals",
+      "convergence energy metric (mean squared displacement)",
+      "JSON export for D3.js/Sigma.js",
+    ]
 key_files:
   created:
     - src/tna/LayoutComputer.ts
@@ -87,6 +93,7 @@ T24 demonstrates that after ForceAtlas2 convergence on a two-cluster graph (5 no
 ### Type additions
 
 **`src/tna/interfaces.ts`:**
+
 - `NodePosition` — `{ x, y }` readonly
 - `LayoutConfig` — 10 physics parameters (iterations, barnesHutOptimize, barnesHutTheta, linLogMode, gravity, slowDown, edgeWeightInfluence, scalingRatio, strongGravityMode, seed)
 - `LayoutOutput` — positions, energy, iterations, nodeCount, edgeCount
@@ -95,6 +102,7 @@ T24 demonstrates that after ForceAtlas2 convergence on a two-cluster graph (5 no
 - `TextNode.x?` and `TextNode.y?` optional fields
 
 **`src/types/Events.ts`:**
+
 - `LayoutUpdatedEvent` — `tna:layout-updated` with iteration, energy, nodeCount, physicsIterations
 - `TNAEventType` extended with `'tna:layout-updated'`
 - `TNAEvent` union extended with `LayoutUpdatedEvent`
@@ -109,18 +117,18 @@ T24 demonstrates that after ForceAtlas2 convergence on a two-cluster graph (5 no
 
 ## Tests: 42 new (574 total)
 
-| Group | Tests | What is verified |
-|-------|-------|-----------------|
-| Basic computation | T1-T5 | Positions exist for all nodes, finite values, cached in graph, correct counts |
-| Convergence | T6-T10 | Energy Infinity on first run, finite on second, isConverged() |
-| Determinism | T11-T13 | Same seed + same graph = same positions and energy |
-| Incremental updates | T14-T17 | computeIfDue() interval scheduling, warm-up on first call, multiplier |
-| Graph edge cases | T18-T22 | < 3 nodes trivial layout, 0 nodes, 1 node, complete graph, no event |
-| Community clustering | T23-T25 | Louvain assigns different clusters, intra < inter distance, path endpoints |
-| JSON export | T26-T30 | LayoutExportJSON structure, all fields present, JSON.stringify safe |
-| Regime intervals | T31-T34b | critical/transitioning/stable/nascent adjustInterval() |
-| Event emission | T34-T37b | tna:layout-updated emitted, payload fields, not emitted for trivial |
-| Configuration | T37-T40 | Custom iterations, barnesHutOptimize, scalingRatio, defaults |
+| Group                | Tests    | What is verified                                                              |
+| -------------------- | -------- | ----------------------------------------------------------------------------- |
+| Basic computation    | T1-T5    | Positions exist for all nodes, finite values, cached in graph, correct counts |
+| Convergence          | T6-T10   | Energy Infinity on first run, finite on second, isConverged()                 |
+| Determinism          | T11-T13  | Same seed + same graph = same positions and energy                            |
+| Incremental updates  | T14-T17  | computeIfDue() interval scheduling, warm-up on first call, multiplier         |
+| Graph edge cases     | T18-T22  | < 3 nodes trivial layout, 0 nodes, 1 node, complete graph, no event           |
+| Community clustering | T23-T25  | Louvain assigns different clusters, intra < inter distance, path endpoints    |
+| JSON export          | T26-T30  | LayoutExportJSON structure, all fields present, JSON.stringify safe           |
+| Regime intervals     | T31-T34b | critical/transitioning/stable/nascent adjustInterval()                        |
+| Event emission       | T34-T37b | tna:layout-updated emitted, payload fields, not emitted for trivial           |
+| Configuration        | T37-T40  | Custom iterations, barnesHutOptimize, scalingRatio, defaults                  |
 
 ## Deviations from Plan
 
@@ -143,16 +151,16 @@ T24 demonstrates that after ForceAtlas2 convergence on a two-cluster graph (5 no
 
 ## Self-Check: PASSED
 
-| Item | Status |
-|------|--------|
-| `src/tna/LayoutComputer.ts` | FOUND |
-| `src/tna/LayoutComputer.test.ts` | FOUND |
-| Commit `9dd7b63` (chore: dependency) | FOUND |
-| Commit `2497b69` (feat: interfaces) | FOUND |
-| Commit `c54eaeb` (feat: CooccurrenceGraph) | FOUND |
-| Commit `184da8b` (feat: LayoutComputer) | FOUND |
-| Commit `1d6b3c1` (test: 42 tests) | FOUND |
-| Commit `2a8e78e` (feat: wiring) | FOUND |
-| 574 tests passing | VERIFIED |
-| TNA isolation test | PASSED |
-| Orchestrator isolation test | PASSED |
+| Item                                       | Status   |
+| ------------------------------------------ | -------- |
+| `src/tna/LayoutComputer.ts`                | FOUND    |
+| `src/tna/LayoutComputer.test.ts`           | FOUND    |
+| Commit `9dd7b63` (chore: dependency)       | FOUND    |
+| Commit `2497b69` (feat: interfaces)        | FOUND    |
+| Commit `c54eaeb` (feat: CooccurrenceGraph) | FOUND    |
+| Commit `184da8b` (feat: LayoutComputer)    | FOUND    |
+| Commit `1d6b3c1` (test: 42 tests)          | FOUND    |
+| Commit `2a8e78e` (feat: wiring)            | FOUND    |
+| 574 tests passing                          | VERIFIED |
+| TNA isolation test                         | PASSED   |
+| Orchestrator isolation test                | PASSED   |

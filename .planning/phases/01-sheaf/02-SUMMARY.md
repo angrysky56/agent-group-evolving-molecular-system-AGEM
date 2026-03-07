@@ -76,19 +76,20 @@ metrics:
 
 `src/types/GraphTypes.ts` — zero external imports, all fields readonly:
 
-| Type | Description |
-|------|-------------|
-| `VertexId` | Branded string for agent node IDs |
-| `EdgeId` | Branded string for communication channel IDs |
-| `StalkSpace` | `{ dim, label? }` — local vector space assignment |
-| `StalkVector` | `Float64Array` alias for stalk vectors |
-| `RestrictionMap` | Row-major linear map (targetDim × sourceDim entries) |
-| `SheafVertex` | `{ id, stalkSpace }` |
-| `SheafEdge` | `{ id, sourceVertex, targetVertex, stalkSpace, sourceRestriction, targetRestriction }` |
-| `CohomologyResult` | `{ h0Dimension, h1Dimension, hasObstruction, h1Basis, tolerance, coboundaryRank }` |
-| `SheafEigenspectrum` | `{ eigenvalues, computedAtIteration }` — forward-compat for Phase 4 SOC |
+| Type                 | Description                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `VertexId`           | Branded string for agent node IDs                                                      |
+| `EdgeId`             | Branded string for communication channel IDs                                           |
+| `StalkSpace`         | `{ dim, label? }` — local vector space assignment                                      |
+| `StalkVector`        | `Float64Array` alias for stalk vectors                                                 |
+| `RestrictionMap`     | Row-major linear map (targetDim × sourceDim entries)                                   |
+| `SheafVertex`        | `{ id, stalkSpace }`                                                                   |
+| `SheafEdge`          | `{ id, sourceVertex, targetVertex, stalkSpace, sourceRestriction, targetRestriction }` |
+| `CohomologyResult`   | `{ h0Dimension, h1Dimension, hasObstruction, h1Basis, tolerance, coboundaryRank }`     |
+| `SheafEigenspectrum` | `{ eigenvalues, computedAtIteration }` — forward-compat for Phase 4 SOC                |
 
 `src/types/Events.ts` — only imports `VertexId` from GraphTypes:
+
 - `SheafEventType` union: `'sheaf:consensus-reached' | 'sheaf:h1-obstruction-detected' | 'sheaf:iteration-complete'`
 - `SheafConsensusReachedEvent` and `SheafH1ObstructionEvent` concrete types
 - `SheafEvent` discriminated union on the `type` field
@@ -114,12 +115,14 @@ metrics:
 ### Test Helpers (w1-t6, w1-t7)
 
 `src/sheaf/helpers/flatSheafFactory.ts` — `buildFlatSheaf(numVertices, stalkDim, topology?)`:
+
 - `'path'`: linear chain, `numVertices - 1` edges.
 - `'triangle'`: requires exactly 3 vertices, 3 edges.
 - `'complete'`: all pairs, `n*(n-1)/2` edges.
 - All restriction maps are identity matrices (diagonal 1, off-diagonal 0).
 
 `src/sheaf/helpers/threeCycleFactory.ts` — `buildThreeCycleInconsistentSheaf()`:
+
 - 3 vertices (v0, v1, v2), all `R^2` (dim=2).
 - 3 edges (e01, e12, e20), all `R^1` (dim=1).
 - Alternating first/second-axis projections per research spec.
@@ -129,26 +132,26 @@ metrics:
 
 `src/sheaf/CellularSheaf.test.ts` — 24 tests, all passing:
 
-| Group | Tests | Description |
-|-------|-------|-------------|
-| T1 | 4 | Dimension assertions for heterogeneous stalk dims |
-| T2 | 6 | 5 rejection cases (entries.length, sourceDim, targetDim, missing vertex, NaN/Infinity) |
-| T10-partial | 3 | Cumulative vertex offset computation (dims 3, 2, 4) |
-| flatSheafFactory | 5 | Smoke tests for all 3 topologies + identity entry verification |
-| threeCycleFactory | 5 | c0/c1 dimensions, vertex/edge counts, exact restriction map values |
+| Group             | Tests | Description                                                                            |
+| ----------------- | ----- | -------------------------------------------------------------------------------------- |
+| T1                | 4     | Dimension assertions for heterogeneous stalk dims                                      |
+| T2                | 6     | 5 rejection cases (entries.length, sourceDim, targetDim, missing vertex, NaN/Infinity) |
+| T10-partial       | 3     | Cumulative vertex offset computation (dims 3, 2, 4)                                    |
+| flatSheafFactory  | 5     | Smoke tests for all 3 topologies + identity entry verification                         |
+| threeCycleFactory | 5     | c0/c1 dimensions, vertex/edge counts, exact restriction map values                     |
 
 ## Commits
 
-| Task | Commit | Message |
-|------|--------|---------|
-| w1-t1 | 421baa4 | chore(01-02): initialize project toolchain |
-| w1-t2 | 7b69f46 | feat(types): define shared sheaf types in GraphTypes.ts |
-| w1-t3 | 92864c1 | feat(types): define sheaf event types in Events.ts |
-| w1-t4 | f6a1476 | feat(types): create barrel export in src/types/index.ts |
+| Task  | Commit  | Message                                                           |
+| ----- | ------- | ----------------------------------------------------------------- |
+| w1-t1 | 421baa4 | chore(01-02): initialize project toolchain                        |
+| w1-t2 | 7b69f46 | feat(types): define shared sheaf types in GraphTypes.ts           |
+| w1-t3 | 92864c1 | feat(types): define sheaf event types in Events.ts                |
+| w1-t4 | f6a1476 | feat(types): create barrel export in src/types/index.ts           |
 | w1-t5 | 1675514 | feat(sheaf): implement CellularSheaf with construction validation |
-| w1-t6 | eb7cb19 | feat(sheaf): create flatSheafFactory test helper |
-| w1-t7 | fefad6d | feat(sheaf): create threeCycleInconsistentSheaf test helper |
-| w1-t8 | 4f76dff | test(sheaf): write CellularSheaf unit tests |
+| w1-t6 | eb7cb19 | feat(sheaf): create flatSheafFactory test helper                  |
+| w1-t7 | fefad6d | feat(sheaf): create threeCycleInconsistentSheaf test helper       |
+| w1-t8 | 4f76dff | test(sheaf): write CellularSheaf unit tests                       |
 
 ## Deviations from Plan
 
@@ -172,21 +175,22 @@ metrics:
 
 ## Verification Results
 
-| Check | Result |
-|-------|--------|
-| `npx tsc --noEmit` | PASS (0 errors) |
-| `npx vitest run` (24 tests) | PASS (24/24) |
-| Zero external imports in `src/types/GraphTypes.ts` | PASS |
-| `src/types/Events.ts` only imports from `./GraphTypes` | PASS |
-| Zero cross-imports from sheaf into lcm/tna/soc/orchestrator | PASS |
-| `flatSheafFactory` and `threeCycleFactory` both exist | PASS |
-| `threeCycleFactory` c0Dimension=6, c1Dimension=3 | PASS |
-| `CellularSheaf` rejects all 5 dimension mismatch cases | PASS |
-| vitest `pool: 'forks'` configured | PASS |
+| Check                                                       | Result          |
+| ----------------------------------------------------------- | --------------- |
+| `npx tsc --noEmit`                                          | PASS (0 errors) |
+| `npx vitest run` (24 tests)                                 | PASS (24/24)    |
+| Zero external imports in `src/types/GraphTypes.ts`          | PASS            |
+| `src/types/Events.ts` only imports from `./GraphTypes`      | PASS            |
+| Zero cross-imports from sheaf into lcm/tna/soc/orchestrator | PASS            |
+| `flatSheafFactory` and `threeCycleFactory` both exist       | PASS            |
+| `threeCycleFactory` c0Dimension=6, c1Dimension=3            | PASS            |
+| `CellularSheaf` rejects all 5 dimension mismatch cases      | PASS            |
+| vitest `pool: 'forks'` configured                           | PASS            |
 
 ## What Wave 1 Does NOT Include
 
 As planned:
+
 - No Laplacian computation (Wave 2)
 - No coboundary operator assembly (Wave 2)
 - No SVD or eigenvalue computation (Wave 3)

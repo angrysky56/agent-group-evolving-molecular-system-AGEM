@@ -3,13 +3,7 @@
  */
 
 import { useEffect, useCallback } from "react";
-import {
-  Plus,
-  MessageSquare,
-  Trash2,
-  Folder,
-  FileText,
-} from "lucide-react";
+import { Plus, MessageSquare, Trash2, Folder, FileText } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { useSessionStore } from "../../stores/sessions";
 import {
@@ -56,7 +50,7 @@ export function Sidebar() {
         console.error("Failed to load session:", err);
       }
     },
-    [setActiveSessionId, setMessages]
+    [setActiveSessionId, setMessages],
   );
 
   const handleDeleteSession = useCallback(
@@ -73,7 +67,7 @@ export function Sidebar() {
         console.error("Failed to delete session:", err);
       }
     },
-    [activeSessionId, removeSession, setActiveSessionId, setMessages]
+    [activeSessionId, removeSession, setActiveSessionId, setMessages],
   );
 
   return (
@@ -107,9 +101,7 @@ export function Sidebar() {
             <div
               key={session.id}
               className={`session-item ${
-                activeSessionId === session.id
-                  ? "session-item--active"
-                  : ""
+                activeSessionId === session.id ? "session-item--active" : ""
               }`}
               onClick={() => handleSelectSession(session.id)}
             >

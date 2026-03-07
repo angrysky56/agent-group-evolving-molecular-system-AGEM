@@ -2,7 +2,18 @@
 phase: 03-tna-molecular-cot
 plan: 01
 subsystem: tna
-tags: [graphology, natural, wink-lemmatizer, stopword, tfidf, lemmatization, co-occurrence-graph, molecular-cot, bond-types]
+tags:
+  [
+    graphology,
+    natural,
+    wink-lemmatizer,
+    stopword,
+    tfidf,
+    lemmatization,
+    co-occurrence-graph,
+    molecular-cot,
+    bond-types,
+  ]
 
 # Dependency graph
 requires:
@@ -108,7 +119,7 @@ completed: 2026-02-28
 - `src/tna/Preprocessor.test.ts` — 11 tests: T1 (verb morphology), T1b (irregular verbs), T2 (stopwords), T2b (TF-IDF), T3/T3b (edge cases), T4 (case normalization), lemmatize() direct tests
 - `src/tna/CooccurrenceGraph.ts` — CooccurrenceGraph class: ingest(), ingestTokens(), getGraph(), getNode(), getNodes(), getEdgeWeight(), order, size
 - `src/tna/CooccurrenceGraph.test.ts` — 11 tests: T5 (4-gram weights), T5b (accumulation), T6 (lemmatization enforced), T6b (PRIMARY pitfall guard), T7 (graphology), T7b (positive weights), T8 (iteration tracking), T8b (surfaceForms)
-- `src/vendor-types.d.ts` — TypeScript declarations for wink-lemmatizer and stopword (no @types/* available)
+- `src/vendor-types.d.ts` — TypeScript declarations for wink-lemmatizer and stopword (no @types/\* available)
 - `src/types/index.ts` — Added MolecularCoT.js re-export
 - `package.json` — Added graphology, natural, wink-lemmatizer, stopword, graphology-communities-louvain, graphology-metrics
 
@@ -127,6 +138,7 @@ completed: 2026-02-28
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Removed Porter stemmer fallback in lemmatize() to prevent node-count inconsistency**
+
 - **Found during:** Task 2 (T6b test debugging)
 - **Issue:** Porter.stem("analyze") = "analyz" while wink.verb("analyzing") = "analyze". Same concept, two different graph nodes. This is exactly the lemmatization pitfall.
 - **Fix:** Removed Porter fallback entirely. Words where wink-lemmatizer returns unchanged input (already canonical) are kept as-is.
@@ -135,6 +147,7 @@ completed: 2026-02-28
 - **Committed in:** b29625d (Task 2 commit)
 
 **2. [Rule 2 - Missing Critical] Added DetailedPreprocessResult interface for synchronous surface form tracking**
+
 - **Found during:** Task 2 (T8b test for surfaceForms)
 - **Issue:** Original CooccurrenceGraph design used async import() to re-tokenize for surface form mapping. This is non-deterministic and fails in test environments.
 - **Fix:** Added DetailedPreprocessResult to interfaces.ts and preprocessDetailed() to Preprocessor. Surface-to-lemma map computed synchronously during the pipeline.
@@ -143,6 +156,7 @@ completed: 2026-02-28
 - **Committed in:** b29625d (Task 2 commit)
 
 **3. [Rule 1 - Bug] Fixed graphology import pattern for TypeScript NodeNext ESM**
+
 - **Found during:** Task 1 (npx tsc --noEmit check)
 - **Issue:** `import Graph from 'graphology'` → TypeScript error "Cannot use namespace as a type" in NodeNext mode.
 - **Fix:** Import as `GraphologyLib`, cast via `AbstractGraph` for type annotation.
@@ -157,12 +171,13 @@ completed: 2026-02-28
 
 ## Issues Encountered
 
-- **graphology @types/* not on npm**: The plan specified `npm install -D @types/graphology@0.26.0` but this package doesn't exist (404). Graphology ships its own types in the main package — no @types/* needed.
-- **wink-lemmatizer and stopword have no @types/***: Created `src/vendor-types.d.ts` with handwritten shims for both packages.
+- **graphology @types/\* not on npm**: The plan specified `npm install -D @types/graphology@0.26.0` but this package doesn't exist (404). Graphology ships its own types in the main package — no @types/\* needed.
+- **wink-lemmatizer and stopword have no @types/\***: Created `src/vendor-types.d.ts` with handwritten shims for both packages.
 
 ## Next Phase Readiness
 
 Phase 3 Wave 1 foundation is complete:
+
 - CooccurrenceGraph is ready for LouvainDetector (03-02: `getGraph()` returns graphology instance)
 - CooccurrenceGraph is ready for CentralityAnalyzer (03-03: `getNodes()` and `getGraph()`)
 - GapMetrics interface ready for GapDetector (03-04)
@@ -170,9 +185,11 @@ Phase 3 Wave 1 foundation is complete:
 - createdAtIteration on all edges enables Phase 4 SOC per-iteration surprising-edge-ratio (Pitfall 9 prevention confirmed)
 
 Pitfall watch updates:
+
 - "4-gram window without lemmatization" → **RESOLVED: T6b guards permanently**
 - "Bond types as metadata only" → **RESOLVED: BondGraph class enforces invariants at creation time**
 
 ---
-*Phase: 03-tna-molecular-cot*
-*Completed: 2026-02-28*
+
+_Phase: 03-tna-molecular-cot_
+_Completed: 2026-02-28_

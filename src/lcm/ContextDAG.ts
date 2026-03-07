@@ -28,9 +28,9 @@
  * the ContextDAG in Wave 3.
  */
 
-import type { LCMEntry, SummaryNode } from './interfaces.js';
-import { ImmutableStore } from './ImmutableStore.js';
-import { SummaryIndex } from './SummaryIndex.js';
+import type { LCMEntry, SummaryNode } from "./interfaces.js";
+import { ImmutableStore } from "./ImmutableStore.js";
+import { SummaryIndex } from "./SummaryIndex.js";
 
 export class ContextDAG {
   readonly #store: ImmutableStore;

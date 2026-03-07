@@ -34,9 +34,9 @@
  * @module TaskWorker
  */
 
-import { parentPort } from 'node:worker_threads';
-import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Task, TaskResult } from '../interfaces.js';
+import { parentPort } from "node:worker_threads";
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { Task, TaskResult } from "../interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Worker-local AsyncLocalStorage — separate from main thread's contextStorage
@@ -93,26 +93,26 @@ interface WorkerInboundMessage {
 function execute(task: Task<unknown>): unknown {
   const payload = task.payload;
 
-  if (payload !== null && typeof payload === 'object') {
+  if (payload !== null && typeof payload === "object") {
     const p = payload as Record<string, unknown>;
 
     // Failure injection: for testing partial failure handling (T4, T9)
-    if (p['shouldFail'] === true) {
+    if (p["shouldFail"] === true) {
       throw new Error(`Task ${task.id} intentionally failed`);
     }
 
     // Value doubling: for testing numeric transformations
-    if (typeof p['value'] === 'number') {
-      return { result: p['value'] * 2 };
+    if (typeof p["value"] === "number") {
+      return { result: p["value"] * 2 };
     }
 
     // Prompt echo: for testing string payloads
-    if (typeof p['prompt'] === 'string') {
-      return { response: `Response to: ${p['prompt']}` };
+    if (typeof p["prompt"] === "string") {
+      return { response: `Response to: ${p["prompt"]}` };
     }
   }
 
-  return 'OK';
+  return "OK";
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +122,8 @@ function execute(task: Task<unknown>): unknown {
 // Guard: ensure we are running in a worker thread context
 if (parentPort === null) {
   throw new Error(
-    'TaskWorker.ts must be run as a worker thread (parentPort is null). ' +
-      'Do not import this file directly — spawn it via new Worker(workerScriptPath).'
+    "TaskWorker.ts must be run as a worker thread (parentPort is null). " +
+      "Do not import this file directly — spawn it via new Worker(workerScriptPath).",
   );
 }
 
@@ -142,67 +142,64 @@ const port = parentPort;
  * NOTE: Worker does NOT crash on task failure — errors are caught and returned
  * as TaskResult.success=false, TaskResult.error=err.
  */
-port.on(
-  'message',
-  async (message: WorkerInboundMessage): Promise<void> => {
-    const { task, context } = message;
+port.on("message", async (message: WorkerInboundMessage): Promise<void> => {
+  const { task, context } = message;
 
-    // Restore context from serialized plain object
-    // workerContextStorage.run() makes context available via getStore()
-    // for the duration of the async callback (including any awaits inside execute).
-    const contextMap = new Map<string, unknown>(Object.entries(context));
+  // Restore context from serialized plain object
+  // workerContextStorage.run() makes context available via getStore()
+  // for the duration of the async callback (including any awaits inside execute).
+  const contextMap = new Map<string, unknown>(Object.entries(context));
 
-    await workerContextStorage.run(contextMap, async () => {
-      let result: TaskResult<unknown>;
+  await workerContextStorage.run(contextMap, async () => {
+    let result: TaskResult<unknown>;
 
-      try {
-        // Execute task — this is where real LLM inference would happen
-        const output = execute(task);
+    try {
+      // Execute task — this is where real LLM inference would happen
+      const output = execute(task);
 
-        // Get restored context to echo back (so tests can verify propagation)
-        const restoredContext = workerContextStorage.getStore();
-        const contextEntries: Record<string, unknown> = restoredContext
-          ? Object.fromEntries(restoredContext)
-          : {};
+      // Get restored context to echo back (so tests can verify propagation)
+      const restoredContext = workerContextStorage.getStore();
+      const contextEntries: Record<string, unknown> = restoredContext
+        ? Object.fromEntries(restoredContext)
+        : {};
 
-        // Build success result; include echoed context for T5 (context propagation test)
-        const baseResult =
-          output !== null && output !== undefined && typeof output === 'object'
-            ? (output as Record<string, unknown>)
-            : { _value: output };
+      // Build success result; include echoed context for T5 (context propagation test)
+      const baseResult =
+        output !== null && output !== undefined && typeof output === "object"
+          ? (output as Record<string, unknown>)
+          : { _value: output };
 
-        result = {
-          taskId: task.id,
-          success: true,
-          result: { ...baseResult, _context: contextEntries },
-        };
-      } catch (err) {
-        // Task execution failed: serialize error and return as failure result
-        // Error must be serializable (string message only, not full stack trace)
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : `Task execution failed: ${String(err)}`;
+      result = {
+        taskId: task.id,
+        success: true,
+        result: { ...baseResult, _context: contextEntries },
+      };
+    } catch (err) {
+      // Task execution failed: serialize error and return as failure result
+      // Error must be serializable (string message only, not full stack trace)
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : `Task execution failed: ${String(err)}`;
 
-        result = {
-          taskId: task.id,
-          success: false,
-          error: new Error(errorMessage),
-        };
-      }
+      result = {
+        taskId: task.id,
+        success: false,
+        error: new Error(errorMessage),
+      };
+    }
 
-      // Send result back to main thread
-      port.postMessage(result);
-    });
-  }
-);
+    // Send result back to main thread
+    port.postMessage(result);
+  });
+});
 
 /**
  * Worker-level error handler: catches any unhandled errors from message handler.
  * Individual task errors are handled inside the message handler.
  * This handler catches catastrophic worker failures.
  */
-port.on('error', (err: Error) => {
-  console.error('[TaskWorker] Unhandled worker error:', err.message);
+port.on("error", (err: Error) => {
+  console.error("[TaskWorker] Unhandled worker error:", err.message);
   // Don't throw — let the worker process exit naturally
 });

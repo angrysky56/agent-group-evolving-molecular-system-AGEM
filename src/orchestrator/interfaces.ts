@@ -10,7 +10,12 @@
  * No other external dependencies.
  */
 
-import type { SheafEvent, SOCEvent, OrchestratorEvent, TNAEvent } from '../types/Events.js';
+import type {
+  SheafEvent,
+  SOCEvent,
+  OrchestratorEvent,
+  TNAEvent,
+} from "../types/Events.js";
 
 // ---------------------------------------------------------------------------
 // Agent lifecycle types
@@ -42,7 +47,7 @@ export interface Agent {
    * Current lifecycle status of this agent.
    * Mutable: AgentPool updates this field during lifecycle transitions.
    */
-  status: 'spawning' | 'active' | 'idle' | 'terminating' | 'terminated';
+  status: "spawning" | "active" | "idle" | "terminating" | "terminated";
 
   /**
    * Initialize the agent: allocate resources, establish connections.

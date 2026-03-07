@@ -7,6 +7,7 @@
 ## Phase 6 Documents
 
 ### Research & Context
+
 - **[06-RESEARCH.md](./06-RESEARCH.md)** — Complete research on all 6 Phase 6 features
   - SOC-06: Dynamic phase transition detector with regime persistence
   - SOC-07: Regime validation and stability metrics
@@ -18,6 +19,7 @@
 ### Implementation Plans
 
 #### Wave 1 (Parallel or Sequential)
+
 - **[06-01-PLAN.md](./06-01-PLAN.md)** — SOC Module Enhancements
   - Feature: SOC-06 (RegimeValidator) + SOC-07 (RegimeAnalyzer)
   - 5 tasks | 8 files | ~46 tests
@@ -30,6 +32,7 @@
   - Status: Ready for execution
 
 #### Wave 2
+
 - **[06-03-PLAN.md](./06-03-PLAN.md)** — TNA Semantic Analysis
   - Features: TNA-07 (CatalystQuestionGenerator) + TNA-09 (CentralityTimeSeries)
   - 5 tasks | 9 files | ~60 tests
@@ -37,6 +40,7 @@
   - Status: Ready for execution
 
 #### Wave 3
+
 - **[06-04-PLAN.md](./06-04-PLAN.md)** — TNA Visualization Layout
   - Feature: TNA-08 (LayoutComputer with ForceAtlas2)
   - 6 tasks | 11 files | ~40 tests
@@ -59,14 +63,14 @@
 
 ### Feature Coverage (6/6 Features)
 
-| Feature | Plan | Component | Purpose |
-|---------|------|-----------|---------|
-| SOC-06 | 01 | RegimeValidator | Persistence validation for phase transitions |
-| SOC-07 | 01 | RegimeAnalyzer | Four-state regime classification |
-| ORCH-06 | 02 | VdWAgentSpawner | Adaptive agent spawning driven by H^1 obstruction |
-| TNA-07 | 03 | CatalystQuestionGenerator | Template-based question generation for structural gaps |
-| TNA-09 | 03 | CentralityAnalyzer.timeSeries | Centrality trend detection and rapid change events |
-| TNA-08 | 04 | LayoutComputer | Force-directed graph layout for visualization |
+| Feature | Plan | Component                     | Purpose                                                |
+| ------- | ---- | ----------------------------- | ------------------------------------------------------ |
+| SOC-06  | 01   | RegimeValidator               | Persistence validation for phase transitions           |
+| SOC-07  | 01   | RegimeAnalyzer                | Four-state regime classification                       |
+| ORCH-06 | 02   | VdWAgentSpawner               | Adaptive agent spawning driven by H^1 obstruction      |
+| TNA-07  | 03   | CatalystQuestionGenerator     | Template-based question generation for structural gaps |
+| TNA-09  | 03   | CentralityAnalyzer.timeSeries | Centrality trend detection and rapid change events     |
+| TNA-08  | 04   | LayoutComputer                | Force-directed graph layout for visualization          |
 
 ### Execution Plan (6-8 Days)
 
@@ -106,18 +110,23 @@ After Phase 6 completion:
 ## Key Architecture Patterns Used
 
 ### 1. Regime-Driven Decision Making (SOC-06/07 → ORCH-06 → TNA-09)
+
 Cascade of regime events propagated through EventBus to affect spawning, layout computation, and centrality analysis frequency.
 
 ### 2. H^1 Coupling (Sheaf → SOC-06 → ORCH-06)
+
 Sheaf H^1 obstruction magnitude directly parameterizes VdW agent spawn behavior (token budget, agent count).
 
 ### 3. Event Emission Pattern
+
 All Phase 6 components extend EventEmitter and emit domain events through ComposeRootModule to EventBus (no direct cross-module dependencies).
 
 ### 4. Additive Extension (No Breaking Changes)
+
 All Phase 6 features extend existing Phase 1-5 modules (SOCTracker, ObstructionHandler, CentralityAnalyzer) with optional new functionality. No API changes.
 
 ### 5. Template-Based Stubs (Phase 6 → Phase 7 Ready)
+
 LLM-dependent features (TNA-07 catalyst questions, VdW agent reasoning) use template stubs in Phase 6, ready for real LLM integration in Phase 7.
 
 ---
@@ -125,6 +134,7 @@ LLM-dependent features (TNA-07 catalyst questions, VdW agent reasoning) use temp
 ## Key Files Created/Modified
 
 ### New Files (8)
+
 - src/soc/RegimeValidator.ts
 - src/soc/RegimeValidator.test.ts
 - src/orchestrator/VdWAgentSpawner.ts
@@ -135,6 +145,7 @@ LLM-dependent features (TNA-07 catalyst questions, VdW agent reasoning) use temp
 - src/tna/LayoutComputer.test.ts
 
 ### Extended Files (14)
+
 - src/soc/SOCTracker.ts (regime integration)
 - src/soc/interfaces.ts (new types)
 - src/soc/index.ts (exports)
@@ -159,6 +170,7 @@ LLM-dependent features (TNA-07 catalyst questions, VdW agent reasoning) use temp
 **Overall Result:** ✅ VERIFIED READY FOR EXECUTION
 
 All gates passed:
+
 1. Plan Structure: Valid YAML, proper wave/dependency setup
 2. Task Decomposition: 20 specific, actionable tasks
 3. Dependency Correctness: Valid DAG, no cycles

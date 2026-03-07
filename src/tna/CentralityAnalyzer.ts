@@ -34,14 +34,14 @@
 // graphology-metrics does not have package.json "exports" field, so NodeNext
 // subpath imports like 'graphology-metrics/centrality/betweenness' fail.
 // Use createRequire (CJS interop) to load the submodule directly.
-import { createRequire } from 'module';
-import { EventEmitter } from 'events';
-import type { CooccurrenceGraph } from './CooccurrenceGraph.js';
+import { createRequire } from "module";
+import { EventEmitter } from "events";
+import type { CooccurrenceGraph } from "./CooccurrenceGraph.js";
 import type {
   CentralityTimeSeries,
   CentralityTrend,
   CentralityTimeSeriesConfig,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 const _require = createRequire(import.meta.url);
 
@@ -50,7 +50,9 @@ interface IBetweennessCentrality {
   assign(graph: unknown, options?: { normalized?: boolean }): void;
 }
 
-const betweennessCentrality = _require('graphology-metrics/centrality/betweenness') as IBetweennessCentrality;
+const betweennessCentrality = _require(
+  "graphology-metrics/centrality/betweenness",
+) as IBetweennessCentrality;
 
 // ---------------------------------------------------------------------------
 // Default time-series configuration
@@ -119,7 +121,8 @@ export class CentralityAnalyzer extends EventEmitter {
   readonly #timeSeriesConfig: CentralityTimeSeriesConfig;
 
   /** Time-series: nodeId → array of { iteration, score } entries (max 50). */
-  #timeSeries: Map<string, Array<{ iteration: number; score: number }>> = new Map();
+  #timeSeries: Map<string, Array<{ iteration: number; score: number }>> =
+    new Map();
 
   /** Snapshot of node rank positions for topology reorganization detection. */
   #previousRanks: Map<string, number> = new Map();
@@ -132,11 +135,14 @@ export class CentralityAnalyzer extends EventEmitter {
 
   constructor(
     cooccurrenceGraph: CooccurrenceGraph,
-    timeSeriesConfig?: Partial<CentralityTimeSeriesConfig>
+    timeSeriesConfig?: Partial<CentralityTimeSeriesConfig>,
   ) {
     super();
     this.#cooccurrenceGraph = cooccurrenceGraph;
-    this.#timeSeriesConfig = { ...DEFAULT_TIMESERIES_CONFIG, ...timeSeriesConfig };
+    this.#timeSeriesConfig = {
+      ...DEFAULT_TIMESERIES_CONFIG,
+      ...timeSeriesConfig,
+    };
     this.#currentInterval = this.#timeSeriesConfig.defaultComputeInterval;
   }
 
@@ -242,7 +248,8 @@ export class CentralityAnalyzer extends EventEmitter {
       }
 
       // Get previous score for rapid change detection.
-      const previousEntry = series.length > 0 ? series[series.length - 1] : null;
+      const previousEntry =
+        series.length > 0 ? series[series.length - 1] : null;
 
       // Append new data point.
       series.push({ iteration, score });
@@ -257,8 +264,8 @@ export class CentralityAnalyzer extends EventEmitter {
         const changeRatio = score / previousEntry.score;
         if (changeRatio >= this.#timeSeriesConfig.rapidChangeMultiplier) {
           const trend = this.#computeTrend(series);
-          this.emit('tna:centrality-change-detected', {
-            type: 'tna:centrality-change-detected',
+          this.emit("tna:centrality-change-detected", {
+            type: "tna:centrality-change-detected",
             nodeId,
             trend,
             previousScore: previousEntry.score,
@@ -281,8 +288,8 @@ export class CentralityAnalyzer extends EventEmitter {
 
     // Detect topology reorganization (> 3 nodes with major rank changes).
     if (majorRankChanges > 3) {
-      this.emit('tna:topology-reorganized', {
-        type: 'tna:topology-reorganized',
+      this.emit("tna:topology-reorganized", {
+        type: "tna:topology-reorganized",
         majorNodeSwaps: majorRankChanges,
         iteration,
       });
@@ -303,7 +310,9 @@ export class CentralityAnalyzer extends EventEmitter {
    * Rank 0 = highest centrality node.
    */
   #buildRankSnapshot(): Map<string, number> {
-    const sorted = Array.from(this.#scores.entries()).sort((a, b) => b[1] - a[1]);
+    const sorted = Array.from(this.#scores.entries()).sort(
+      (a, b) => b[1] - a[1],
+    );
     const ranks = new Map<string, number>();
     sorted.forEach(([nodeId], idx) => ranks.set(nodeId, idx));
     return ranks;
@@ -323,11 +332,11 @@ export class CentralityAnalyzer extends EventEmitter {
    */
   adjustInterval(regime: string): void {
     switch (regime) {
-      case 'transitioning':
-      case 'critical':
+      case "transitioning":
+      case "critical":
         this.#currentInterval = this.#timeSeriesConfig.urgentComputeInterval;
         break;
-      case 'stable':
+      case "stable":
         this.#currentInterval = this.#timeSeriesConfig.relaxedComputeInterval;
         break;
       default:
@@ -398,15 +407,16 @@ export class CentralityAnalyzer extends EventEmitter {
    */
   getRisingNodes(minSlope?: number): ReadonlyArray<CentralityTimeSeries> {
     const all = this.getAllTimeSeries();
-    const rising = all.filter(ts => ts.trend === 'rising');
+    const rising = all.filter((ts) => ts.trend === "rising");
 
     if (minSlope !== undefined && minSlope > 0) {
-      return rising.filter(ts => {
+      return rising.filter((ts) => {
         const series = ts.scores as Array<{ iteration: number; score: number }>;
         if (series.length < 2) return false;
         const last = series[series.length - 1]!;
         const first = series[0]!;
-        const slope = (last.score - first.score) / Math.max(1, series.length - 1);
+        const slope =
+          (last.score - first.score) / Math.max(1, series.length - 1);
         return slope >= minSlope;
       });
     }
@@ -433,9 +443,11 @@ export class CentralityAnalyzer extends EventEmitter {
    * @param scores - Array of { iteration, score } entries.
    * @returns CentralityTrend classification.
    */
-  #computeTrend(scores: Array<{ iteration: number; score: number }>): CentralityTrend {
+  #computeTrend(
+    scores: Array<{ iteration: number; score: number }>,
+  ): CentralityTrend {
     if (scores.length < 3) {
-      return 'stable';
+      return "stable";
     }
 
     const last3 = scores.slice(-3);
@@ -448,17 +460,19 @@ export class CentralityAnalyzer extends EventEmitter {
     // Check for oscillation: alternating delta signs.
     const delta1 = last3[1]!.score - last3[0]!.score;
     const delta2 = last3[2]!.score - last3[1]!.score;
-    if (Math.abs(delta1) > this.#timeSeriesConfig.trendSlopeThreshold &&
-        Math.abs(delta2) > this.#timeSeriesConfig.trendSlopeThreshold &&
-        Math.sign(delta1) !== Math.sign(delta2)) {
-      return 'oscillating';
+    if (
+      Math.abs(delta1) > this.#timeSeriesConfig.trendSlopeThreshold &&
+      Math.abs(delta2) > this.#timeSeriesConfig.trendSlopeThreshold &&
+      Math.sign(delta1) !== Math.sign(delta2)
+    ) {
+      return "oscillating";
     }
 
     if (Math.abs(slope) < this.#timeSeriesConfig.trendSlopeThreshold) {
-      return 'stable';
+      return "stable";
     }
 
-    return slope > 0 ? 'rising' : 'falling';
+    return slope > 0 ? "rising" : "falling";
   }
 
   // --------------------------------------------------------------------------
@@ -472,7 +486,7 @@ export class CentralityAnalyzer extends EventEmitter {
    * @returns Entry with highest score, or null if empty.
    */
   #findPeak(
-    scores: Array<{ iteration: number; score: number }>
+    scores: Array<{ iteration: number; score: number }>,
   ): { iteration: number; score: number } | null {
     if (scores.length === 0) return null;
 
@@ -496,7 +510,7 @@ export class CentralityAnalyzer extends EventEmitter {
    * @returns Entry with lowest score, or null if empty.
    */
   #findValley(
-    scores: Array<{ iteration: number; score: number }>
+    scores: Array<{ iteration: number; score: number }>,
   ): { iteration: number; score: number } | null {
     if (scores.length === 0) return null;
 

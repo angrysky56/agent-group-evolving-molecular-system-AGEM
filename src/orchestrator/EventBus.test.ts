@@ -16,10 +16,13 @@
  *   T10: getSubscriberCount() accuracy before/during/after subscribe/unsubscribe
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventBus } from './EventBus.js';
-import type { AnyEvent } from './interfaces.js';
-import type { SOCMetricsEvent, SheafConsensusReachedEvent } from '../types/Events.js';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventBus } from "./EventBus.js";
+import type { AnyEvent } from "./interfaces.js";
+import type {
+  SOCMetricsEvent,
+  SheafConsensusReachedEvent,
+} from "../types/Events.js";
 
 // ---------------------------------------------------------------------------
 // Test data factories — realistic event objects
@@ -27,7 +30,7 @@ import type { SOCMetricsEvent, SheafConsensusReachedEvent } from '../types/Event
 
 function makeSOCMetricsEvent(iteration = 1): SOCMetricsEvent {
   return {
-    type: 'soc:metrics',
+    type: "soc:metrics",
     iteration,
     timestamp: Date.now(),
     vonNeumannEntropy: 1.386,
@@ -41,7 +44,7 @@ function makeSOCMetricsEvent(iteration = 1): SOCMetricsEvent {
 
 function makeSheafConsensusEvent(iteration = 1): SheafConsensusReachedEvent {
   return {
-    type: 'sheaf:consensus-reached',
+    type: "sheaf:consensus-reached",
     iteration,
     h0Dimension: 3,
     dirichletEnergy: 0.001,
@@ -52,7 +55,7 @@ function makeSheafConsensusEvent(iteration = 1): SheafConsensusReachedEvent {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('EventBus', () => {
+describe("EventBus", () => {
   let bus: EventBus;
 
   beforeEach(() => {
@@ -60,9 +63,9 @@ describe('EventBus', () => {
   });
 
   // T1: Single subscriber receives emitted event
-  it('T1: single subscriber receives emitted event', async () => {
+  it("T1: single subscriber receives emitted event", async () => {
     const handler = vi.fn();
-    bus.subscribe('soc:metrics', handler);
+    bus.subscribe("soc:metrics", handler);
 
     const event = makeSOCMetricsEvent(1);
     await bus.emit(event);
@@ -72,14 +75,14 @@ describe('EventBus', () => {
   });
 
   // T2: Multiple subscribers for same event receive in parallel
-  it('T2: multiple subscribers for same event all receive it', async () => {
+  it("T2: multiple subscribers for same event all receive it", async () => {
     const handlerA = vi.fn();
     const handlerB = vi.fn();
     const handlerC = vi.fn();
 
-    bus.subscribe('soc:metrics', handlerA);
-    bus.subscribe('soc:metrics', handlerB);
-    bus.subscribe('soc:metrics', handlerC);
+    bus.subscribe("soc:metrics", handlerA);
+    bus.subscribe("soc:metrics", handlerB);
+    bus.subscribe("soc:metrics", handlerC);
 
     const event = makeSOCMetricsEvent(2);
     await bus.emit(event);
@@ -93,12 +96,12 @@ describe('EventBus', () => {
   });
 
   // T3: Different event types route to different subscribers
-  it('T3: different event types route to different subscribers only', async () => {
+  it("T3: different event types route to different subscribers only", async () => {
     const handlerA = vi.fn();
     const handlerB = vi.fn();
 
-    bus.subscribe('sheaf:consensus-reached', handlerA);
-    bus.subscribe('soc:metrics', handlerB);
+    bus.subscribe("sheaf:consensus-reached", handlerA);
+    bus.subscribe("soc:metrics", handlerB);
 
     const sheafEvent = makeSheafConsensusEvent(3);
     await bus.emit(sheafEvent);
@@ -109,16 +112,16 @@ describe('EventBus', () => {
   });
 
   // T4: Unsubscribe prevents further events
-  it('T4: unsubscribe prevents handler from receiving subsequent events', async () => {
+  it("T4: unsubscribe prevents handler from receiving subsequent events", async () => {
     const handler = vi.fn();
-    bus.subscribe('soc:metrics', handler);
+    bus.subscribe("soc:metrics", handler);
 
     // First emit — should be received
     await bus.emit(makeSOCMetricsEvent(1));
     expect(handler).toHaveBeenCalledTimes(1);
 
     // Unsubscribe
-    bus.unsubscribe('soc:metrics', handler);
+    bus.unsubscribe("soc:metrics", handler);
 
     // Second emit — should NOT be received
     await bus.emit(makeSOCMetricsEvent(2));
@@ -126,7 +129,7 @@ describe('EventBus', () => {
   });
 
   // T5: Async handlers in emit() all await (parallel, not sequential)
-  it('T5: async handlers run in parallel, not sequentially', async () => {
+  it("T5: async handlers run in parallel, not sequentially", async () => {
     const callOrder: number[] = [];
 
     const handler1 = async (): Promise<void> => {
@@ -139,8 +142,8 @@ describe('EventBus', () => {
       callOrder.push(2);
     };
 
-    bus.subscribe('soc:metrics', handler1);
-    bus.subscribe('soc:metrics', handler2);
+    bus.subscribe("soc:metrics", handler1);
+    bus.subscribe("soc:metrics", handler2);
 
     const start = Date.now();
     await bus.emit(makeSOCMetricsEvent(5));
@@ -161,44 +164,46 @@ describe('EventBus', () => {
   });
 
   // T6: emit() with no subscribers succeeds silently
-  it('T6: emit with no subscribers resolves without error', async () => {
+  it("T6: emit with no subscribers resolves without error", async () => {
     const event = makeSOCMetricsEvent(6);
     await expect(bus.emit(event)).resolves.toBeUndefined();
   });
 
   // T7: Handler that throws propagates via Promise.all() rejection
-  it('T7: handler that throws causes emit() to reject', async () => {
+  it("T7: handler that throws causes emit() to reject", async () => {
     const throwingHandler = vi.fn(async () => {
-      throw new Error('test error from handler');
+      throw new Error("test error from handler");
     });
 
-    bus.subscribe('soc:metrics', throwingHandler);
+    bus.subscribe("soc:metrics", throwingHandler);
 
-    await expect(bus.emit(makeSOCMetricsEvent(7))).rejects.toThrow('test error from handler');
+    await expect(bus.emit(makeSOCMetricsEvent(7))).rejects.toThrow(
+      "test error from handler",
+    );
     expect(throwingHandler).toHaveBeenCalledTimes(1);
   });
 
   // T8: Same handler subscribed twice is called twice
-  it('T8: same handler subscribed twice is called twice per emit', async () => {
+  it("T8: same handler subscribed twice is called twice per emit", async () => {
     const handler = vi.fn();
-    bus.subscribe('soc:metrics', handler);
-    bus.subscribe('soc:metrics', handler); // register again
+    bus.subscribe("soc:metrics", handler);
+    bus.subscribe("soc:metrics", handler); // register again
 
     await bus.emit(makeSOCMetricsEvent(8));
 
     expect(handler).toHaveBeenCalledTimes(2);
 
     // Unsubscribe once — only removes first occurrence
-    bus.unsubscribe('soc:metrics', handler);
+    bus.unsubscribe("soc:metrics", handler);
     await bus.emit(makeSOCMetricsEvent(8));
 
     expect(handler).toHaveBeenCalledTimes(3); // 2 + 1 remaining subscription
   });
 
   // T9: EventType is case-sensitive
-  it('T9: event type matching is case-sensitive', async () => {
+  it("T9: event type matching is case-sensitive", async () => {
     const handler = vi.fn();
-    bus.subscribe('SOC:METRICS', handler); // uppercase — different from 'soc:metrics'
+    bus.subscribe("SOC:METRICS", handler); // uppercase — different from 'soc:metrics'
 
     await bus.emit(makeSOCMetricsEvent(9)); // emits lowercase 'soc:metrics'
 
@@ -206,49 +211,49 @@ describe('EventBus', () => {
   });
 
   // T10: getSubscriberCount() accuracy
-  it('T10: getSubscriberCount returns accurate counts through subscribe/unsubscribe', () => {
+  it("T10: getSubscriberCount returns accurate counts through subscribe/unsubscribe", () => {
     const handlerA = vi.fn();
     const handlerB = vi.fn();
 
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(0);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(0);
 
-    bus.subscribe('soc:metrics', handlerA);
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(1);
+    bus.subscribe("soc:metrics", handlerA);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(1);
 
-    bus.subscribe('soc:metrics', handlerB);
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(2);
+    bus.subscribe("soc:metrics", handlerB);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(2);
 
-    bus.unsubscribe('soc:metrics', handlerA);
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(1);
+    bus.unsubscribe("soc:metrics", handlerA);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(1);
 
-    bus.unsubscribe('soc:metrics', handlerB);
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(0);
+    bus.unsubscribe("soc:metrics", handlerB);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(0);
 
     // Unsubscribing non-existent handler is no-op
-    bus.unsubscribe('soc:metrics', handlerA);
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(0);
+    bus.unsubscribe("soc:metrics", handlerA);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(0);
 
     // Unsubscribing from unknown event type is no-op
-    bus.unsubscribe('unknown:event', handlerA);
-    expect(bus.getSubscriberCount('unknown:event')).toBe(0);
+    bus.unsubscribe("unknown:event", handlerA);
+    expect(bus.getSubscriberCount("unknown:event")).toBe(0);
   });
 
   // Additional: EventBus holds an internal EventEmitter for Node.js integration
-  it('EventBus has an accessible EventEmitter via .emitter property', () => {
-    const { EventEmitter } = require('node:events');
+  it("EventBus has an accessible EventEmitter via .emitter property", () => {
+    const { EventEmitter } = require("node:events");
     expect(bus.emitter).toBeInstanceOf(EventEmitter);
   });
 
   // Additional: Multiple different event types tracked independently
-  it('multiple event types tracked independently', async () => {
+  it("multiple event types tracked independently", async () => {
     const socHandler = vi.fn();
     const sheafHandler = vi.fn();
 
-    bus.subscribe('soc:metrics', socHandler);
-    bus.subscribe('sheaf:consensus-reached', sheafHandler);
+    bus.subscribe("soc:metrics", socHandler);
+    bus.subscribe("sheaf:consensus-reached", sheafHandler);
 
-    expect(bus.getSubscriberCount('soc:metrics')).toBe(1);
-    expect(bus.getSubscriberCount('sheaf:consensus-reached')).toBe(1);
+    expect(bus.getSubscriberCount("soc:metrics")).toBe(1);
+    expect(bus.getSubscriberCount("sheaf:consensus-reached")).toBe(1);
 
     await bus.emit(makeSOCMetricsEvent(100));
 

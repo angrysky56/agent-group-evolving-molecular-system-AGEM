@@ -29,22 +29,22 @@
  * The MATLAB rank() formula max(S) * max(N0,N1) * eps is a principled default.
  */
 
-import { describe, it, expect } from 'vitest';
-import { computeCohomology } from './CohomologyAnalyzer.js';
-import { buildFlatSheaf } from './helpers/flatSheafFactory.js';
+import { describe, it, expect } from "vitest";
+import { computeCohomology } from "./CohomologyAnalyzer.js";
+import { buildFlatSheaf } from "./helpers/flatSheafFactory.js";
 
 // Reuse the canonical test sheaf across all tests.
 // Flat 1D triangle: N0=3, N1=3, singular values ≈ [1.732, 1.732, 0], rank=2, h1=1.
 function buildTestSheaf() {
-  return buildFlatSheaf(3, 1, 'triangle');
+  return buildFlatSheaf(3, 1, "triangle");
 }
 
-describe('Numerical tolerance calibration', () => {
+describe("Numerical tolerance calibration", () => {
   // ---------------------------------------------------------------------------
   // Tolerance formula documentation test
   // ---------------------------------------------------------------------------
 
-  it('default tolerance is positive and very small (< 1e-10)', () => {
+  it("default tolerance is positive and very small (< 1e-10)", () => {
     const sheaf = buildTestSheaf();
     const result = computeCohomology(sheaf);
 
@@ -55,7 +55,7 @@ describe('Numerical tolerance calibration', () => {
     expect(result.tolerance).toBeLessThan(1e-10);
   });
 
-  it('default tolerance follows the MATLAB rank() formula: max(S) * max(N0,N1) * eps', () => {
+  it("default tolerance follows the MATLAB rank() formula: max(S) * max(N0,N1) * eps", () => {
     const sheaf = buildTestSheaf();
     const result = computeCohomology(sheaf);
 
@@ -69,20 +69,22 @@ describe('Numerical tolerance calibration', () => {
 
     // Allow 5% relative tolerance for numerical differences in SVD implementation.
     expect(result.tolerance).toBeCloseTo(expectedTol, 30); // roughly equal
-    expect(Math.abs(result.tolerance - expectedTol) / expectedTol).toBeLessThan(0.05);
+    expect(Math.abs(result.tolerance - expectedTol) / expectedTol).toBeLessThan(
+      0.05,
+    );
   });
 
   // ---------------------------------------------------------------------------
   // Tolerance sensitivity tests
   // ---------------------------------------------------------------------------
 
-  it('calibrated tolerance correctly detects H^1 = 1 for flat 1D triangle', () => {
+  it("calibrated tolerance correctly detects H^1 = 1 for flat 1D triangle", () => {
     const sheaf = buildTestSheaf();
     const result = computeCohomology(sheaf); // default (calibrated) tolerance
     expect(result.h1Dimension).toBe(1);
   });
 
-  it('H^1 is robust across reasonable tolerance range for flat 1D triangle', () => {
+  it("H^1 is robust across reasonable tolerance range for flat 1D triangle", () => {
     const sheaf = buildTestSheaf();
 
     // The flat 1D triangle has well-separated singular values:
@@ -124,7 +126,7 @@ describe('Numerical tolerance calibration', () => {
   // Singular value spectrum diagnostic test
   // ---------------------------------------------------------------------------
 
-  it('coboundaryRank = 2 for flat 1D triangle (two non-zero singular values)', () => {
+  it("coboundaryRank = 2 for flat 1D triangle (two non-zero singular values)", () => {
     const sheaf = buildTestSheaf();
     const result = computeCohomology(sheaf);
 
@@ -137,7 +139,7 @@ describe('Numerical tolerance calibration', () => {
   // Override tolerance test
   // ---------------------------------------------------------------------------
 
-  it('explicit tolerance parameter overrides the calibrated default', () => {
+  it("explicit tolerance parameter overrides the calibrated default", () => {
     const sheaf = buildTestSheaf();
     const explicitTol = 1e-3;
     const result = computeCohomology(sheaf, explicitTol);
@@ -146,7 +148,7 @@ describe('Numerical tolerance calibration', () => {
     expect(result.tolerance).toBe(explicitTol);
   });
 
-  it('explicit tolerance of 1e-3 still gives correct H^1 = 1 for flat 1D triangle', () => {
+  it("explicit tolerance of 1e-3 still gives correct H^1 = 1 for flat 1D triangle", () => {
     // 1e-3 is below all non-zero singular values (sqrt(3) ≈ 1.732) but above any noise.
     const sheaf = buildTestSheaf();
     const result = computeCohomology(sheaf, 1e-3);
@@ -157,10 +159,10 @@ describe('Numerical tolerance calibration', () => {
   // Flat sheaf tolerance robustness
   // ---------------------------------------------------------------------------
 
-  it('flat 2D path sheaf H^1 = 0 is stable across reasonable tolerance range', () => {
+  it("flat 2D path sheaf H^1 = 0 is stable across reasonable tolerance range", () => {
     // The flat 2D path has all non-zero singular values (no structural zeros in B).
     // H^1 = 0 should be stable as long as tol < min(singular values).
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+    const sheaf = buildFlatSheaf(3, 2, "path");
 
     // Default calibrated tolerance:
     expect(computeCohomology(sheaf).h1Dimension).toBe(0);
@@ -179,11 +181,11 @@ describe('Numerical tolerance calibration', () => {
   // Multi-sheaf consistency: all three configurations give consistent results
   // ---------------------------------------------------------------------------
 
-  it('tolerance calibration gives consistent rank across all standard test sheaves', () => {
+  it("tolerance calibration gives consistent rank across all standard test sheaves", () => {
     // All three standard configurations should give consistent rank with default tolerance.
-    const sheaf1D = buildFlatSheaf(3, 1, 'triangle');
-    const sheaf2Dpath = buildFlatSheaf(3, 2, 'path');
-    const sheaf2Dtri = buildFlatSheaf(3, 2, 'triangle');
+    const sheaf1D = buildFlatSheaf(3, 1, "triangle");
+    const sheaf2Dpath = buildFlatSheaf(3, 2, "path");
+    const sheaf2Dtri = buildFlatSheaf(3, 2, "triangle");
 
     const r1 = computeCohomology(sheaf1D);
     const r2 = computeCohomology(sheaf2Dpath);

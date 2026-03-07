@@ -14,10 +14,10 @@
  *   S = -Σ λ_i log(λ_i)
  */
 
-import * as math from 'mathjs';
-import { CellularSheaf } from './CellularSheaf.js';
-import { buildCoboundaryMatrix } from './CoboundaryOperator.js';
-import type { SheafEigenspectrum } from '../types/index.js';
+import * as math from "mathjs";
+import { CellularSheaf } from "./CellularSheaf.js";
+import { buildCoboundaryMatrix } from "./CoboundaryOperator.js";
+import type { SheafEigenspectrum } from "../types/index.js";
 
 export class SheafLaplacian {
   private readonly sheaf: CellularSheaf;

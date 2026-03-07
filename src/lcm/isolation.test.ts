@@ -24,9 +24,9 @@
  * Mirrors the isolation test pattern from src/sheaf/isolation.test.ts.
  */
 
-import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Utility: collect all non-test .ts files under a directory (non-recursive,
@@ -37,13 +37,13 @@ function getAllTsSourceFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules') {
+    if (entry.isDirectory() && entry.name !== "node_modules") {
       files.push(...getAllTsSourceFiles(fullPath));
     } else if (
       entry.isFile() &&
-      entry.name.endsWith('.ts') &&
-      !entry.name.endsWith('.test.ts') &&
-      !entry.name.endsWith('.d.ts')
+      entry.name.endsWith(".ts") &&
+      !entry.name.endsWith(".test.ts") &&
+      !entry.name.endsWith(".d.ts")
     ) {
       files.push(fullPath);
     }
@@ -55,32 +55,30 @@ function getAllTsSourceFiles(dir: string): string[] {
 // T14: lcm module has zero imports from sheaf, tna, soc, orchestrator
 // ---------------------------------------------------------------------------
 
-describe('Module isolation', () => {
-  it('T14: src/lcm/ production files have zero imports from sheaf, tna, soc, orchestrator', () => {
-    const lcmDir = resolve(__dirname, '.');
+describe("Module isolation", () => {
+  it("T14: src/lcm/ production files have zero imports from sheaf, tna, soc, orchestrator", () => {
+    const lcmDir = resolve(__dirname, ".");
     const tsFiles = getAllTsSourceFiles(lcmDir);
 
     // Forbidden import path patterns: any import referencing a sibling module.
-    const forbidden = ['/sheaf/', '/tna/', '/soc/', '/orchestrator/'];
+    const forbidden = ["/sheaf/", "/tna/", "/soc/", "/orchestrator/"];
 
     const violations: string[] = [];
 
     for (const file of tsFiles) {
-      const content = readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
 
       // Extract all import/export from lines.
       const importLines = lines.filter((line) =>
-        line.match(/^\s*(import|export)\s.*from\s/)
+        line.match(/^\s*(import|export)\s.*from\s/),
       );
 
       for (const line of importLines) {
         for (const pattern of forbidden) {
           if (line.includes(pattern)) {
-            const relPath = file.replace(lcmDir, 'src/lcm');
-            violations.push(
-              `VIOLATION in ${relPath}: ${line.trim()}`
-            );
+            const relPath = file.replace(lcmDir, "src/lcm");
+            violations.push(`VIOLATION in ${relPath}: ${line.trim()}`);
           }
         }
       }
@@ -90,7 +88,7 @@ describe('Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `LCM module isolation violation — lcm imports from forbidden modules:\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
 
@@ -102,37 +100,37 @@ describe('Module isolation', () => {
   // T14b: No LCM source file (except interfaces.ts) imports @huggingface/transformers
   // ---------------------------------------------------------------------------
 
-  it('T14b: LCM source files (except interfaces.ts) do not import @huggingface/transformers directly', () => {
-    const lcmDir = resolve(__dirname, '.');
+  it("T14b: LCM source files (except interfaces.ts) do not import @huggingface/transformers directly", () => {
+    const lcmDir = resolve(__dirname, ".");
     const tsFiles = getAllTsSourceFiles(lcmDir);
 
     // interfaces.ts is the only file allowed to mention the embedder package
     // (for documentation purposes). All others must use IEmbedder injection.
-    const forbiddenPackage = '@huggingface/transformers';
+    const forbiddenPackage = "@huggingface/transformers";
 
     const violations: string[] = [];
 
     for (const file of tsFiles) {
       // Allow interfaces.ts to reference @huggingface/transformers in comments/docs.
-      if (file.endsWith('interfaces.ts')) continue;
+      if (file.endsWith("interfaces.ts")) continue;
 
-      const content = readFileSync(file, 'utf-8');
-      const lines = content.split('\n');
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
 
       // Find actual import statements (not comments) referencing the forbidden package.
       const importLines = lines.filter((line) => {
         const trimmed = line.trimStart();
         // Must be an import statement (not a comment)
         return (
-          (trimmed.startsWith('import ') || trimmed.startsWith('export ')) &&
+          (trimmed.startsWith("import ") || trimmed.startsWith("export ")) &&
           line.includes(forbiddenPackage)
         );
       });
 
       for (const line of importLines) {
-        const relPath = file.replace(lcmDir, 'src/lcm');
+        const relPath = file.replace(lcmDir, "src/lcm");
         violations.push(
-          `VIOLATION in ${relPath} imports directly from ${forbiddenPackage}: ${line.trim()}`
+          `VIOLATION in ${relPath} imports directly from ${forbiddenPackage}: ${line.trim()}`,
         );
       }
     }
@@ -140,7 +138,7 @@ describe('Module isolation', () => {
     if (violations.length > 0) {
       throw new Error(
         `LCM embedding isolation violation — direct @huggingface/transformers imports:\n` +
-          violations.join('\n')
+          violations.join("\n"),
       );
     }
 

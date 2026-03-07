@@ -2,14 +2,14 @@
 wave: 3
 title: "Cohomology Analysis: SVD, H^1 Detection, Tolerance Calibration, Event Emission, Isolation"
 depends_on:
-  - 02-PLAN.md  # Wave 1: types, CellularSheaf, test helpers
-  - 03-PLAN.md  # Wave 2: coboundary operator, Sheaf Laplacian, ADMM stub
+  - 02-PLAN.md # Wave 1: types, CellularSheaf, test helpers
+  - 03-PLAN.md # Wave 2: coboundary operator, Sheaf Laplacian, ADMM stub
 files_modified:
-  - src/sheaf/CohomologyAnalyzer.ts          # SVD-based H^0/H^1 computation + event emission
-  - src/sheaf/CohomologyAnalyzer.test.ts     # T7, T8, tolerance tests
-  - src/sheaf/NumericalTolerance.test.ts     # Tolerance calibration validation
-  - src/sheaf/isolation.test.ts              # T9: zero cross-module imports
-  - src/sheaf/index.ts                       # Public barrel export for the sheaf module
+  - src/sheaf/CohomologyAnalyzer.ts # SVD-based H^0/H^1 computation + event emission
+  - src/sheaf/CohomologyAnalyzer.test.ts # T7, T8, tolerance tests
+  - src/sheaf/NumericalTolerance.test.ts # Tolerance calibration validation
+  - src/sheaf/isolation.test.ts # T9: zero cross-module imports
+  - src/sheaf/index.ts # Public barrel export for the sheaf module
 autonomous: true
 commits:
   - "feat(sheaf): implement CohomologyAnalyzer with SVD-based H^1 detection and calibrated tolerance"
@@ -95,6 +95,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
     // from numerical noise. For learned restriction maps with irrational
     // entries, recalibration may be necessary -- pass explicit tolerance.
     ```
+
   </description>
   <acceptance>
     - `computeCohomology(flatPathSheaf)` returns h0Dimension = stalkDim, h1Dimension = 0.
@@ -156,6 +157,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
     - The Phase 5 `EventBus` will subscribe to these events.
     - By emitting typed events now, the Phase 5 integration only needs to subscribe -- no rewiring of sheaf internals.
     - The strongly-typed `SheafEvent` union type ensures the Phase 5 event handler receives a known payload shape.
+
   </description>
   <acceptance>
     - `CohomologyAnalyzer` extends `EventEmitter`.
@@ -261,6 +263,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
       expect(norm).toBeCloseTo(1.0, 5);
     });
     ```
+
   </description>
   <acceptance>
     - T7: h1Dimension = 1 for 3-cycle, h0Dimension = 4, coboundaryRank = 2.
@@ -347,6 +350,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
       expect(computeCohomology(sheaf, 1e-8).h1Dimension).toBe(0);
     });
     ```
+
   </description>
   <acceptance>
     - Default tolerance is positive and less than 1e-10 for the 3-cycle test.
@@ -421,6 +425,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
     This test enforces Phase 1 Success Criterion 5: component isolation. It statically scans all non-test TypeScript files in `src/sheaf/` and verifies zero imports from any other component module. It also verifies that `src/types/` has zero external package imports.
 
     NOTE: Test files (`.test.ts`) are excluded from the scan because test files may import test utilities from anywhere. Only production source files are checked.
+
   </description>
   <acceptance>
     - The isolation test passes: zero forbidden imports in src/sheaf/ production files.
@@ -457,6 +462,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
     ```
 
     This barrel export is the single entry point for any external consumer of the sheaf module. Phase 4 (SOC) will import eigenspectrum types from `src/types/` but will NOT import from `src/sheaf/` directly -- it receives eigenspectrum data through typed interfaces. Phase 5 (Orchestrator) will import from `src/sheaf/index.ts`.
+
   </description>
   <acceptance>
     - `import { CellularSheaf, CohomologyAnalyzer, computeCohomology, ADMMSolver } from '../sheaf/index.js'` resolves.
@@ -500,6 +506,7 @@ The boundary between `mathjs` and `ml-matrix` is precisely here: `mathjs` handle
     - SC7 Eigenspectrum: getEigenspectrum() returns Float64Array, length N_0, sorted ascending, all >= -1e-12 (T6b).
 
     If ANY test fails, do not proceed. Fix the failure before marking Wave 3 as complete.
+
   </description>
   <acceptance>
     - `npx vitest run` exits 0 with all tests passing.

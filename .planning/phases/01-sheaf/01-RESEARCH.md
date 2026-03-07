@@ -99,6 +99,7 @@ The standard graph Laplacian `L_graph = D - A` has shape `|V| × |V|` and entrie
 **Block structure of `L_sheaf`:**
 
 For each pair of vertices `(u, v)`:
+
 - If there is no edge between them: block is zero.
 - If `e = (u, v)` is an edge: the diagonal block `L_sheaf[v, v]` receives `F_{v←e}^T F_{v←e}` and the off-diagonal block `L_sheaf[u, v]` receives `-F_{u←e}^T F_{v←e}`.
 
@@ -224,8 +225,8 @@ export type StalkVector = Float64Array;
 export interface RestrictionMap {
   readonly sourceVertexId: VertexId;
   readonly edgeId: EdgeId;
-  readonly sourceDim: number;  // dim(F(vertex))
-  readonly targetDim: number;  // dim(F(edge))
+  readonly sourceDim: number; // dim(F(vertex))
+  readonly targetDim: number; // dim(F(edge))
   /** Row-major matrix entries. Length = targetDim * sourceDim. */
   readonly entries: Float64Array;
 }
@@ -277,19 +278,19 @@ export interface CohomologyResult {
 // src/types/Events.ts
 
 export type SheafEventType =
-  | 'sheaf:consensus-reached'
-  | 'sheaf:h1-obstruction-detected'
-  | 'sheaf:iteration-complete';
+  | "sheaf:consensus-reached"
+  | "sheaf:h1-obstruction-detected"
+  | "sheaf:iteration-complete";
 
 export interface SheafConsensusReachedEvent {
-  readonly type: 'sheaf:consensus-reached';
+  readonly type: "sheaf:consensus-reached";
   readonly iteration: number;
   readonly h0Dimension: number;
   readonly dirichletEnergy: number;
 }
 
 export interface SheafH1ObstructionEvent {
-  readonly type: 'sheaf:h1-obstruction-detected';
+  readonly type: "sheaf:h1-obstruction-detected";
   readonly iteration: number;
   readonly h1Dimension: number;
   readonly h1Basis: Float64Array[];
@@ -297,9 +298,7 @@ export interface SheafH1ObstructionEvent {
   readonly affectedVertices: VertexId[];
 }
 
-export type SheafEvent =
-  | SheafConsensusReachedEvent
-  | SheafH1ObstructionEvent;
+export type SheafEvent = SheafConsensusReachedEvent | SheafH1ObstructionEvent;
 ```
 
 **Why `Float64Array` instead of `number[]`?**
@@ -460,15 +459,18 @@ The null space of `L_sheaf` is `H^0`. The cohomology is computed via SVD of `B` 
 **Using `ml-matrix` for SVD:**
 
 ```typescript
-import { Matrix, SingularValueDecomposition } from 'ml-matrix';
+import { Matrix, SingularValueDecomposition } from "ml-matrix";
 
-function computeCohomology(sheaf: CellularSheaf, tolerance?: number): CohomologyResult {
+function computeCohomology(
+  sheaf: CellularSheaf,
+  tolerance?: number,
+): CohomologyResult {
   const B = sheaf.getCoboundaryMatrix();
   const N0 = sheaf.c0Dimension;
   const N1 = sheaf.c1Dimension;
 
   // Convert mathjs matrix to ml-matrix Matrix for SVD.
-  const bArray: number[][] = (math.toArray(B) as number[][]);
+  const bArray: number[][] = math.toArray(B) as number[][];
   const mlB = new Matrix(bArray);
 
   const svd = new SingularValueDecomposition(mlB, { autoTranspose: true });
@@ -476,10 +478,10 @@ function computeCohomology(sheaf: CellularSheaf, tolerance?: number): Cohomology
 
   // Calibrate tolerance.
   const maxEntry = Math.max(...bArray.flat().map(Math.abs));
-  const tol = tolerance ?? (maxEntry * Math.max(N0, N1) * 2.22e-16);
+  const tol = tolerance ?? maxEntry * Math.max(N0, N1) * 2.22e-16;
   // 2.22e-16 is machine epsilon for float64.
 
-  const rank = singularValues.filter(s => s > tol).length;
+  const rank = singularValues.filter((s) => s > tol).length;
 
   const h0Dimension = N0 - rank;
   const h1Dimension = N1 - rank;
@@ -543,12 +545,12 @@ getEigenspectrum(): Float64Array {
 
 **Recommendation:** Use both. They serve different roles and are complementary.
 
-| Task | Library | Reason |
-|------|---------|--------|
-| Matrix assembly (coboundary operator, Laplacian) | `mathjs 15.1.1` | Flexible matrix arithmetic; sparse matrix support; handles non-square matrices naturally via `math.multiply`, `math.transpose` |
-| SVD for null-space computation | `ml-matrix 6.12.1` | Provides `SingularValueDecomposition` with access to U, S, V; typed array backed; no equivalent in mathjs 15.x |
-| Eigenvalue decomposition (Laplacian spectrum) | `mathjs 15.1.1` | `math.eigs()` supports real symmetric matrices; returns both values and eigenvectors |
-| Matrix-vector products in ADMM iterations | `mathjs 15.1.1` | `math.multiply()` handles the mixed real/sparse products |
+| Task                                             | Library            | Reason                                                                                                                         |
+| ------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Matrix assembly (coboundary operator, Laplacian) | `mathjs 15.1.1`    | Flexible matrix arithmetic; sparse matrix support; handles non-square matrices naturally via `math.multiply`, `math.transpose` |
+| SVD for null-space computation                   | `ml-matrix 6.12.1` | Provides `SingularValueDecomposition` with access to U, S, V; typed array backed; no equivalent in mathjs 15.x                 |
+| Eigenvalue decomposition (Laplacian spectrum)    | `mathjs 15.1.1`    | `math.eigs()` supports real symmetric matrices; returns both values and eigenvectors                                           |
+| Matrix-vector products in ADMM iterations        | `mathjs 15.1.1`    | `math.multiply()` handles the mixed real/sparse products                                                                       |
 
 **Why not `numeric.js`?** Last commit 2016, no TypeScript types, no SVD, no complex eigenvalue support. Dead library.
 
@@ -561,7 +563,7 @@ getEigenspectrum(): Float64Array {
 For sheaves with more than ~20 agents, dense matrix operations become expensive. mathjs supports sparse matrices:
 
 ```typescript
-import { sparse, multiply, transpose } from 'mathjs';
+import { sparse, multiply, transpose } from "mathjs";
 
 // Build B as sparse from the start.
 const B = sparse(bDenseArray);
@@ -581,9 +583,9 @@ The sparse format is COO (coordinate list) internally in mathjs. For Phase 1 wit
 // vitest.config.ts
 export default defineConfig({
   test: {
-    pool: 'forks',  // required for ml-matrix native module isolation
-    include: ['src/**/*.test.ts'],
-  }
+    pool: "forks", // required for ml-matrix native module isolation
+    include: ["src/**/*.test.ts"],
+  },
 });
 ```
 
@@ -594,21 +596,23 @@ vitest is chosen over jest because it handles native ESM packages (`mathjs`, `ml
 Zod can validate sheaf configurations at runtime before construction:
 
 ```typescript
-import { z } from 'zod';
+import { z } from "zod";
 
-const RestrictionMapSchema = z.object({
-  sourceVertexId: z.string().min(1),
-  edgeId: z.string().min(1),
-  sourceDim: z.number().int().positive(),
-  targetDim: z.number().int().positive(),
-  entries: z.instanceof(Float64Array).refine(
-    (arr) => arr.every(v => isFinite(v)),
-    { message: 'Restriction map entries must be finite' }
-  ),
-}).refine(
-  (rm) => rm.entries.length === rm.sourceDim * rm.targetDim,
-  { message: 'entries.length must equal sourceDim * targetDim' }
-);
+const RestrictionMapSchema = z
+  .object({
+    sourceVertexId: z.string().min(1),
+    edgeId: z.string().min(1),
+    sourceDim: z.number().int().positive(),
+    targetDim: z.number().int().positive(),
+    entries: z
+      .instanceof(Float64Array)
+      .refine((arr) => arr.every((v) => isFinite(v)), {
+        message: "Restriction map entries must be finite",
+      }),
+  })
+  .refine((rm) => rm.entries.length === rm.sourceDim * rm.targetDim, {
+    message: "entries.length must equal sourceDim * targetDim",
+  });
 ```
 
 This is particularly useful for the security pitfall (restriction maps loaded from external configuration files with wrong dimensions). Validate at sheaf construction time; reject malformed configurations before they silently corrupt Laplacian assembly.
@@ -626,8 +630,8 @@ This is particularly useful for the security pitfall (restriction maps loaded fr
 **Definitive test:**
 
 ```typescript
-describe('Sheaf Laplacian vs Graph Laplacian distinction', () => {
-  it('L_sheaf null space has dimension d for flat d-dim sheaf on connected graph', () => {
+describe("Sheaf Laplacian vs Graph Laplacian distinction", () => {
+  it("L_sheaf null space has dimension d for flat d-dim sheaf on connected graph", () => {
     // Two agents, one edge, identity restriction maps, 2D stalks.
     const sheaf = buildFlatSheaf(2, 2); // 2 agents, 2D stalks
     const L_sheaf = sheaf.getSheafLaplacian();
@@ -639,14 +643,14 @@ describe('Sheaf Laplacian vs Graph Laplacian distinction', () => {
     // This test WOULD FAIL with graph Laplacian — that's the point.
   });
 
-  it('L_sheaf * x = 0 for the constant global section', () => {
+  it("L_sheaf * x = 0 for the constant global section", () => {
     const sheaf = buildFlatSheaf(3, 2); // 3-vertex path, 2D stalks
     const L_sheaf = sheaf.getSheafLaplacian();
 
     // Constant global section: all agents have the same 2D state.
     const x = new Float64Array([1, 0, 1, 0, 1, 0]); // C^0 vector
     const Lx = math.multiply(L_sheaf, Array.from(x));
-    const norm = Math.sqrt((Lx as number[]).reduce((s, v) => s + v*v, 0));
+    const norm = Math.sqrt((Lx as number[]).reduce((s, v) => s + v * v, 0));
     expect(norm).toBeLessThan(1e-12);
   });
 });
@@ -694,7 +698,7 @@ The coboundary `B` is a `3 × 6` matrix. Its rank is at most 3. For this specifi
 **The 3-cycle test assertion:**
 
 ```typescript
-it('3-cycle with incompatible projection restriction maps has dim(H^1) = 1', () => {
+it("3-cycle with incompatible projection restriction maps has dim(H^1) = 1", () => {
   const sheaf = buildThreeCycleInconsistentSheaf(); // defined in test helpers
   const result = computeCohomology(sheaf);
   expect(result.h1Dimension).toBe(1);
@@ -708,9 +712,9 @@ it('3-cycle with incompatible projection restriction maps has dim(H^1) = 1', () 
 ```typescript
 function buildThreeCycleInconsistentSheaf(): CellularSheaf {
   const vertices: SheafVertex[] = [
-    { id: 'v0', stalkSpace: { dim: 2 } },
-    { id: 'v1', stalkSpace: { dim: 2 } },
-    { id: 'v2', stalkSpace: { dim: 2 } },
+    { id: "v0", stalkSpace: { dim: 2 } },
+    { id: "v1", stalkSpace: { dim: 2 } },
+    { id: "v2", stalkSpace: { dim: 2 } },
   ];
 
   // Edge stalk: R^1.
@@ -720,22 +724,64 @@ function buildThreeCycleInconsistentSheaf(): CellularSheaf {
 
   const edges: SheafEdge[] = [
     {
-      id: 'e01', sourceVertex: 'v0', targetVertex: 'v1',
+      id: "e01",
+      sourceVertex: "v0",
+      targetVertex: "v1",
       stalkSpace: { dim: 1 },
-      sourceRestriction: { sourceVertexId: 'v0', edgeId: 'e01', sourceDim: 2, targetDim: 1, entries: proj0 },
-      targetRestriction: { sourceVertexId: 'v1', edgeId: 'e01', sourceDim: 2, targetDim: 1, entries: proj1 },
+      sourceRestriction: {
+        sourceVertexId: "v0",
+        edgeId: "e01",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj0,
+      },
+      targetRestriction: {
+        sourceVertexId: "v1",
+        edgeId: "e01",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj1,
+      },
     },
     {
-      id: 'e12', sourceVertex: 'v1', targetVertex: 'v2',
+      id: "e12",
+      sourceVertex: "v1",
+      targetVertex: "v2",
       stalkSpace: { dim: 1 },
-      sourceRestriction: { sourceVertexId: 'v1', edgeId: 'e12', sourceDim: 2, targetDim: 1, entries: proj0 },
-      targetRestriction: { sourceVertexId: 'v2', edgeId: 'e12', sourceDim: 2, targetDim: 1, entries: proj1 },
+      sourceRestriction: {
+        sourceVertexId: "v1",
+        edgeId: "e12",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj0,
+      },
+      targetRestriction: {
+        sourceVertexId: "v2",
+        edgeId: "e12",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj1,
+      },
     },
     {
-      id: 'e20', sourceVertex: 'v2', targetVertex: 'v0',
+      id: "e20",
+      sourceVertex: "v2",
+      targetVertex: "v0",
       stalkSpace: { dim: 1 },
-      sourceRestriction: { sourceVertexId: 'v2', edgeId: 'e20', sourceDim: 2, targetDim: 1, entries: proj0 },
-      targetRestriction: { sourceVertexId: 'v0', edgeId: 'e20', sourceDim: 2, targetDim: 1, entries: proj1 },
+      sourceRestriction: {
+        sourceVertexId: "v2",
+        edgeId: "e20",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj0,
+      },
+      targetRestriction: {
+        sourceVertexId: "v0",
+        edgeId: "e20",
+        sourceDim: 2,
+        targetDim: 1,
+        entries: proj1,
+      },
     },
   ];
 
@@ -761,7 +807,7 @@ This is the MATLAB `rank()` default tolerance formula, which is the standard for
 **Test that validates tolerance sensitivity:**
 
 ```typescript
-it('loose tolerance (1e-6) misses H^1 for near-degenerate 3-cycle', () => {
+it("loose tolerance (1e-6) misses H^1 for near-degenerate 3-cycle", () => {
   // Perturb the 3-cycle restriction maps by epsilon to get singular values near 1e-7.
   const sheaf = buildThreeCycleNearDegenerateSheaf(1e-7);
 
@@ -801,10 +847,15 @@ src/sheaf/
 **T1: Dimension assertions on construction**
 
 ```typescript
-it('asserts N0 = sum of vertex stalk dims', () => {
+it("asserts N0 = sum of vertex stalk dims", () => {
   const sheaf = new CellularSheaf(
-    [{ id: 'v0', stalkSpace: { dim: 3 } }, { id: 'v1', stalkSpace: { dim: 2 } }],
-    [/* one edge with compatible restriction maps */]
+    [
+      { id: "v0", stalkSpace: { dim: 3 } },
+      { id: "v1", stalkSpace: { dim: 2 } },
+    ],
+    [
+      /* one edge with compatible restriction maps */
+    ],
   );
   expect(sheaf.c0Dimension).toBe(5); // 3 + 2
 });
@@ -813,9 +864,11 @@ it('asserts N0 = sum of vertex stalk dims', () => {
 **T2: Construction rejects incompatible restriction map dimensions**
 
 ```typescript
-it('throws on restriction map dimension mismatch at construction', () => {
+it("throws on restriction map dimension mismatch at construction", () => {
   // Edge stalk dim = 2 but restriction map entries.length = 3 (should be 4 = 2*2).
-  expect(() => new CellularSheaf(vertices, [badEdge])).toThrow(/dimension mismatch/i);
+  expect(() => new CellularSheaf(vertices, [badEdge])).toThrow(
+    /dimension mismatch/i,
+  );
 });
 ```
 
@@ -826,24 +879,24 @@ Described in Section 3.3 above. This is the single most important test for corre
 **T4: L_sheaf is positive semidefinite**
 
 ```typescript
-it('Sheaf Laplacian is positive semidefinite (all eigenvalues >= 0)', () => {
+it("Sheaf Laplacian is positive semidefinite (all eigenvalues >= 0)", () => {
   const sheaf = buildFlatSheaf(4, 2);
   const L = sheaf.getSheafLaplacian();
   const { values } = math.eigs(L);
-  const eigenvalues = (values as number[]);
+  const eigenvalues = values as number[];
   expect(Math.min(...eigenvalues)).toBeGreaterThanOrEqual(-1e-12);
 });
 ```
 
-**T5: L_sheaf * x = 0 for known global section (flat sheaf)**
+**T5: L_sheaf \* x = 0 for known global section (flat sheaf)**
 
 The zero-energy test. For a flat sheaf with identity restriction maps, any constant section satisfies `Bx = 0`, so `L_sheaf x = 0`. Test with a non-trivial constant section.
 
 **T6: Flat sheaf H^0 and H^1 dimensions (connected graph)**
 
 ```typescript
-it('flat 3-vertex path sheaf: dim(H^0) = stalkDim, dim(H^1) = 0', () => {
-  const sheaf = buildFlatSheaf(3, 2, 'path'); // path graph
+it("flat 3-vertex path sheaf: dim(H^0) = stalkDim, dim(H^1) = 0", () => {
+  const sheaf = buildFlatSheaf(3, 2, "path"); // path graph
   const result = computeCohomology(sheaf);
   expect(result.h0Dimension).toBe(2);
   expect(result.h1Dimension).toBe(0);
@@ -857,16 +910,16 @@ Described in Section 5.2 above.
 **T8: H^1 event fires from CohomologyAnalyzer**
 
 ```typescript
-it('emits h1:non-trivial event when dim(H^1) > 0', async () => {
+it("emits h1:non-trivial event when dim(H^1) > 0", async () => {
   const analyzer = new CohomologyAnalyzer(buildThreeCycleInconsistentSheaf());
   const events: SheafH1ObstructionEvent[] = [];
-  analyzer.on('sheaf:h1-obstruction-detected', (e) => events.push(e));
+  analyzer.on("sheaf:h1-obstruction-detected", (e) => events.push(e));
 
   await analyzer.analyze();
 
   expect(events).toHaveLength(1);
   expect(events[0].h1Dimension).toBe(1);
-  expect(events[0].type).toBe('sheaf:h1-obstruction-detected');
+  expect(events[0].type).toBe("sheaf:h1-obstruction-detected");
 });
 ```
 
@@ -876,7 +929,7 @@ it('emits h1:non-trivial event when dim(H^1) > 0', async () => {
 // This test runs a static analysis check.
 // In CI, run: grep -r "from '.*\/lcm" src/sheaf/ — should be empty.
 // Implementation: write a simple file import scanner in the test.
-it('sheaf module has zero imports from lcm, tna, soc, orchestrator', () => {
+it("sheaf module has zero imports from lcm, tna, soc, orchestrator", () => {
   // Use fs.readFileSync on all .ts files in src/sheaf/
   // Assert no import path contains /lcm/, /tna/, /soc/, /orchestrator/
 });
@@ -885,20 +938,26 @@ it('sheaf module has zero imports from lcm, tna, soc, orchestrator', () => {
 **T10: ADMM interface forward-compatibility**
 
 ```typescript
-it('getCoboundaryMatrix() returns matrix with correct dimensions', () => {
-  const sheaf = buildFlatSheaf(3, 2, 'triangle');
+it("getCoboundaryMatrix() returns matrix with correct dimensions", () => {
+  const sheaf = buildFlatSheaf(3, 2, "triangle");
   const B = sheaf.getCoboundaryMatrix();
   expect(math.size(B)).toEqual([sheaf.c1Dimension, sheaf.c0Dimension]);
 });
 
-it('getVertexOffset() returns cumulative sum of preceding vertex stalk dims', () => {
+it("getVertexOffset() returns cumulative sum of preceding vertex stalk dims", () => {
   const sheaf = new CellularSheaf(
-    [{ id: 'v0', stalkSpace: { dim: 3 } }, { id: 'v1', stalkSpace: { dim: 2 } }, { id: 'v2', stalkSpace: { dim: 4 } }],
-    [/* edges */]
+    [
+      { id: "v0", stalkSpace: { dim: 3 } },
+      { id: "v1", stalkSpace: { dim: 2 } },
+      { id: "v2", stalkSpace: { dim: 4 } },
+    ],
+    [
+      /* edges */
+    ],
   );
-  expect(sheaf.getVertexOffset('v0')).toBe(0);
-  expect(sheaf.getVertexOffset('v1')).toBe(3);
-  expect(sheaf.getVertexOffset('v2')).toBe(5);
+  expect(sheaf.getVertexOffset("v0")).toBe(0);
+  expect(sheaf.getVertexOffset("v1")).toBe(3);
+  expect(sheaf.getVertexOffset("v2")).toBe(5);
 });
 ```
 
@@ -912,12 +971,21 @@ interface ADMMSolverInterface {
    * Run one ADMM iteration.
    * Returns the updated C^0 vector (all agent states concatenated).
    */
-  step(x: Float64Array, z: Float64Array, u: Float64Array, rho: number): ADMMStepResult;
+  step(
+    x: Float64Array,
+    z: Float64Array,
+    u: Float64Array,
+    rho: number,
+  ): ADMMStepResult;
 
   /**
    * Check convergence: primal residual ||Bx - z|| and dual residual ||rho * B^T(z - z_prev)||
    */
-  checkConvergence(x: Float64Array, z: Float64Array, zPrev: Float64Array): ConvergenceResult;
+  checkConvergence(
+    x: Float64Array,
+    z: Float64Array,
+    zPrev: Float64Array,
+  ): ConvergenceResult;
 
   /** The sheaf this solver operates on. */
   readonly sheaf: CellularSheaf;
@@ -989,8 +1057,11 @@ The `CohomologyAnalyzer` must emit events in Phase 1 that the Phase 5 Orchestrat
 ```typescript
 // CohomologyAnalyzer.ts
 
-import { EventEmitter } from 'events';
-import type { SheafH1ObstructionEvent, SheafConsensusReachedEvent } from '../types/Events';
+import { EventEmitter } from "events";
+import type {
+  SheafH1ObstructionEvent,
+  SheafConsensusReachedEvent,
+} from "../types/Events";
 
 export class CohomologyAnalyzer extends EventEmitter {
   analyze(sheaf: CellularSheaf, iteration: number): CohomologyResult {
@@ -998,21 +1069,21 @@ export class CohomologyAnalyzer extends EventEmitter {
 
     if (result.hasObstruction) {
       const event: SheafH1ObstructionEvent = {
-        type: 'sheaf:h1-obstruction-detected',
+        type: "sheaf:h1-obstruction-detected",
         iteration,
         h1Dimension: result.h1Dimension,
         h1Basis: result.h1Basis,
         affectedVertices: this.findAffectedVertices(result, sheaf),
       };
-      this.emit('sheaf:h1-obstruction-detected', event);
+      this.emit("sheaf:h1-obstruction-detected", event);
     } else {
       const event: SheafConsensusReachedEvent = {
-        type: 'sheaf:consensus-reached',
+        type: "sheaf:consensus-reached",
         iteration,
         h0Dimension: result.h0Dimension,
         dirichletEnergy: this.computeDirichletEnergy(sheaf),
       };
-      this.emit('sheaf:consensus-reached', event);
+      this.emit("sheaf:consensus-reached", event);
     }
 
     return result;
@@ -1073,7 +1144,10 @@ Factory function: `buildThreeCycleInconsistentSheaf()` — fully specified in Se
 For numerical stress tests of the SVD tolerance computation, use random restriction maps:
 
 ```typescript
-function buildRandomSheaf(numVertices: number, numEdges: number): CellularSheaf {
+function buildRandomSheaf(
+  numVertices: number,
+  numEdges: number,
+): CellularSheaf {
   // Random stalk dimensions between 2 and 5.
   // Random restriction map entries from N(0, 1).
   // The resulting H^1 dimension is random but the SVD tolerance calibration is exercised.
@@ -1104,7 +1178,7 @@ PITFALLS.md warns: "Mock restriction maps as random matrices: never in integrati
 
 ### Risk 3: SVD Performance for Large Sheaves (LOW for Phase 1, MEDIUM later)
 
-**Unknown:** `ml-matrix`'s `SingularValueDecomposition` is O(min(N0, N1) * N0 * N1) which is acceptable for Phase 1 test sheaves (N0, N1 < 100) but will be slow for production sheaves with 100+ agents and 10D stalks (N0 ≈ 1000, N1 ≈ 1000).
+**Unknown:** `ml-matrix`'s `SingularValueDecomposition` is O(min(N0, N1) _ N0 _ N1) which is acceptable for Phase 1 test sheaves (N0, N1 < 100) but will be slow for production sheaves with 100+ agents and 10D stalks (N0 ≈ 1000, N1 ≈ 1000).
 
 **Mitigation:** Phase 1 does not need to optimize this. Document the known computational bottleneck as a comment in `CohomologyAnalyzer.ts`:
 
@@ -1142,30 +1216,35 @@ PITFALLS.md warns: "Mock restriction maps as random matrices: never in integrati
 The recommended commit sequence within Phase 1:
 
 **Commit 1: Shared types**
+
 - `src/types/GraphTypes.ts` — All sheaf types (StalkSpace, StalkVector, RestrictionMap, SheafVertex, SheafEdge, CohomologyResult, SheafEigenspectrum)
 - `src/types/Events.ts` — SheafEvent union type (SheafH1ObstructionEvent, SheafConsensusReachedEvent)
 - No implementation code, no library imports, no tests yet.
 
 **Commit 2: CellularSheaf with construction validation and dimension methods**
+
 - `src/sheaf/CellularSheaf.ts` — Constructor with dimension mismatch validation; `c0Dimension`, `c1Dimension`, `getVertexOffset`, `getEdgeOffset`, `getVertexIds`, `getEdgeIds`
 - `src/sheaf/CellularSheaf.test.ts` — T1 (dimension assertions) and T2 (construction rejection)
 - Test helpers: `src/sheaf/helpers/flatSheafFactory.ts`
 
 **Commit 3: Coboundary operator and Sheaf Laplacian**
+
 - `src/sheaf/CoboundaryOperator.ts` — `buildCoboundaryMatrix()` using mathjs
 - `src/sheaf/SheafLaplacian.ts` — `build()`, `getSheafLaplacian()`, `getCoboundaryMatrix()`, `getEigenspectrum()`
 - `src/sheaf/CoboundaryOperator.test.ts` — T3 (hand-computed 2-vertex verification)
-- `src/sheaf/SheafLaplacian.test.ts` — T4 (PSD), T5 (L*x=0 for section), T6 (flat sheaf H^0/H^1 dims)
+- `src/sheaf/SheafLaplacian.test.ts` — T4 (PSD), T5 (L\*x=0 for section), T6 (flat sheaf H^0/H^1 dims)
 - Both flat sheaf test config AND (in same commit) the 3-cycle inconsistency helper.
 
 **Commit 3 must contain both test configurations.** This is the pitfall guard: if only the flat sheaf test exists after this commit, CI cannot distinguish correct from incorrect implementation.
 
 **Commit 4: Cohomology analyzer with H^1 detection and event emission**
+
 - `src/sheaf/CohomologyAnalyzer.ts` — `computeCohomology()` using ml-matrix SVD; calibrated tolerance; `EventEmitter`-based event emission
 - `src/sheaf/helpers/threeCycleFactory.ts` — `buildThreeCycleInconsistentSheaf()`
 - `src/sheaf/CohomologyAnalyzer.test.ts` — T7 (3-cycle produces H^1=1), T8 (event fires), tolerance sensitivity tests
 
 **Commit 5: ADMM solver interface stub + isolation test**
+
 - `src/sheaf/ADMMSolver.ts` — Interface + gradient descent implementation (real ADMM in Phase 2)
 - `src/sheaf/ADMMInterface.test.ts` — T10 (forward-compat interface tests)
 - `src/sheaf/isolation.test.ts` — T9 (no cross-module imports)
@@ -1179,16 +1258,16 @@ The recommended commit sequence within Phase 1:
 
 These decisions in Phase 1 affect future phases and cannot easily be changed later:
 
-| Decision | Choice | Rationale | Affects |
-|----------|--------|-----------|---------|
-| `CellularSheaf` immutable vs. mutable | **Mutable** with explicit `rebuildLaplacian()` | Graph evolves as agents are added/removed; frozen sheaf cannot support this | Phase 2 ADMM, Phase 5 Orchestrator |
-| Restriction map representation | **Dense `Float64Array` in row-major order** | Compatible with mathjs matrix assembly; no indirection cost | All sheaf internals |
-| `getCoboundaryMatrix()` is public | **Yes** | ADMM `x`-update step needs `B` directly | Phase 2 ADMM solver |
-| Event emission mechanism | **Node.js `EventEmitter`** | Standard; Phase 5 EventBus wraps it; no rewiring needed | Phase 5 Orchestrator |
-| Eigenspectrum type | **`Float64Array` with `computedAtIteration: number`** | Enables SOC to cache and invalidate; iteration tracking from Phase 1 | Phase 4 SOC VonNeumannEntropy |
-| Tolerance parameterization | **Calibrated default + override parameter** | Lets Phase 4 tests validate the sensitivity to tolerance | Phase 4 SOC |
-| Stalk space representation | **`StalkSpace { dim: number }` interface** | Minimal; does not assume Euclidean, allows future Hilbert space generalization | Phase 4 SOC entropy, Phase 5 orchestrator state |
-| `SheafEdge` orientation | **Fixed at construction: `sourceVertex → targetVertex`** | Must be immutable; orientation reversal is a silent bug | All coboundary computations |
+| Decision                              | Choice                                                   | Rationale                                                                      | Affects                                         |
+| ------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `CellularSheaf` immutable vs. mutable | **Mutable** with explicit `rebuildLaplacian()`           | Graph evolves as agents are added/removed; frozen sheaf cannot support this    | Phase 2 ADMM, Phase 5 Orchestrator              |
+| Restriction map representation        | **Dense `Float64Array` in row-major order**              | Compatible with mathjs matrix assembly; no indirection cost                    | All sheaf internals                             |
+| `getCoboundaryMatrix()` is public     | **Yes**                                                  | ADMM `x`-update step needs `B` directly                                        | Phase 2 ADMM solver                             |
+| Event emission mechanism              | **Node.js `EventEmitter`**                               | Standard; Phase 5 EventBus wraps it; no rewiring needed                        | Phase 5 Orchestrator                            |
+| Eigenspectrum type                    | **`Float64Array` with `computedAtIteration: number`**    | Enables SOC to cache and invalidate; iteration tracking from Phase 1           | Phase 4 SOC VonNeumannEntropy                   |
+| Tolerance parameterization            | **Calibrated default + override parameter**              | Lets Phase 4 tests validate the sensitivity to tolerance                       | Phase 4 SOC                                     |
+| Stalk space representation            | **`StalkSpace { dim: number }` interface**               | Minimal; does not assume Euclidean, allows future Hilbert space generalization | Phase 4 SOC entropy, Phase 5 orchestrator state |
+| `SheafEdge` orientation               | **Fixed at construction: `sourceVertex → targetVertex`** | Must be immutable; orientation reversal is a silent bug                        | All coboundary computations                     |
 
 ---
 
@@ -1221,6 +1300,6 @@ Cross-referenced from ROADMAP.md Phase 1 success criteria:
 
 ---
 
-*Phase 1 research completed: 2026-02-27*
-*Ready for implementation planning: yes*
-*Blocking open questions: see Section 9 (Risks 1 and 2) — must be resolved before Phase 4 and Phase 2 ADMM respectively*
+_Phase 1 research completed: 2026-02-27_
+_Ready for implementation planning: yes_
+_Blocking open questions: see Section 9 (Risks 1 and 2) — must be resolved before Phase 4 and Phase 2 ADMM respectively_

@@ -26,8 +26,8 @@
  *   - ExpandLevel: discriminated union for type-safe yields
  */
 
-import type { ExpandLevel } from './interfaces.js';
-import { ContextDAG } from './ContextDAG.js';
+import type { ExpandLevel } from "./interfaces.js";
+import { ContextDAG } from "./ContextDAG.js";
 
 /**
  * lcm_expand(summaryNodeId, dag) — async generator for hierarchical context traversal.
@@ -62,7 +62,7 @@ export async function* lcm_expand(
 
   // Step 2: Yield the summary as the first item (highest-level, most compressed).
   yield {
-    kind: 'summary',
+    kind: "summary",
     nodeId: summaryNodeId,
     content: summary.content,
   };
@@ -72,7 +72,7 @@ export async function* lcm_expand(
   // Each compression is a compressed view of a subset of entries.
   for (const compression of summary.intermediateCompressions) {
     yield {
-      kind: 'compression',
+      kind: "compression",
       level: compression.level,
       content: compression.content,
       pointsTo: compression.childIds,
@@ -86,7 +86,7 @@ export async function* lcm_expand(
     const entry = dag.getEntry(entryId);
     if (entry !== undefined) {
       yield {
-        kind: 'entry',
+        kind: "entry",
         entryId,
         content: entry.content,
         tokenCount: entry.tokenCount,

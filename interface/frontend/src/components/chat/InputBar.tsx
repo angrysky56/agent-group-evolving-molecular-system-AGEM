@@ -33,7 +33,7 @@ export function InputBar({ onSend }: Props) {
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend],
   );
 
   const handleInput = useCallback(() => {

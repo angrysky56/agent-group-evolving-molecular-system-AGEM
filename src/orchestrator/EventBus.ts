@@ -14,11 +14,11 @@
  * No external npm dependencies.
  */
 
-import { EventEmitter } from 'node:events';
-import type { AnyEvent, EventSubscriber } from './interfaces.js';
+import { EventEmitter } from "node:events";
+import type { AnyEvent, EventSubscriber } from "./interfaces.js";
 
 // Re-export types for barrel-friendly imports
-export type { AnyEvent, EventSubscriber } from './interfaces.js';
+export type { AnyEvent, EventSubscriber } from "./interfaces.js";
 
 /**
  * EventBus — async event routing bus for orchestrator cross-component messaging.
@@ -113,7 +113,9 @@ export class EventBus {
    */
   async emit(event: AnyEvent): Promise<void> {
     const handlers = this.#subscribers.get(event.type) ?? [];
-    await Promise.all(handlers.map((handler) => Promise.resolve(handler(event))));
+    await Promise.all(
+      handlers.map((handler) => Promise.resolve(handler(event))),
+    );
   }
 
   /**

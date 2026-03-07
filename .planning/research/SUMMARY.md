@@ -22,6 +22,7 @@ The stack is purpose-built for algorithmic correctness over developer convenienc
 See [STACK.md](.planning/research/STACK.md) for full version table and alternatives considered.
 
 **Core technologies:**
+
 - `TypeScript 5.9.3` + `Node.js 22 LTS`: Implementation language and runtime — strict types enforce mathematical invariants; worker_threads enable llm_map parallelism
 - `@langchain/langgraph 1.2.0` + `@langchain/core 1.1.29`: Orchestration and LLM abstraction — StateGraph maps to stalk spaces; checkpointing satisfies LCM persistence
 - `graphology 0.26.0` + algorithm suite: Graph data structure for TNA semantic graph and Sheaf base space — the entire Louvain/betweenness/ForceAtlas2 ecosystem targets this exact API
@@ -34,6 +35,7 @@ See [STACK.md](.planning/research/STACK.md) for full version table and alternati
 - `vitest 4.0.18`: Test runner — native ESM, no CommonJS shims, `--pool=forks` for native module isolation
 
 **What NOT to use:**
+
 - `langchain` monolith v0.x (split package; causes bundle bloat and version conflicts)
 - Standard graph Laplacian (`D - A`) as a Sheaf Laplacian substitute (mathematically wrong; silent incorrect consensus)
 - `@tensorflow/tfjs-node` for SVD/eigenvalues (300+ MB, native build fragility; use `mathjs` + `ml-matrix`)
@@ -46,6 +48,7 @@ The MVP is defined by the requirement that all four mathematical properties oper
 See [FEATURES.md](.planning/research/FEATURES.md) for full dependency graph and prioritization matrix.
 
 **Must have (P1 — table stakes and core differentiators):**
+
 - Immutable append-only Interaction Log + `lcm_grep` + `lcm_expand` — deterministic retrieval foundation; no LLM inference in the retrieval path
 - Active Context DAG (SummaryNodes) + Three-level escalation protocol — liveness guarantee for long-horizon sessions; L3 deterministic truncation is the safety valve
 - Typed shared interfaces (`ContextState`, `GraphTypes`, `Events`) — must be defined first; everything else depends on these compiling
@@ -59,6 +62,7 @@ See [FEATURES.md](.planning/research/FEATURES.md) for full dependency graph and 
 - Obstruction-driven graph reconfiguration — H1-to-exploration feedback loop; the self-healing pattern is a core architectural claim
 
 **Should have (P2 — add after core validated):**
+
 - ADMM distributed consensus solver — convergence-guaranteed consensus; add after Sheaf Laplacian is unit-tested
 - Phase transition detector (dynamic cross-correlation sign change, NOT hard-coded iteration 400) — add after CDP tracking is stable over 400+ iterations
 - GraphRAG catalyst question generation at structural gaps — add after gap detection produces correct coordinates
@@ -68,6 +72,7 @@ See [FEATURES.md](.planning/research/FEATURES.md) for full dependency graph and 
 - SQLite persistence for ImmutableStore — swap from in-memory once in-memory proves correct
 
 **Defer (P3 / v2+):**
+
 - Hierarchical compositional reasoning with category-theoretic framing
 - Preferential attachment monitoring and scale-free degree distribution verification
 - Surprising edge ratio active control (passive tracking in v1; active feedback controller is a separate research problem)
@@ -75,6 +80,7 @@ See [FEATURES.md](.planning/research/FEATURES.md) for full dependency graph and 
 - Distributed agent execution across machines
 
 **Anti-features (do not build in v1):**
+
 - Web UI / visualization dashboard (separate application; exposes JSON/event stream for consumers to visualize)
 - Centralized consensus controller (defeats the decentralized coordination property)
 - LLM inference inside LCM primitives (destroys determinism)
@@ -88,6 +94,7 @@ The architecture enforces a strict layered dependency hierarchy with a single co
 See [ARCHITECTURE.md](.planning/research/ARCHITECTURE.md) for full data flow diagrams, integration boundary table, and build order.
 
 **Major components:**
+
 1. `src/types/` — Shared interfaces (`ContextState`, `GraphTypes`, `Events`); no dependencies; must be defined first
 2. `src/lcm/` — Immutable Store, Context DAG, SummaryNodes, EscalationProtocol, `lcm_grep`, `lcm_expand`; deterministic memory foundation
 3. `src/sheaf/` — CellularSheaf, Stalk, RestrictionMap, SheafLaplacian, CohomologyAnalyzer, ADMMSolver; depends only on types
@@ -96,6 +103,7 @@ See [ARCHITECTURE.md](.planning/research/ARCHITECTURE.md) for full data flow dia
 6. `src/orchestrator/` — AGEMOrchestrator, `llm_map`, EventBus, AgentPool; imports from all four modules; integration tests live here
 
 **Critical integration points:**
+
 - Orchestrator -> Sheaf: reads Sheaf graph eigenspectrum; passes to VonNeumannEntropy (Sheaf does not know SOC exists)
 - Orchestrator -> TNA: reads SemanticGraph diversity; passes to EmbeddingEntropy (TNA does not know SOC exists)
 - CohomologyAnalyzer -> Orchestrator: `h1:non-trivial` event triggers GapDetector lookup and exploratory agent spawn
@@ -201,23 +209,25 @@ Based on the dependency graph in FEATURES.md and the build order in ARCHITECTURE
 ### Research Flags
 
 Phases likely needing deeper research during planning:
+
 - **Phase 1 (Sheaf):** The ADMM solver (P2) requires distributed optimization theory; may need dedicated research into convergence guarantees for the specific stalk dimension configurations used. The restriction map design for heterogeneous agents (different observation dimensions, asymmetric communication) needs concrete examples before implementation.
 - **Phase 4 (SOC):** The random projection approach for embedding entropy reduction (Johnson-Lindenstrauss) needs empirical validation that the entropy approximation error remains bounded for the embedding dimensions and concept counts this project targets.
 - **Phase 5 (Orchestrator):** The three-mode state machine (NORMAL/OBSTRUCTED/CRITICAL) transition logic needs precise specification: exact conditions for entering OBSTRUCTED from NORMAL, and whether CRITICAL is re-entrant or terminal.
 
 Phases with standard patterns (skip additional research):
+
 - **Phase 2 (LCM):** The append-only log, DAG structure, and three-level summarization protocol are fully specified in the LCM paper (arXiv:2602.22402) and do not require additional research.
 - **Phase 3 (TNA — NLP pipeline):** InfraNodus methodology is thoroughly documented; `natural`, `stopword`, `wink-lemmatizer`, and `graphology-communities-louvain` are well-understood libraries with stable APIs.
 - **Phase 6 (P2 enhancements):** Each P2 feature has an explicit trigger condition and is added incrementally; no new research needed beyond what is already in the research files.
 
 ## Confidence Assessment
 
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | HIGH | All version numbers verified against npm registry 2026-02-27; LangGraph, graphology, mathjs APIs verified via Context7; peer dependency compatibility matrix documented |
-| Features | HIGH | Feature set derived directly from the primary framework document; competitor analysis confirms differentiators; dependency graph is complete and consistent |
-| Architecture | HIGH | Layered dependency pattern is a standard TypeScript multi-module pattern; data flow diagrams verified against the four framework paper sources; build order follows strict topological sort of dependencies |
-| Pitfalls | HIGH | Each pitfall traced to a specific academic source with warning signs and recovery cost estimates; cross-referenced with community reports (Hacker News LCM discussion, LangGraph production experience) |
+| Area         | Confidence | Notes                                                                                                                                                                                                       |
+| ------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stack        | HIGH       | All version numbers verified against npm registry 2026-02-27; LangGraph, graphology, mathjs APIs verified via Context7; peer dependency compatibility matrix documented                                     |
+| Features     | HIGH       | Feature set derived directly from the primary framework document; competitor analysis confirms differentiators; dependency graph is complete and consistent                                                 |
+| Architecture | HIGH       | Layered dependency pattern is a standard TypeScript multi-module pattern; data flow diagrams verified against the four framework paper sources; build order follows strict topological sort of dependencies |
+| Pitfalls     | HIGH       | Each pitfall traced to a specific academic source with warning signs and recovery cost estimates; cross-referenced with community reports (Hacker News LCM discussion, LangGraph production experience)     |
 
 **Overall confidence:** HIGH
 
@@ -231,6 +241,7 @@ Phases with standard patterns (skip additional research):
 ## Sources
 
 ### Primary (HIGH confidence)
+
 - `/langchain-ai/langgraphjs` (Context7) — LangGraph multi-agent patterns, StateGraph API, Supervisor/Network topologies, Command routing
 - `/graphology/graphology` (Context7) — Louvain community detection, betweenness centrality, ForceAtlas2 layout API
 - `/josdejong/mathjs` (Context7) — `eigs()` complex matrix support, coboundary operator construction
@@ -239,6 +250,7 @@ Phases with standard patterns (skip additional research):
 - `docs/RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md` — Primary framework specification; all mathematical requirements
 
 ### Secondary (MEDIUM confidence)
+
 - arXiv:2602.22402 (Voltropy LCM paper) — LCM three-level escalation, immutable store architecture, llm_map primitive
 - arXiv:2504.17700v1 — Applied Sheaf Theory For Multi-Agent AI: Sheaf Laplacian formulation, H^1 obstruction detection
 - arXiv:2504.02049 — Distributed Multi-agent Coordination over Cellular Sheaves: ADMM-based diffusion, stalk dimension handling
@@ -247,9 +259,11 @@ Phases with standard patterns (skip additional research):
 - InfraNodus documentation — 4-gram sliding window, TF-IDF, Louvain, betweenness centrality, structural gap methodology
 
 ### Tertiary (LOW confidence)
+
 - OpenReview: "Sheaf Cohomology of Linear Predictive Coding Networks" — H^0/H^1 interpretation, inconsistent cognitive loop detection; non-peer-reviewed at time of research
 - Hacker News discussion of LCM paper (item 47038411) — community-identified implementation risks around context compaction failure; anecdotal but corroborates the Level 3 pitfall
 
 ---
-*Research completed: 2026-02-27*
-*Ready for roadmap: yes*
+
+_Research completed: 2026-02-27_
+_Ready for roadmap: yes_

@@ -15,11 +15,11 @@
  *   For non-flat sheaves: L_sheaf differs from L_graph tensor I_d.
  */
 
-import { describe, it, expect } from 'vitest';
-import * as math from 'mathjs';
-import { SheafLaplacian } from './SheafLaplacian.js';
-import { buildFlatSheaf } from './helpers/flatSheafFactory.js';
-import { buildThreeCycleInconsistentSheaf } from './helpers/threeCycleFactory.js';
+import { describe, it, expect } from "vitest";
+import * as math from "mathjs";
+import { SheafLaplacian } from "./SheafLaplacian.js";
+import { buildFlatSheaf } from "./helpers/flatSheafFactory.js";
+import { buildThreeCycleInconsistentSheaf } from "./helpers/threeCycleFactory.js";
 
 // ---------------------------------------------------------------------------
 // Helper: compute eigenvalues of a mathjs matrix
@@ -48,14 +48,14 @@ function norm(v: number[]): number {
 // T4: Sheaf Laplacian is positive semidefinite
 // ---------------------------------------------------------------------------
 
-describe('T4: Sheaf Laplacian is positive semidefinite', () => {
-  it('T4.1: all eigenvalues >= -1e-12 for 4-vertex complete flat sheaf (2D stalks)', () => {
+describe("T4: Sheaf Laplacian is positive semidefinite", () => {
+  it("T4.1: all eigenvalues >= -1e-12 for 4-vertex complete flat sheaf (2D stalks)", () => {
     /**
      * 4 vertices, 2D stalks, complete graph topology (6 edges).
      * N_0 = 8, N_1 = 12. L_sheaf is 8x8.
      * For a flat sheaf, L_sheaf = L_graph tensor I_2 which is PSD by standard theory.
      */
-    const sheaf = buildFlatSheaf(4, 2, 'complete');
+    const sheaf = buildFlatSheaf(4, 2, "complete");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
     const eigenvalues = getEigenvalues(L);
@@ -65,8 +65,8 @@ describe('T4: Sheaf Laplacian is positive semidefinite', () => {
     }
   });
 
-  it('T4.2: all eigenvalues >= -1e-12 for 3-vertex path flat sheaf (3D stalks)', () => {
-    const sheaf = buildFlatSheaf(3, 3, 'path');
+  it("T4.2: all eigenvalues >= -1e-12 for 3-vertex path flat sheaf (3D stalks)", () => {
+    const sheaf = buildFlatSheaf(3, 3, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
     const eigenvalues = getEigenvalues(L);
@@ -76,7 +76,7 @@ describe('T4: Sheaf Laplacian is positive semidefinite', () => {
     }
   });
 
-  it('T4.3: all eigenvalues >= -1e-12 for three-cycle inconsistency sheaf (non-flat)', () => {
+  it("T4.3: all eigenvalues >= -1e-12 for three-cycle inconsistency sheaf (non-flat)", () => {
     /**
      * The three-cycle inconsistency sheaf is non-flat and has H^1 != 0.
      * But L_sheaf = B^T B is still PSD by construction.
@@ -91,8 +91,8 @@ describe('T4: Sheaf Laplacian is positive semidefinite', () => {
     }
   });
 
-  it('T4.4: L_sheaf is symmetric (max |L[i][j] - L[j][i]| < 1e-14)', () => {
-    const sheaf = buildFlatSheaf(4, 2, 'complete');
+  it("T4.4: L_sheaf is symmetric (max |L[i][j] - L[j][i]| < 1e-14)", () => {
+    const sheaf = buildFlatSheaf(4, 2, "complete");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
     const arr = L.toArray() as number[][];
@@ -110,7 +110,7 @@ describe('T4: Sheaf Laplacian is positive semidefinite', () => {
 // T5: L_sheaf * x = 0 for known global sections (flat sheaf)
 // ---------------------------------------------------------------------------
 
-describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
+describe("T5: L_sheaf * x = 0 for known global sections of flat sheaf", () => {
   /**
    * Flat sheaf: 3 vertices, 2D stalks, path topology.
    * N_0 = 6 (v0=[0:2], v1=[2:4], v2=[4:6]).
@@ -121,8 +121,8 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
    *
    * These span the 2D null space of L_sheaf (dim(H^0) = 2).
    */
-  it('T5.1: ||L * x1|| < 1e-12 for constant section x1 = [1,0,1,0,1,0]', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T5.1: ||L * x1|| < 1e-12 for constant section x1 = [1,0,1,0,1,0]", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
 
@@ -130,13 +130,13 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
     const Lx1Raw = math.multiply(L, x1);
     const Lx1: number[] = Array.isArray(Lx1Raw)
       ? (Lx1Raw as number[])
-      : (Lx1Raw as math.Matrix).toArray() as number[];
+      : ((Lx1Raw as math.Matrix).toArray() as number[]);
 
     expect(norm(Lx1)).toBeLessThan(1e-12);
   });
 
-  it('T5.2: ||L * x2|| < 1e-12 for constant section x2 = [0,1,0,1,0,1]', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T5.2: ||L * x2|| < 1e-12 for constant section x2 = [0,1,0,1,0,1]", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
 
@@ -144,12 +144,12 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
     const Lx2Raw = math.multiply(L, x2);
     const Lx2: number[] = Array.isArray(Lx2Raw)
       ? (Lx2Raw as number[])
-      : (Lx2Raw as math.Matrix).toArray() as number[];
+      : ((Lx2Raw as math.Matrix).toArray() as number[]);
 
     expect(norm(Lx2)).toBeLessThan(1e-12);
   });
 
-  it('T5.3: both constant sections span a 2D null space (dim(H^0) >= 2)', () => {
+  it("T5.3: both constant sections span a 2D null space (dim(H^0) >= 2)", () => {
     /**
      * x1 = [1,0,1,0,1,0] and x2 = [0,1,0,1,0,1] are orthogonal.
      * Both are in ker(L_sheaf).
@@ -165,13 +165,13 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
     expect(Math.abs(dot)).toBeLessThan(1e-14);
   });
 
-  it('T5.4: non-constant section is NOT in ker(L), i.e., ||L * y|| > 0', () => {
+  it("T5.4: non-constant section is NOT in ker(L), i.e., ||L * y|| > 0", () => {
     /**
      * y = [1, 0, 0, 1, 1, 0] is NOT a constant section.
      * v0=[1,0], v1=[0,1], v2=[1,0] — the three agents disagree.
      * So L * y != 0.
      */
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
 
@@ -179,7 +179,7 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
     const LyRaw = math.multiply(L, y);
     const Ly: number[] = Array.isArray(LyRaw)
       ? (LyRaw as number[])
-      : (LyRaw as math.Matrix).toArray() as number[];
+      : ((LyRaw as math.Matrix).toArray() as number[]);
 
     expect(norm(Ly)).toBeGreaterThan(0.1);
   });
@@ -189,7 +189,7 @@ describe('T5: L_sheaf * x = 0 for known global sections of flat sheaf', () => {
 // T5b: Discrimination test — L_sheaf differs from L_graph tensor I_d for non-flat sheaf
 // ---------------------------------------------------------------------------
 
-describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
+describe("T5b: L_sheaf vs L_graph tensor I_2 discrimination test", () => {
   /**
    * For a FLAT sheaf, L_sheaf = L_graph tensor I_d (both are equivalent).
    * For a NON-FLAT sheaf (like the three-cycle), they differ.
@@ -206,7 +206,7 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
    *
    * These must be different matrices for the three-cycle sheaf.
    */
-  it('T5b.1: L_sheaf for three-cycle differs from L_graph_triangle tensor I_2', () => {
+  it("T5b.1: L_sheaf for three-cycle differs from L_graph_triangle tensor I_2", () => {
     const sheaf = buildThreeCycleInconsistentSheaf();
     const laplacian = new SheafLaplacian(sheaf);
     const L_sheaf = laplacian.getSheafLaplacian();
@@ -220,7 +220,11 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
     //
     // L_graph tensor I_2 is the 6x6 block matrix:
     //   Each scalar entry L[i,j] becomes a 2x2 block: L[i,j] * I_2
-    const L_graph = [[2, -1, -1], [-1, 2, -1], [-1, -1, 2]];
+    const L_graph = [
+      [2, -1, -1],
+      [-1, 2, -1],
+      [-1, -1, 2],
+    ];
     const L_tensor: number[][] = [];
     for (let r = 0; r < 6; r++) L_tensor.push(new Array(6).fill(0));
 
@@ -237,7 +241,10 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
     let maxDiff = 0;
     for (let r = 0; r < 6; r++) {
       for (let c = 0; c < 6; c++) {
-        maxDiff = Math.max(maxDiff, Math.abs(L_sheaf_arr[r][c] - L_tensor[r][c]));
+        maxDiff = Math.max(
+          maxDiff,
+          Math.abs(L_sheaf_arr[r][c] - L_tensor[r][c]),
+        );
       }
     }
 
@@ -248,19 +255,23 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
     expect(maxDiff).toBeGreaterThan(0.5);
   });
 
-  it('T5b.2: flat triangle L_sheaf equals L_graph_triangle tensor I_2 (positive control)', () => {
+  it("T5b.2: flat triangle L_sheaf equals L_graph_triangle tensor I_2 (positive control)", () => {
     /**
      * For FLAT sheaves, L_sheaf = L_graph tensor I_d.
      * This is a positive control: the flat triangle should match the Kronecker product.
      * This confirms our L_graph tensor I_2 construction is correct.
      */
-    const sheaf = buildFlatSheaf(3, 2, 'triangle');
+    const sheaf = buildFlatSheaf(3, 2, "triangle");
     const laplacian = new SheafLaplacian(sheaf);
     const L_sheaf = laplacian.getSheafLaplacian();
     const L_sheaf_arr = L_sheaf.toArray() as number[][];
 
     // L_graph for triangle:
-    const L_graph = [[2, -1, -1], [-1, 2, -1], [-1, -1, 2]];
+    const L_graph = [
+      [2, -1, -1],
+      [-1, 2, -1],
+      [-1, -1, 2],
+    ];
     const L_tensor: number[][] = [];
     for (let r = 0; r < 6; r++) L_tensor.push(new Array(6).fill(0));
 
@@ -274,7 +285,9 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
     // They should match within numerical tolerance.
     for (let r = 0; r < 6; r++) {
       for (let c = 0; c < 6; c++) {
-        expect(Math.abs(L_sheaf_arr[r][c] - L_tensor[r][c])).toBeLessThan(1e-12);
+        expect(Math.abs(L_sheaf_arr[r][c] - L_tensor[r][c])).toBeLessThan(
+          1e-12,
+        );
       }
     }
   });
@@ -284,7 +297,7 @@ describe('T5b: L_sheaf vs L_graph tensor I_2 discrimination test', () => {
 // T6: Flat sheaf H^0 and H^1 dimensions via eigenvalue counting
 // ---------------------------------------------------------------------------
 
-describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
+describe("T6: Flat sheaf cohomology dimensions via eigenvalue counting", () => {
   /**
    * For a flat sheaf on a connected graph, eigenvalue counting gives:
    *   dim(H^0) = number of eigenvalues < 1e-10 = stalkDim
@@ -294,18 +307,18 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
    *   1. Flat path (3 vertices, 2D stalks): N_1=4, N_0=6, H^0=2, H^1=0
    *   2. Flat triangle (3 vertices, 2D stalks): N_1=6, N_0=6, H^0=2, H^1=2
    */
-  it('T6.1: flat path dim(H^0) = 2 (stalkDim for connected graph)', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T6.1: flat path dim(H^0) = 2 (stalkDim for connected graph)", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const L = laplacian.getSheafLaplacian();
     const eigenvalues = getEigenvalues(L);
 
-    const nullDim = eigenvalues.filter(ev => ev < 1e-10).length;
+    const nullDim = eigenvalues.filter((ev) => ev < 1e-10).length;
     expect(nullDim).toBe(2); // dim(H^0) = stalkDim = 2
   });
 
-  it('T6.2: flat path dim(H^1) = 0 (tree topology, no cycles)', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T6.2: flat path dim(H^1) = 0 (tree topology, no cycles)", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     // N_1 = 2 edges * 2D = 4, N_0 = 3 vertices * 2D = 6
     const N1 = sheaf.c1Dimension; // 4
     const N0 = sheaf.c0Dimension; // 6
@@ -314,15 +327,15 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
     const L = laplacian.getSheafLaplacian();
     const eigenvalues = getEigenvalues(L);
 
-    const h0 = eigenvalues.filter(ev => ev < 1e-10).length; // 2
+    const h0 = eigenvalues.filter((ev) => ev < 1e-10).length; // 2
     const h1 = N1 - N0 + h0; // 4 - 6 + 2 = 0
 
     expect(h0).toBe(2);
     expect(h1).toBe(0);
   });
 
-  it('T6.3: flat triangle dim(H^0) = 2 and dim(H^1) = 2 (one cycle)', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'triangle');
+  it("T6.3: flat triangle dim(H^0) = 2 and dim(H^1) = 2 (one cycle)", () => {
+    const sheaf = buildFlatSheaf(3, 2, "triangle");
     // N_1 = 3 edges * 2D = 6, N_0 = 3 vertices * 2D = 6
     const N1 = sheaf.c1Dimension; // 6
     const N0 = sheaf.c0Dimension; // 6
@@ -331,14 +344,14 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
     const L = laplacian.getSheafLaplacian();
     const eigenvalues = getEigenvalues(L);
 
-    const h0 = eigenvalues.filter(ev => ev < 1e-10).length; // 2
+    const h0 = eigenvalues.filter((ev) => ev < 1e-10).length; // 2
     const h1 = N1 - N0 + h0; // 6 - 6 + 2 = 2
 
     expect(h0).toBe(2); // dim(H^0) = stalkDim for flat sheaf on connected graph
     expect(h1).toBe(2); // dim(H^1) = 2 for flat 2D sheaf on a triangle
   });
 
-  it('T6.4: Euler characteristic: chi = dim(H^0) - dim(H^1) = chi_graph * stalkDim', () => {
+  it("T6.4: Euler characteristic: chi = dim(H^0) - dim(H^1) = chi_graph * stalkDim", () => {
     /**
      * For a flat sheaf: chi_sheaf = chi_graph * stalkDim.
      * For path graph: chi_graph = |V| - |E| = 3 - 2 = 1.
@@ -349,8 +362,8 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
      * chi_sheaf = 0 * 2 = 0.
      * chi_sheaf = 2 - 2 = 0. Verified.
      */
-    const pathSheaf = buildFlatSheaf(3, 2, 'path');
-    const triangleSheaf = buildFlatSheaf(3, 2, 'triangle');
+    const pathSheaf = buildFlatSheaf(3, 2, "path");
+    const triangleSheaf = buildFlatSheaf(3, 2, "triangle");
 
     const pathLap = new SheafLaplacian(pathSheaf);
     const triangleLap = new SheafLaplacian(triangleSheaf);
@@ -358,11 +371,12 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
     const pathEigenvalues = getEigenvalues(pathLap.getSheafLaplacian());
     const triangleEigenvalues = getEigenvalues(triangleLap.getSheafLaplacian());
 
-    const pathH0 = pathEigenvalues.filter(ev => ev < 1e-10).length;
+    const pathH0 = pathEigenvalues.filter((ev) => ev < 1e-10).length;
     const pathH1 = pathSheaf.c1Dimension - pathSheaf.c0Dimension + pathH0;
 
-    const triangleH0 = triangleEigenvalues.filter(ev => ev < 1e-10).length;
-    const triangleH1 = triangleSheaf.c1Dimension - triangleSheaf.c0Dimension + triangleH0;
+    const triangleH0 = triangleEigenvalues.filter((ev) => ev < 1e-10).length;
+    const triangleH1 =
+      triangleSheaf.c1Dimension - triangleSheaf.c0Dimension + triangleH0;
 
     // chi for path: chi = H0 - H1 = 2 - 0 = 2 = stalkDim * chi_graph = 2 * 1
     expect(pathH0 - pathH1).toBe(2);
@@ -376,9 +390,9 @@ describe('T6: Flat sheaf cohomology dimensions via eigenvalue counting', () => {
 // T6b: Eigenspectrum output format
 // ---------------------------------------------------------------------------
 
-describe('T6b: Eigenspectrum output format', () => {
-  it('T6b.1: getEigenspectrum returns Float64Array of length N_0', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+describe("T6b: Eigenspectrum output format", () => {
+  it("T6b.1: getEigenspectrum returns Float64Array of length N_0", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const spectrum = laplacian.getEigenspectrum();
 
@@ -386,8 +400,8 @@ describe('T6b: Eigenspectrum output format', () => {
     expect(spectrum.eigenvalues.length).toBe(sheaf.c0Dimension); // N_0 = 6
   });
 
-  it('T6b.2: eigenvalues are sorted ascending', () => {
-    const sheaf = buildFlatSheaf(4, 2, 'complete');
+  it("T6b.2: eigenvalues are sorted ascending", () => {
+    const sheaf = buildFlatSheaf(4, 2, "complete");
     const laplacian = new SheafLaplacian(sheaf);
     const spectrum = laplacian.getEigenspectrum();
     const evs = spectrum.eigenvalues;
@@ -397,8 +411,8 @@ describe('T6b: Eigenspectrum output format', () => {
     }
   });
 
-  it('T6b.3: all eigenvalues >= -1e-12', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'triangle');
+  it("T6b.3: all eigenvalues >= -1e-12", () => {
+    const sheaf = buildFlatSheaf(3, 2, "triangle");
     const laplacian = new SheafLaplacian(sheaf);
     const spectrum = laplacian.getEigenspectrum();
 
@@ -407,15 +421,15 @@ describe('T6b: Eigenspectrum output format', () => {
     }
   });
 
-  it('T6b.4: computedAtIteration defaults to 0 in Phase 1', () => {
-    const sheaf = buildFlatSheaf(2, 2, 'path');
+  it("T6b.4: computedAtIteration defaults to 0 in Phase 1", () => {
+    const sheaf = buildFlatSheaf(2, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
     const spectrum = laplacian.getEigenspectrum();
 
     expect(spectrum.computedAtIteration).toBe(0);
   });
 
-  it('T6b.5: eigenspectrum length matches c0Dimension for three-cycle (N_0 = 6)', () => {
+  it("T6b.5: eigenspectrum length matches c0Dimension for three-cycle (N_0 = 6)", () => {
     const sheaf = buildThreeCycleInconsistentSheaf();
     const laplacian = new SheafLaplacian(sheaf);
     const spectrum = laplacian.getEigenspectrum();
@@ -423,8 +437,8 @@ describe('T6b: Eigenspectrum output format', () => {
     expect(spectrum.eigenvalues.length).toBe(6); // c0Dimension = 6
   });
 
-  it('T6b.6: caching — getSheafLaplacian twice returns same matrix reference', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T6b.6: caching — getSheafLaplacian twice returns same matrix reference", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
 
     const L1 = laplacian.getSheafLaplacian();
@@ -434,8 +448,8 @@ describe('T6b: Eigenspectrum output format', () => {
     expect(L1).toBe(L2);
   });
 
-  it('T6b.7: invalidateCache forces recomputation on next call', () => {
-    const sheaf = buildFlatSheaf(3, 2, 'path');
+  it("T6b.7: invalidateCache forces recomputation on next call", () => {
+    const sheaf = buildFlatSheaf(3, 2, "path");
     const laplacian = new SheafLaplacian(sheaf);
 
     const L1 = laplacian.getSheafLaplacian();

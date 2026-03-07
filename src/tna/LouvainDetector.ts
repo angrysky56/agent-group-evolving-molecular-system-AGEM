@@ -19,14 +19,17 @@
  * NO imports from lcm/, sheaf/, soc/, or orchestrator/.
  */
 
-import type { LouvainOptions, DetailedLouvainOutput } from 'graphology-communities-louvain';
-import type { CooccurrenceGraph } from './CooccurrenceGraph.js';
+import type {
+  LouvainOptions,
+  DetailedLouvainOutput,
+} from "graphology-communities-louvain";
+import type { CooccurrenceGraph } from "./CooccurrenceGraph.js";
 
 // graphology-communities-louvain is a CJS module that exports `fn` with `fn.detailed`.
 // With NodeNext module resolution, we import via createRequire to ensure we get the
 // full object including the .detailed method. The type is cast via the ILouvain interface
 // from the package's type definitions.
-import { createRequire } from 'module';
+import { createRequire } from "module";
 
 const _require = createRequire(import.meta.url);
 
@@ -36,7 +39,7 @@ interface ILouvain {
   detailed(graph: unknown, options?: LouvainOptions): DetailedLouvainOutput;
 }
 
-const louvain = _require('graphology-communities-louvain') as ILouvain;
+const louvain = _require("graphology-communities-louvain") as ILouvain;
 
 // ---------------------------------------------------------------------------
 // Mulberry32 — fast seeded PRNG
@@ -133,7 +136,7 @@ export class LouvainDetector {
     } = {
       randomWalk: true,
       resolution: 1,
-      getEdgeWeight: 'weight',
+      getEdgeWeight: "weight",
     };
 
     if (seed !== undefined) {

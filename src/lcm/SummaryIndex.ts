@@ -14,7 +14,7 @@
  * ImmutableStore holds raw LCMEntry objects; SummaryIndex holds compressed SummaryNodes.
  */
 
-import type { SummaryNode, MetricUpdate } from './interfaces.js';
+import type { SummaryNode, MetricUpdate } from "./interfaces.js";
 
 export class SummaryIndex {
   /**
@@ -52,7 +52,9 @@ export class SummaryIndex {
         version: node.version,
         metrics: { ...node.metrics },
         metricHistory: [...node.metricHistory] as MetricUpdate[],
-        intermediateCompressions: Object.freeze([...node.intermediateCompressions]),
+        intermediateCompressions: Object.freeze([
+          ...node.intermediateCompressions,
+        ]),
       },
       {
         content: {

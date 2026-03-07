@@ -7,11 +7,13 @@
 ---
 
 <user_constraints>
+
 ## User Constraints (from CONTEXT.md)
 
 ### Locked Decisions
 
 #### Von Neumann Entropy Formula (SOC-01)
+
 - **Approach:** Eigenvalue-based entropy on normalized Laplacian density matrix
 - **Formula:** `S = -Σ λ_i * ln(λ_i)` where:
   - Eigenvalues λ_i are from normalized Laplacian `L_norm = I - D^(-1/2) A D^(-1/2)`
@@ -21,6 +23,7 @@
 - **Note:** This is distinct from adjacency-matrix Shannon entropy; implementation must pass the K_n test to confirm correctness
 
 #### Embedding Entropy Formula (SOC-02)
+
 - **Approach:** Eigenvalue-based entropy on embedding covariance eigenspectrum
 - **Formula:** `S = -Σ λ_i * ln(λ_i)` where:
   - Covariance matrix is `Σ = (1/n) E^T E` for embedding matrix E (rows = nodes, cols = dimensions)
@@ -31,6 +34,7 @@
 - **Note:** This is not token-frequency Shannon entropy; implementation must distinguish semantic embedding entropy from token distribution entropy
 
 #### Surprising Edge Classification (SOC-04)
+
 - **Definition:** Edges connecting nodes that are far apart in both structural and semantic space
 - **Per-iteration tracking:** Edge set for each iteration contains only edges created at that iteration (tagged via `createdAtIteration` in TNA CooccurrenceGraph)
 - **Surprising edge criteria:**
@@ -42,6 +46,7 @@
 - **Calibration:** Target ~12% (per paper); threshold calibration can be adjusted empirically during Phase 4 research if actual corpus differs significantly
 
 #### Phase Transition Detection Window (SOC-05)
+
 - **Detection mechanism:** Rolling cross-correlation between structural entropy delta and semantic entropy delta
 - **Window size:** 10-iteration rolling window (fixed, not adaptive yet; configurable parameter for research)
 - **Correlation computation:** Pearson correlation coefficient between `ΔS_structural[i:i+10]` and `ΔS_semantic[i:i+10]`
@@ -50,6 +55,7 @@
 - **Note:** Window can be tuned empirically; smaller windows detect faster transitions, larger windows reduce noise
 
 #### Event Emission and Metric History (SOC-03)
+
 - **Emission frequency:** Per-iteration (every iteration emits a `soc:metrics` event)
 - **Event payload:** Single event containing all five metrics (Von Neumann entropy, embedding entropy, CDP, surprising edge ratio, phase transition detection state)
 - **History tracking:** SOC instance maintains full time series (array of metric objects per iteration), not rolling-window truncation
@@ -59,16 +65,18 @@
 - **History access:** Public method `getMetricsHistory()` returns full array; `getLatestMetrics()` returns last entry; `getMetricsTrend(window)` returns mean and slope
 
 ### Claude's Discretion
+
 - Exact similarity threshold for "surprising edge" semantic criterion (currently 0.3; can be tuned based on empirical results)
 - Window centering strategy for phase transition event (currently middle-aligned; alternative: end-aligned)
 - Trend analysis window size (currently 5 iterations; can be configurable)
 
 ### Deferred Ideas (OUT OF SCOPE)
+
 - **Adaptive window sizing** — Phase 5 or Phase 6 can dynamically adjust rolling window based on signal variance
 - **Cross-correlation statistical significance** — Phase 6 can add p-value threshold instead of just sign-change detection
 - **Regime detection** — Identifying NORMAL vs OBSTRUCTED vs CRITICAL using entropy thresholds (belongs in Phase 5 orchestrator, not Phase 4)
 - **Historical comparison** — Comparing current metrics to historical baseline from previous runs (Phase 6 enhancement)
-</user_constraints>
+  </user_constraints>
 
 ---
 
@@ -88,24 +96,25 @@ The primary risk in this phase is silent correctness failures: an entropy formul
 
 ### Core (already in package.json — no new installs needed)
 
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| `mathjs` | 15.1.1 | Eigenvalue decomposition via `math.eigs()` | Already used for SheafLaplacian; `eigs()` works on dense symmetric matrices; returns sorted eigenvalues |
-| `ml-matrix` | 6.12.1 | Dense matrix operations, eigendecomposition alternative | Already used in CohomologyAnalyzer; `EigenvalueDecomposition` class handles covariance matrix eigenspectrum |
-| `events` (Node built-in) | — | EventEmitter base class for `soc:metrics` and `phase:transition` events | Same pattern used in CohomologyAnalyzer |
-| `typescript` | 5.9.3 | Strict typing, NodeNext module resolution | Project-wide; `.js` extensions required on all imports |
-| `vitest` | 4.0.18 | Test runner | Project-wide; pool:forks; passWithNoTests:true |
+| Library                  | Version | Purpose                                                                 | Why Standard                                                                                                |
+| ------------------------ | ------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mathjs`                 | 15.1.1  | Eigenvalue decomposition via `math.eigs()`                              | Already used for SheafLaplacian; `eigs()` works on dense symmetric matrices; returns sorted eigenvalues     |
+| `ml-matrix`              | 6.12.1  | Dense matrix operations, eigendecomposition alternative                 | Already used in CohomologyAnalyzer; `EigenvalueDecomposition` class handles covariance matrix eigenspectrum |
+| `events` (Node built-in) | —       | EventEmitter base class for `soc:metrics` and `phase:transition` events | Same pattern used in CohomologyAnalyzer                                                                     |
+| `typescript`             | 5.9.3   | Strict typing, NodeNext module resolution                               | Project-wide; `.js` extensions required on all imports                                                      |
+| `vitest`                 | 4.0.18  | Test runner                                                             | Project-wide; pool:forks; passWithNoTests:true                                                              |
 
 ### Supporting (already in package.json)
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `@huggingface/transformers` | 3.8.1 | Production embedding via `all-MiniLM-L6-v2` (384-dim) | Only if real embeddings are needed in integration tests; MockEmbedder covers unit tests |
-| `src/lcm/interfaces.ts` (IEmbedder, MockEmbedder) | — | Injectable embedding abstraction + deterministic test double | Reuse for all SOC embedding entropy tests; avoids ONNX model loading |
+| Library                                           | Version | Purpose                                                      | When to Use                                                                             |
+| ------------------------------------------------- | ------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `@huggingface/transformers`                       | 3.8.1   | Production embedding via `all-MiniLM-L6-v2` (384-dim)        | Only if real embeddings are needed in integration tests; MockEmbedder covers unit tests |
+| `src/lcm/interfaces.ts` (IEmbedder, MockEmbedder) | —       | Injectable embedding abstraction + deterministic test double | Reuse for all SOC embedding entropy tests; avoids ONNX model loading                    |
 
 ### No New Dependencies Required
 
 All required mathematical primitives exist in the already-installed packages:
+
 - Eigenvalues: `mathjs.eigs()` or `ml-matrix.EigenvalueDecomposition`
 - Matrix multiply / transpose: `mathjs.multiply()`, `mathjs.transpose()`
 - Cosine similarity: implement inline (2-line dot/norm formula — no library needed)
@@ -113,6 +122,7 @@ All required mathematical primitives exist in the already-installed packages:
 - Linear regression slope: implement inline (least-squares slope formula)
 
 **Installation:**
+
 ```bash
 # No new packages needed — all dependencies already installed
 # Verify with: npm ls mathjs ml-matrix @huggingface/transformers
@@ -120,12 +130,12 @@ All required mathematical primitives exist in the already-installed packages:
 
 ### Alternatives Considered
 
-| Instead of | Could Use | Tradeoff |
-|------------|-----------|----------|
-| `mathjs.eigs()` for Von Neumann | `ml-matrix.EigenvalueDecomposition` | Either works; `mathjs.eigs()` is already proven on SheafLaplacian; use it for Von Neumann too (consistency) |
-| `ml-matrix.EigenvalueDecomposition` for covariance | `mathjs.eigs()` on covariance | Either works; `ml-matrix` handles `n×d` covariance matrices efficiently for d=384 |
-| Inline Pearson correlation | `simple-statistics` library | `simple-statistics` is in STACK.md but NOT in package.json; inline implementation is 10 lines and avoids adding a dependency |
-| EventEmitter | Custom callback system | EventEmitter is already the pattern from CohomologyAnalyzer; consistent with Phase 5 event subscription model |
+| Instead of                                         | Could Use                           | Tradeoff                                                                                                                     |
+| -------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `mathjs.eigs()` for Von Neumann                    | `ml-matrix.EigenvalueDecomposition` | Either works; `mathjs.eigs()` is already proven on SheafLaplacian; use it for Von Neumann too (consistency)                  |
+| `ml-matrix.EigenvalueDecomposition` for covariance | `mathjs.eigs()` on covariance       | Either works; `ml-matrix` handles `n×d` covariance matrices efficiently for d=384                                            |
+| Inline Pearson correlation                         | `simple-statistics` library         | `simple-statistics` is in STACK.md but NOT in package.json; inline implementation is 10 lines and avoids adding a dependency |
+| EventEmitter                                       | Custom callback system              | EventEmitter is already the pattern from CohomologyAnalyzer; consistent with Phase 5 event subscription model                |
 
 ---
 
@@ -154,6 +164,7 @@ The separation of `entropy.ts` (pure functions) from `SOCTracker.ts` (stateful c
 
 **The correct approach from the eigenspectrum:**
 Given eigenvalues `{λ_1, ..., λ_n}` of L_sheaf (sorted ascending, values ≥ 0 for PSD):
+
 1. The trace of L_norm is n (number of nodes) — this is an algebraic property of the normalized Laplacian.
 2. Normalize: `p_i = λ_i / Σλ_j` (each eigenvalue divided by the sum of all eigenvalues).
 3. Entropy: `S = -Σ p_i * ln(p_i)` skipping terms where `p_i = 0`.
@@ -165,6 +176,7 @@ Given eigenvalues `{λ_1, ..., λ_n}` of L_sheaf (sorted ascending, values ≥ 0
 **What this means for the implementation:** SOCTracker needs access to the TNA `CooccurrenceGraph` (for the adjacency matrix to build L_norm) rather than relying solely on `SheafEigenspectrum`. The sheaf eigenspectrum is for the sheaf Laplacian on agent stalks; the Von Neumann entropy is on the **semantic co-occurrence graph** (TNA graph), not the sheaf base graph.
 
 **Example:**
+
 ```typescript
 // Source: PITFALLS.md §Pitfall 2 + CONTEXT.md SOC-01 decision
 // For complete graph K_n: all non-zero eigenvalues of L_norm equal n/(n-1).
@@ -208,12 +220,13 @@ function vonNeumannEntropy(eigenvalues: Float64Array): number {
 **Key implementation detail:** For 384-dim embeddings (all-MiniLM-L6-v2), the covariance matrix is 384×384. For n nodes where n < 384, there will be at most n non-zero eigenvalues (rank of E^T E ≤ min(n, d)). The zero eigenvalues are always skipped per the decision.
 
 **Example:**
+
 ```typescript
 // Source: CONTEXT.md SOC-02 + PITFALLS.md §Pitfall 3
 // E is (n x d), n = number of nodes, d = embedding dimension (384)
 // Sigma = (1/n) * E^T * E  →  (d x d) matrix
 // Using ml-matrix:
-import { Matrix as MlMatrix, EigenvalueDecomposition } from 'ml-matrix';
+import { Matrix as MlMatrix, EigenvalueDecomposition } from "ml-matrix";
 
 function embeddingEntropy(embeddings: Float64Array[]): number {
   const n = embeddings.length;
@@ -248,13 +261,14 @@ function embeddingEntropy(embeddings: Float64Array[]): number {
 }
 ```
 
-**Performance concern:** For 384-dim embeddings, E^T E requires O(n * d^2) to build + O(d^3) to eigendecompose. At d=384, d^3 ≈ 56M operations. This is acceptable per-iteration for small n but can be expensive at n > 200 nodes. Per PITFALLS.md, random projection to 64-128 dims is the Phase 6 optimization path. For Phase 4, the full 384-dim computation is acceptable and correct.
+**Performance concern:** For 384-dim embeddings, E^T E requires O(n \* d^2) to build + O(d^3) to eigendecompose. At d=384, d^3 ≈ 56M operations. This is acceptable per-iteration for small n but can be expensive at n > 200 nodes. Per PITFALLS.md, random projection to 64-128 dims is the Phase 6 optimization path. For Phase 4, the full 384-dim computation is acceptable and correct.
 
 ### Pattern 3: Surprising Edge Ratio (Per-Iteration)
 
 **What:** For each iteration, filter edges by `createdAtIteration === currentIteration`, check both structural (cross-community) and semantic (cosine similarity < threshold) conditions, compute ratio.
 
 **Key data access pattern:**
+
 ```typescript
 // Source: CONTEXT.md SOC-04 + src/tna/interfaces.ts
 // graph.forEachEdge(callback) visits all edges in the graphology instance.
@@ -266,19 +280,24 @@ function computeSurprisingEdgeRatio(
   communityAssignments: ReadonlyMap<string, number>,
   embeddings: ReadonlyMap<string, Float64Array>,
   iteration: number,
-  similarityThreshold: number = 0.3
+  similarityThreshold: number = 0.3,
 ): number {
   let totalNewEdges = 0;
   let surprisingEdges = 0;
 
   graph.forEachEdge((edge, attrs, source, target) => {
-    if (attrs['createdAtIteration'] !== iteration) return;
+    if (attrs["createdAtIteration"] !== iteration) return;
     totalNewEdges++;
 
     const commSource = communityAssignments.get(source);
     const commTarget = communityAssignments.get(target);
     // Structural criterion: cross-community
-    if (commSource === undefined || commTarget === undefined || commSource === commTarget) return;
+    if (
+      commSource === undefined ||
+      commTarget === undefined ||
+      commSource === commTarget
+    )
+      return;
 
     // Semantic criterion: cosine similarity < threshold
     const embS = embeddings.get(source);
@@ -299,6 +318,7 @@ function computeSurprisingEdgeRatio(
 **What:** Maintain rolling arrays of `ΔS_structural` and `ΔS_semantic` (iteration-over-iteration entropy deltas). When the history has >= `windowSize` entries, compute Pearson correlation over the last `windowSize` entries. Detect sign change.
 
 **Example:**
+
 ```typescript
 // Source: CONTEXT.md SOC-05 decision
 // Pearson r = (Σ(x_i - x̄)(y_i - ȳ)) / (sqrt(Σ(x_i - x̄)^2) * sqrt(Σ(y_i - ȳ)^2))
@@ -308,7 +328,9 @@ function pearsonCorrelation(x: number[], y: number[]): number {
   if (n < 2) return 0;
   const xMean = x.reduce((a, b) => a + b, 0) / n;
   const yMean = y.reduce((a, b) => a + b, 0) / n;
-  let num = 0, denomX = 0, denomY = 0;
+  let num = 0,
+    denomX = 0,
+    denomY = 0;
   for (let i = 0; i < n; i++) {
     const dx = x[i]! - xMean;
     const dy = y[i]! - yMean;
@@ -322,6 +344,7 @@ function pearsonCorrelation(x: number[], y: number[]): number {
 ```
 
 **Sign-change detection:**
+
 - Track `previousCorrelation` and `currentCorrelation`.
 - Transition fires when `Math.sign(previousCorrelation) !== Math.sign(currentCorrelation)` and both have sufficient magnitude (e.g., `|r| > 0.1` to avoid noise around zero).
 - Centered at window middle: the transition event reports iteration `currentIteration - Math.floor(windowSize / 2)`.
@@ -339,7 +362,10 @@ function pearsonCorrelation(x: number[], y: number[]): number {
  *   is growing faster than semantic diversity).
  * CDP ≈ -0.1 in healthy systems (per paper's target range).
  */
-function computeCDP(vonNeumannEntropy: number, embeddingEntropy: number): number {
+function computeCDP(
+  vonNeumannEntropy: number,
+  embeddingEntropy: number,
+): number {
   return vonNeumannEntropy - embeddingEntropy;
 }
 ```
@@ -351,7 +377,7 @@ The SOCTracker extends EventEmitter following the exact pattern of CohomologyAna
 ```typescript
 // Addition to src/types/Events.ts
 export interface SOCMetricsEvent {
-  readonly type: 'soc:metrics';
+  readonly type: "soc:metrics";
   readonly iteration: number;
   readonly timestamp: number;
   readonly vonNeumannEntropy: number;
@@ -363,7 +389,7 @@ export interface SOCMetricsEvent {
 }
 
 export interface SOCPhaseTransitionEvent {
-  readonly type: 'phase:transition';
+  readonly type: "phase:transition";
   readonly iteration: number;
   readonly centeredAtIteration: number;
   readonly correlationCoefficient: number;
@@ -374,6 +400,7 @@ export interface SOCPhaseTransitionEvent {
 ### Pattern 7: Module Isolation (Required)
 
 Per ROADMAP Phase 4 success criterion 5: `src/soc/` must have zero imports from `src/lcm/` or `src/orchestrator/`. It imports ONLY from:
+
 - `src/types/` (for event types and SheafEigenspectrum)
 - `src/tna/` (for CooccurrenceGraph, LouvainDetector, TextEdge, TextNode types) — but NOTE: per the SOC isolation rule in `src/tna/index.ts` comments, "only the orchestrator imports from src/tna/". This is a design tension to resolve.
 
@@ -389,7 +416,11 @@ export interface SOCInputs {
   /** Community assignment per node ID (from Louvain). */
   readonly communityAssignments: ReadonlyMap<string, number>;
   /** Edges added at this iteration: [source, target, createdAtIteration] */
-  readonly newEdges: ReadonlyArray<{ source: string; target: string; createdAtIteration: number }>;
+  readonly newEdges: ReadonlyArray<{
+    source: string;
+    target: string;
+    createdAtIteration: number;
+  }>;
   /** Current iteration number. */
   readonly iteration: number;
 }
@@ -408,13 +439,13 @@ export interface SOCInputs {
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Eigenvalue decomposition of symmetric matrix | Custom QR iteration or power method | `mathjs.eigs()` or `ml-matrix.EigenvalueDecomposition` | Numerical stability, convergence guarantees, already proven in project |
-| Matrix multiply for E^T E | Nested loop accumulation | `mathjs.multiply(transpose(E), E)` or manual with `ml-matrix` | Math.js handles numerical edge cases; validated against known results |
-| Cosine similarity | New library import | 3-line inline implementation (dot product / product of norms) | Already implemented as `cosineSimilarity()` in `src/lcm/LCMGrep.ts`; copy the pure function |
-| Pearson correlation | `simple-statistics` library (not installed) | 10-line inline implementation | Adding a dependency for a 10-line function violates the zero-new-dependency target |
-| EventEmitter | Custom callback/observer | Node.js built-in `EventEmitter` | Already the project pattern (CohomologyAnalyzer extends EventEmitter) |
+| Problem                                      | Don't Build                                 | Use Instead                                                   | Why                                                                                         |
+| -------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Eigenvalue decomposition of symmetric matrix | Custom QR iteration or power method         | `mathjs.eigs()` or `ml-matrix.EigenvalueDecomposition`        | Numerical stability, convergence guarantees, already proven in project                      |
+| Matrix multiply for E^T E                    | Nested loop accumulation                    | `mathjs.multiply(transpose(E), E)` or manual with `ml-matrix` | Math.js handles numerical edge cases; validated against known results                       |
+| Cosine similarity                            | New library import                          | 3-line inline implementation (dot product / product of norms) | Already implemented as `cosineSimilarity()` in `src/lcm/LCMGrep.ts`; copy the pure function |
+| Pearson correlation                          | `simple-statistics` library (not installed) | 10-line inline implementation                                 | Adding a dependency for a 10-line function violates the zero-new-dependency target          |
+| EventEmitter                                 | Custom callback/observer                    | Node.js built-in `EventEmitter`                               | Already the project pattern (CohomologyAnalyzer extends EventEmitter)                       |
 
 **Key insight:** The mathematical primitives for Phase 4 are all simple enough to implement correctly inline (10-30 lines each) AND the project already has `mathjs` and `ml-matrix` for the two cases that are genuinely complex (eigendecomposition). No new production dependencies are needed.
 
@@ -493,7 +524,9 @@ Verified patterns from existing codebase and mathematical derivation:
 ```typescript
 // Source: src/lcm/LCMGrep.ts cosineSimilarity() — same pattern
 function cosineSimilarity(a: Float64Array, b: Float64Array): number {
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0,
+    normA = 0,
+    normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i]! * b[i]!;
     normA += a[i]! * a[i]!;
@@ -508,7 +541,7 @@ function cosineSimilarity(a: Float64Array, b: Float64Array): number {
 
 ```typescript
 // Source: src/sheaf/SheafLaplacian.ts getEigenspectrum() — verified pattern
-import * as math from 'mathjs';
+import * as math from "mathjs";
 
 // Build the normalized Laplacian from adjacency matrix A (n×n)
 // L_norm = I - D^(-1/2) A D^(-1/2)
@@ -530,7 +563,7 @@ if (Array.isArray(vals)) {
 
 ```typescript
 // Source: src/sheaf/CohomologyAnalyzer.ts — uses ml-matrix; same import pattern
-import { Matrix as MlMatrix, EigenvalueDecomposition } from 'ml-matrix';
+import { Matrix as MlMatrix, EigenvalueDecomposition } from "ml-matrix";
 
 const sigma = new MlMatrix(d, d);
 // ... fill sigma with (1/n) E^T E values ...
@@ -562,20 +595,28 @@ export class SOCTracker extends EventEmitter {
 
 ```typescript
 // Source: src/tna/isolation.test.ts — verified project pattern for isolation testing
-import { readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
-import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync } from "fs";
+import { join } from "path";
+import { describe, it, expect } from "vitest";
 
-describe('SOC module isolation', () => {
-  it('T-ISO: src/soc/ has zero imports from src/lcm/ or src/orchestrator/', () => {
-    const socDir = join(process.cwd(), 'src/soc');
-    const files = readdirSync(socDir).filter(f => f.endsWith('.ts') && !f.endsWith('.test.ts'));
+describe("SOC module isolation", () => {
+  it("T-ISO: src/soc/ has zero imports from src/lcm/ or src/orchestrator/", () => {
+    const socDir = join(process.cwd(), "src/soc");
+    const files = readdirSync(socDir).filter(
+      (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
+    );
     for (const file of files) {
-      const content = readFileSync(join(socDir, file), 'utf-8');
-      expect(content, `${file} imports from lcm/`).not.toMatch(/from ['"].*\/lcm\//);
-      expect(content, `${file} imports from orchestrator/`).not.toMatch(/from ['"].*\/orchestrator\//);
+      const content = readFileSync(join(socDir, file), "utf-8");
+      expect(content, `${file} imports from lcm/`).not.toMatch(
+        /from ['"].*\/lcm\//,
+      );
+      expect(content, `${file} imports from orchestrator/`).not.toMatch(
+        /from ['"].*\/orchestrator\//,
+      );
       // No hard-coded iteration 400
-      expect(content, `${file} contains literal 400`).not.toMatch(/=== 400|>= 400|== 400/);
+      expect(content, `${file} contains literal 400`).not.toMatch(
+        /=== 400|>= 400|== 400/,
+      );
     }
   });
 });
@@ -589,10 +630,10 @@ This is the most important architectural decision to get right before planning t
 
 ### The Two Graphs
 
-| Graph | What It Is | In This Project |
-|-------|------------|-----------------|
-| Sheaf base graph | Agents as vertices, communication channels as edges, stalk spaces per vertex/edge | Built by Phase 1 `CellularSheaf` |
-| TNA co-occurrence graph | Semantic concepts as nodes, co-occurrence relationships as edges | Built by Phase 3 `CooccurrenceGraph` |
+| Graph                   | What It Is                                                                        | In This Project                      |
+| ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------ |
+| Sheaf base graph        | Agents as vertices, communication channels as edges, stalk spaces per vertex/edge | Built by Phase 1 `CellularSheaf`     |
+| TNA co-occurrence graph | Semantic concepts as nodes, co-occurrence relationships as edges                  | Built by Phase 3 `CooccurrenceGraph` |
 
 ### What Von Neumann Entropy Is Tracking
 
@@ -617,12 +658,20 @@ The `SheafEigenspectrum` from Phase 1 remains available for Phase 5 Orchestrator
 export interface SOCInputs {
   // For Von Neumann entropy: adjacency structure of TNA co-occurrence graph
   readonly nodeCount: number;
-  readonly edges: ReadonlyArray<{ source: number; target: number; weight: number }>;
+  readonly edges: ReadonlyArray<{
+    source: number;
+    target: number;
+    weight: number;
+  }>;
   // For embedding entropy: embedding vectors per node
   readonly embeddings: ReadonlyMap<string, Float64Array>;
   // For surprising edge ratio: community assignments + new edges
   readonly communityAssignments: ReadonlyMap<string, number>;
-  readonly newEdges: ReadonlyArray<{ source: string; target: string; createdAtIteration: number }>;
+  readonly newEdges: ReadonlyArray<{
+    source: string;
+    target: string;
+    createdAtIteration: number;
+  }>;
   // Iteration context
   readonly iteration: number;
 }
@@ -632,14 +681,15 @@ export interface SOCInputs {
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-|--------------|------------------|--------------|--------|
-| Shannon entropy over degree distribution | Von Neumann entropy via normalized Laplacian density matrix | SOC paper (AIP Chaos 2025) | Structural entropy now measures quantum-information-theoretic graph complexity, not just degree heterogeneity |
-| Fixed community count (k=5) | Data-driven Louvain with seeded PRNG | Phase 3 implementation | Surprising edge ratio is now graph-topology-adaptive |
-| Hard-coded phase transition at iteration ~400 | Dynamic cross-correlation sign-change detection | CONTEXT.md SOC-05 decision | Phase transitions detected at any iteration based on actual entropy trajectory |
-| Cumulative surprising edge tracking | Per-iteration tracking via `createdAtIteration` | Phase 3 TextEdge design + CONTEXT.md SOC-04 | True per-iteration serendipity signal rather than a smoothed average |
+| Old Approach                                  | Current Approach                                            | When Changed                                | Impact                                                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Shannon entropy over degree distribution      | Von Neumann entropy via normalized Laplacian density matrix | SOC paper (AIP Chaos 2025)                  | Structural entropy now measures quantum-information-theoretic graph complexity, not just degree heterogeneity |
+| Fixed community count (k=5)                   | Data-driven Louvain with seeded PRNG                        | Phase 3 implementation                      | Surprising edge ratio is now graph-topology-adaptive                                                          |
+| Hard-coded phase transition at iteration ~400 | Dynamic cross-correlation sign-change detection             | CONTEXT.md SOC-05 decision                  | Phase transitions detected at any iteration based on actual entropy trajectory                                |
+| Cumulative surprising edge tracking           | Per-iteration tracking via `createdAtIteration`             | Phase 3 TextEdge design + CONTEXT.md SOC-04 | True per-iteration serendipity signal rather than a smoothed average                                          |
 
 **Deprecated/outdated:**
+
 - Shannon entropy over vocabulary/token distributions: produces a metric that correlates with vocabulary growth, not semantic diversity. Never use this in SOC.
 - Hard-coded `if (iteration === 400)` in transition detection: explicitly prohibited by CONTEXT.md SOC-05.
 
@@ -668,60 +718,60 @@ export interface SOCInputs {
 
 ### SOC-01: Von Neumann Entropy Tests
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-VN-01 | `vonNeumannEntropy(K_3)` | `≈ ln(3) ≈ 1.0986` |
-| T-VN-02 | `vonNeumannEntropy(K_n)` generalized for n=4,5 | `≈ ln(n)` within 1e-10 |
-| T-VN-03 | `vonNeumannEntropy(path graph P_n)` | `< ln(n)` (strictly less) |
-| T-VN-04 | `vonNeumannEntropy(single node, no edges)` | `0` (no edges → L_norm = 0 → zero entropy) |
-| T-VN-05 | Entropy never exceeds `ln(n)` for any valid graph | Invariant holds across 10 random graphs |
+| Test ID | What                                              | Expected                                   |
+| ------- | ------------------------------------------------- | ------------------------------------------ |
+| T-VN-01 | `vonNeumannEntropy(K_3)`                          | `≈ ln(3) ≈ 1.0986`                         |
+| T-VN-02 | `vonNeumannEntropy(K_n)` generalized for n=4,5    | `≈ ln(n)` within 1e-10                     |
+| T-VN-03 | `vonNeumannEntropy(path graph P_n)`               | `< ln(n)` (strictly less)                  |
+| T-VN-04 | `vonNeumannEntropy(single node, no edges)`        | `0` (no edges → L_norm = 0 → zero entropy) |
+| T-VN-05 | Entropy never exceeds `ln(n)` for any valid graph | Invariant holds across 10 random graphs    |
 
 ### SOC-02: Embedding Entropy Tests
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-EE-01 | Identical embeddings (all same vector) | `≈ 0` |
-| T-EE-02 | d orthogonal unit vectors | `≈ ln(d)` within 1e-8 |
-| T-EE-03 | Two embeddings at 90° | `= ln(2) ≈ 0.693` |
-| T-EE-04 | Empty embedding set | `= 0` |
-| T-EE-05 | Single embedding | `= 0` |
+| Test ID | What                                   | Expected              |
+| ------- | -------------------------------------- | --------------------- |
+| T-EE-01 | Identical embeddings (all same vector) | `≈ 0`                 |
+| T-EE-02 | d orthogonal unit vectors              | `≈ ln(d)` within 1e-8 |
+| T-EE-03 | Two embeddings at 90°                  | `= ln(2) ≈ 0.693`     |
+| T-EE-04 | Empty embedding set                    | `= 0`                 |
+| T-EE-05 | Single embedding                       | `= 0`                 |
 
 ### SOC-03: Event Emission Tests
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-EV-01 | `computeAndEmit()` fires `soc:metrics` event | Event listener called once per iteration |
-| T-EV-02 | Event payload contains all 8 fields | `{ iteration, timestamp, vonNeumannEntropy, embeddingEntropy, cdp, surprisingEdgeRatio, correlationCoefficient, isPhaseTransition }` |
-| T-EV-03 | `getMetricsHistory()` grows by 1 per call | History length = call count |
-| T-EV-04 | `getLatestMetrics()` returns last entry | Matches last `computeAndEmit()` inputs |
-| T-EV-05 | `getMetricsTrend(5)` returns `{ mean, slope }` | slope > 0 if entropy is growing |
+| Test ID | What                                           | Expected                                                                                                                             |
+| ------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| T-EV-01 | `computeAndEmit()` fires `soc:metrics` event   | Event listener called once per iteration                                                                                             |
+| T-EV-02 | Event payload contains all 8 fields            | `{ iteration, timestamp, vonNeumannEntropy, embeddingEntropy, cdp, surprisingEdgeRatio, correlationCoefficient, isPhaseTransition }` |
+| T-EV-03 | `getMetricsHistory()` grows by 1 per call      | History length = call count                                                                                                          |
+| T-EV-04 | `getLatestMetrics()` returns last entry        | Matches last `computeAndEmit()` inputs                                                                                               |
+| T-EV-05 | `getMetricsTrend(5)` returns `{ mean, slope }` | slope > 0 if entropy is growing                                                                                                      |
 
 ### SOC-04: Surprising Edge Ratio Tests
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-SE-01 | All new edges are intra-community → ratio = 0 | `surprisingEdgeRatio = 0.0` |
-| T-SE-02 | All new edges are cross-community AND low similarity → ratio = 1 | `surprisingEdgeRatio = 1.0` |
-| T-SE-03 | Cross-community but HIGH similarity → not surprising | Ratio = 0 (semantic criterion fails) |
-| T-SE-04 | No new edges this iteration → ratio = 0 | `surprisingEdgeRatio = 0` (no division by zero) |
-| T-SE-05 | Per-iteration isolation: surprising edges from prior iterations don't count | Ratio reflects current iteration only |
+| Test ID | What                                                                        | Expected                                        |
+| ------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
+| T-SE-01 | All new edges are intra-community → ratio = 0                               | `surprisingEdgeRatio = 0.0`                     |
+| T-SE-02 | All new edges are cross-community AND low similarity → ratio = 1            | `surprisingEdgeRatio = 1.0`                     |
+| T-SE-03 | Cross-community but HIGH similarity → not surprising                        | Ratio = 0 (semantic criterion fails)            |
+| T-SE-04 | No new edges this iteration → ratio = 0                                     | `surprisingEdgeRatio = 0` (no division by zero) |
+| T-SE-05 | Per-iteration isolation: surprising edges from prior iterations don't count | Ratio reflects current iteration only           |
 
 ### SOC-05: Phase Transition Detection Tests
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-PT-01 | Synthetic trajectory: ΔS_struct and ΔS_sem correlate positively for 10 iterations, then negatively | `phase:transition` fires at the sign change |
-| T-PT-02 | Stable trajectory (both deltas always same sign) | No `phase:transition` event |
-| T-PT-03 | No hard-coded `400` in source | Grep test passes |
-| T-PT-04 | Window size is configurable | Smaller window → earlier detection on same trajectory |
+| Test ID | What                                                                                               | Expected                                              |
+| ------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| T-PT-01 | Synthetic trajectory: ΔS_struct and ΔS_sem correlate positively for 10 iterations, then negatively | `phase:transition` fires at the sign change           |
+| T-PT-02 | Stable trajectory (both deltas always same sign)                                                   | No `phase:transition` event                           |
+| T-PT-03 | No hard-coded `400` in source                                                                      | Grep test passes                                      |
+| T-PT-04 | Window size is configurable                                                                        | Smaller window → earlier detection on same trajectory |
 
 ### SOC Isolation Test
 
-| Test ID | What | Expected |
-|---------|------|----------|
-| T-ISO-01 | `src/soc/` has zero imports from `src/lcm/` | Grep test passes |
+| Test ID  | What                                                 | Expected         |
+| -------- | ---------------------------------------------------- | ---------------- |
+| T-ISO-01 | `src/soc/` has zero imports from `src/lcm/`          | Grep test passes |
 | T-ISO-02 | `src/soc/` has zero imports from `src/orchestrator/` | Grep test passes |
-| T-ISO-03 | No literal `400` in production SOC files | Grep test passes |
+| T-ISO-03 | No literal `400` in production SOC files             | Grep test passes |
 
 ---
 
@@ -756,6 +806,7 @@ export interface SOCInputs {
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: HIGH — all dependencies verified in `package.json`; no new installs required
 - Architecture: HIGH — patterns directly taken from Phase 1 and Phase 3 existing code
 - Mathematical formulas: HIGH for the entropy formulas themselves; MEDIUM for the K_n normalization (see Open Question 2)
@@ -772,14 +823,16 @@ export interface SOCInputs {
 Based on the CONTEXT.md decisions and the isolation patterns established in prior phases, Phase 4 should be implemented in two waves:
 
 **Wave 1 (04-01-PLAN.md):** Pure mathematical functions + types
+
 - `src/types/Events.ts` additions: `SOCMetricsEvent`, `SOCPhaseTransitionEvent`
 - `src/soc/interfaces.ts`: `SOCInputs`, `SOCMetrics` types
 - `src/soc/entropy.ts`: `vonNeumannEntropy()`, `embeddingEntropy()` pure functions
-- `src/soc/entropy.test.ts`: All T-VN-* and T-EE-* guard tests
+- `src/soc/entropy.test.ts`: All T-VN-_ and T-EE-_ guard tests
 - Files modified: `src/types/Events.ts`, new `src/soc/entropy.ts`, new `src/soc/entropy.test.ts`, new `src/soc/interfaces.ts`
 - Tests pass: 10+ entropy guard tests (the two formulas, validated independently)
 
 **Wave 2 (04-02-PLAN.md):** SOCTracker class + event emission + isolation
+
 - `src/soc/correlation.ts`: `pearsonCorrelation()`, `linearSlope()` pure functions
 - `src/soc/SOCTracker.ts`: Main class extending EventEmitter; full metric history; all five metrics computed per-iteration
 - `src/soc/SOCTracker.test.ts`: CDP, surprising edge ratio, phase transition detection, event emission, history access

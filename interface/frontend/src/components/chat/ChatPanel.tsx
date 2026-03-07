@@ -93,12 +93,12 @@ export function ChatPanel() {
             });
           },
         },
-        settings.provider === "openrouter" ? settings.apiKey : undefined
+        settings.provider === "openrouter" ? settings.apiKey : undefined,
       );
 
       chat.setAbortController(controller);
     },
-    [activeSessionId]
+    [activeSessionId],
   );
 
   const isEmpty = messages.length === 0 && !isStreaming;
@@ -114,8 +114,8 @@ export function ChatPanel() {
             <div className="chat-area__empty-title">AGEM Interface</div>
             <div className="chat-area__empty-subtitle">
               Agent Group Evolving Molecular System — Ask me anything about
-              multi-agent coordination, sheaf-theoretic reasoning, or start
-              an orchestration cycle.
+              multi-agent coordination, sheaf-theoretic reasoning, or start an
+              orchestration cycle.
             </div>
           </div>
         ) : (

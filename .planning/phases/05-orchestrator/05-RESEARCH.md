@@ -30,30 +30,31 @@ The core Phase 5 components are:
 
 ### Core (already in package.json)
 
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| `node:events` (built-in) | Node 22 LTS | EventEmitter base class for event bus and component subscriptions | Already used in CohomologyAnalyzer and SOCTracker; consistent pattern |
-| `node:worker_threads` (built-in) | Node 22 LTS | Worker thread pool for parallel task dispatch in llm_map | Native Node.js; zero dependencies; supports CPU-bound and async I/O workloads |
-| `node:async_hooks` (built-in) | Node 22 LTS | AsyncContext for propagating execution context through worker threads | ES2024 feature; enables context preservation across worker boundaries |
-| `typescript` | 5.9.3 | Strict typing, discriminated unions for event types, branded ID types | Project-wide; NodeNext module resolution with `.js` imports |
-| `vitest` | 4.0.18 | Test runner with `pool: 'forks'` for worker thread isolation | Project-wide; allows testing worker pool without native binding issues |
+| Library                          | Version     | Purpose                                                               | Why Standard                                                                  |
+| -------------------------------- | ----------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `node:events` (built-in)         | Node 22 LTS | EventEmitter base class for event bus and component subscriptions     | Already used in CohomologyAnalyzer and SOCTracker; consistent pattern         |
+| `node:worker_threads` (built-in) | Node 22 LTS | Worker thread pool for parallel task dispatch in llm_map              | Native Node.js; zero dependencies; supports CPU-bound and async I/O workloads |
+| `node:async_hooks` (built-in)    | Node 22 LTS | AsyncContext for propagating execution context through worker threads | ES2024 feature; enables context preservation across worker boundaries         |
+| `typescript`                     | 5.9.3       | Strict typing, discriminated unions for event types, branded ID types | Project-wide; NodeNext module resolution with `.js` imports                   |
+| `vitest`                         | 4.0.18      | Test runner with `pool: 'forks'` for worker thread isolation          | Project-wide; allows testing worker pool without native binding issues        |
 
 ### Supporting (already in package.json)
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `node:path`, `node:url` (built-in) | — | Worker thread script path resolution (ESM `import.meta.url` → file paths) | Required for spawning worker threads with ESM modules |
+| Library                            | Version | Purpose                                                                   | When to Use                                           |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `node:path`, `node:url` (built-in) | —       | Worker thread script path resolution (ESM `import.meta.url` → file paths) | Required for spawning worker threads with ESM modules |
 
 ### Alternatives Considered
 
-| Instead of | Could Use | Tradeoff |
-|------------|-----------|----------|
-| `node:worker_threads` | External pool library (`piscina`, `node-worker-threads-pool`) | External libraries add dependencies and NPM risk; Node.js built-in `worker_threads` is stable and sufficient for Phase 5 |
-| `node:async_hooks` + manual propagation | Class-based context wrapper (e.g., `AsyncLocalStorage`) | `AsyncLocalStorage` (Node 12.17+) is simpler but less flexible; `async_hooks` allows custom context propagation logic |
-| EventEmitter | Custom callback registry | EventEmitter is the Node.js standard; callbacks-only loses the ability for subscribers to unsubscribe cleanly |
-| Manual error handling | `Promise.allSettled()` | Manual error handling is more explicit; `allSettled()` is simpler but less flexible for partial failure strategies |
+| Instead of                              | Could Use                                                     | Tradeoff                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `node:worker_threads`                   | External pool library (`piscina`, `node-worker-threads-pool`) | External libraries add dependencies and NPM risk; Node.js built-in `worker_threads` is stable and sufficient for Phase 5 |
+| `node:async_hooks` + manual propagation | Class-based context wrapper (e.g., `AsyncLocalStorage`)       | `AsyncLocalStorage` (Node 12.17+) is simpler but less flexible; `async_hooks` allows custom context propagation logic    |
+| EventEmitter                            | Custom callback registry                                      | EventEmitter is the Node.js standard; callbacks-only loses the ability for subscribers to unsubscribe cleanly            |
+| Manual error handling                   | `Promise.allSettled()`                                        | Manual error handling is more explicit; `allSettled()` is simpler but less flexible for partial failure strategies       |
 
 **Installation:**
+
 ```bash
 # No new packages — all dependencies are Node.js built-ins or already installed
 npm list node:events node:worker_threads node:async_hooks typescript vitest
@@ -83,6 +84,7 @@ src/orchestrator/
 ```
 
 The separation of concerns is critical:
+
 - **AgentPool**: async lifecycle only; no event bus, no llm_map, no component wiring.
 - **EventBus**: pure event routing; no agents, no tasks, no component knowledge.
 - **llm_map**: parallel dispatch; no components, no lifecycle, just task-to-worker mapping.
@@ -96,8 +98,8 @@ The separation of concerns is critical:
 
 ```typescript
 // Source: Node.js EventEmitter pattern + discriminated union events
-import { EventEmitter } from 'events';
-import type { SheafEvent, SOCEvent } from '../types/Events.js';
+import { EventEmitter } from "events";
+import type { SheafEvent, SOCEvent } from "../types/Events.js";
 
 export type AnyEvent = SheafEvent | SOCEvent;
 
@@ -143,7 +145,7 @@ export class EventBus extends EventEmitter {
 // Source: Lifecycle management pattern for long-lived worker objects
 export interface Agent {
   id: string;
-  status: 'spawning' | 'active' | 'idle' | 'terminating' | 'terminated';
+  status: "spawning" | "active" | "idle" | "terminating" | "terminated";
   spawn(): Promise<void>;
   heartbeat(): Promise<void>;
   cleanup(): Promise<void>;
@@ -174,7 +176,7 @@ export class AgentPool {
     // Start heartbeat timer
     this.#heartbeatTimer = setInterval(
       () => this.#runHeartbeat(),
-      this.#config.heartbeatIntervalMs
+      this.#config.heartbeatIntervalMs,
     );
   }
 
@@ -184,14 +186,14 @@ export class AgentPool {
         agent.heartbeat(),
         new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error('Heartbeat timeout')),
-            this.#config.heartbeatTimeoutMs
-          )
+            () => reject(new Error("Heartbeat timeout")),
+            this.#config.heartbeatTimeoutMs,
+          ),
         ),
       ]).catch((err) => {
         console.error(`Agent ${agent.id} heartbeat failed:`, err);
-        agent.status = 'terminated';
-      })
+        agent.status = "terminated";
+      }),
     );
     await Promise.all(promises);
   }
@@ -214,7 +216,7 @@ export class AgentPool {
   }
 
   getIdleAgents(): readonly Agent[] {
-    return this.#agents.filter((agent) => agent.status === 'idle');
+    return this.#agents.filter((agent) => agent.status === "idle");
   }
 }
 ```
@@ -229,8 +231,8 @@ export class AgentPool {
 
 ```typescript
 // Source: Worker thread pool + AsyncLocalStorage pattern
-import { Worker } from 'worker_threads';
-import { AsyncLocalStorage } from 'async_hooks';
+import { Worker } from "worker_threads";
+import { AsyncLocalStorage } from "async_hooks";
 
 export interface Task<T> {
   id: string;
@@ -250,11 +252,12 @@ export const contextStorage = new AsyncLocalStorage<Map<string, unknown>>();
 export async function llm_map<T>(
   tasks: Task<T>[],
   workerScriptPath: string,
-  poolSize: number = 4
+  poolSize: number = 4,
 ): Promise<TaskResult<T>[]> {
   // Create a pool of worker threads
-  const workers = Array.from({ length: poolSize }, () =>
-    new Worker(workerScriptPath)
+  const workers = Array.from(
+    { length: poolSize },
+    () => new Worker(workerScriptPath),
   );
 
   try {
@@ -264,13 +267,13 @@ export async function llm_map<T>(
       return new Promise<TaskResult<T>>((resolve) => {
         const handler = (message: TaskResult<T>) => {
           if (message.taskId === task.id) {
-            worker.off('message', handler);
+            worker.off("message", handler);
             resolve(message);
           }
         };
-        worker.on('message', handler);
-        worker.on('error', (err) => {
-          worker.off('message', handler);
+        worker.on("message", handler);
+        worker.on("error", (err) => {
+          worker.off("message", handler);
           resolve({
             taskId: task.id,
             success: false,
@@ -311,12 +314,16 @@ export async function llm_map<T>(
 
 ```typescript
 // Source: Composition root pattern (Dependency Injection)
-import { CellularSheaf, CohomologyAnalyzer } from '../sheaf/index.js';
-import { LCMClient, ImmutableStore, EmbeddingCache } from '../lcm/index.js';
-import { Preprocessor, CooccurrenceGraph, LouvainDetector } from '../tna/index.js';
-import { SOCTracker } from '../soc/index.js';
-import { EventBus } from './EventBus.js';
-import type { IEmbedder } from '../lcm/interfaces.js';
+import { CellularSheaf, CohomologyAnalyzer } from "../sheaf/index.js";
+import { LCMClient, ImmutableStore, EmbeddingCache } from "../lcm/index.js";
+import {
+  Preprocessor,
+  CooccurrenceGraph,
+  LouvainDetector,
+} from "../tna/index.js";
+import { SOCTracker } from "../soc/index.js";
+import { EventBus } from "./EventBus.js";
+import type { IEmbedder } from "../lcm/interfaces.js";
 
 export class Orchestrator {
   readonly eventBus: EventBus;
@@ -350,23 +357,25 @@ export class Orchestrator {
     this.socTracker = new SOCTracker({ correlationWindowSize: 10 });
 
     // 6. Wire event emissions to event bus
-    this.cohomologyAnalyzer.on('sheaf:consensus-reached', (event) =>
-      this.eventBus.emit(event)
+    this.cohomologyAnalyzer.on("sheaf:consensus-reached", (event) =>
+      this.eventBus.emit(event),
     );
-    this.cohomologyAnalyzer.on('sheaf:h1-obstruction-detected', (event) =>
-      this.eventBus.emit(event)
+    this.cohomologyAnalyzer.on("sheaf:h1-obstruction-detected", (event) =>
+      this.eventBus.emit(event),
     );
 
-    this.socTracker.on('soc:metrics', (event) => this.eventBus.emit(event));
-    this.socTracker.on('phase:transition', (event) => this.eventBus.emit(event));
+    this.socTracker.on("soc:metrics", (event) => this.eventBus.emit(event));
+    this.socTracker.on("phase:transition", (event) =>
+      this.eventBus.emit(event),
+    );
 
     // 7. Register event subscribers (e.g., logging, decisions, re-triggering)
-    this.eventBus.subscribe('sheaf:consensus-reached', (event) => {
+    this.eventBus.subscribe("sheaf:consensus-reached", (event) => {
       console.log(`[ORCH] Sheaf consensus at iteration ${event.iteration}`);
     });
-    this.eventBus.subscribe('soc:metrics', (event) => {
+    this.eventBus.subscribe("soc:metrics", (event) => {
       console.log(
-        `[ORCH] SOC metrics: CDP=${event.cdp.toFixed(3)}, SER=${event.surprisingEdgeRatio.toFixed(2)}`
+        `[ORCH] SOC metrics: CDP=${event.cdp.toFixed(3)}, SER=${event.surprisingEdgeRatio.toFixed(2)}`,
       );
     });
   }
@@ -414,6 +423,7 @@ export class Orchestrator {
 ### From Phase 1: Sheaf-Theoretic Coordination
 
 **What the orchestrator needs:**
+
 - `CellularSheaf` instance (manages graph structure and restriction maps)
 - `CohomologyAnalyzer` instance (computes H^0, H^1, emits consensus and obstruction events)
 - Event subscriptions: `'sheaf:consensus-reached'` and `'sheaf:h1-obstruction-detected'`
@@ -423,6 +433,7 @@ export class Orchestrator {
 ### From Phase 2: LCM Dual-Memory Architecture
 
 **What the orchestrator needs:**
+
 - `LCMClient` instance (single write path for context append with embedding caching)
 - `ImmutableStore` instance (read access for context retrieval)
 - `lcm_expand()` function for hierarchical context unrolling
@@ -433,6 +444,7 @@ export class Orchestrator {
 ### From Phase 3: Text Network Analysis + Molecular-CoT
 
 **What the orchestrator needs:**
+
 - `Preprocessor` instance (tokenization, lemmatization, TF-IDF filtering)
 - `CooccurrenceGraph` instance (4-gram sliding window, edge co-occurrence weights)
 - `LouvainDetector` instance (community detection for gap metrics)
@@ -444,6 +456,7 @@ export class Orchestrator {
 ### From Phase 4: Self-Organized Criticality Tracking
 
 **What the orchestrator needs:**
+
 - `SOCTracker` instance (computes five SOC metrics each iteration)
 - Event subscriptions: `'soc:metrics'` and `'phase:transition'`
 
@@ -486,14 +499,14 @@ EventBus:
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Event routing between components | Custom callback map | `EventBus` with EventEmitter base class | EventEmitter is the Node.js standard; hand-rolled systems miss edge cases (unsubscribe, async error handling, ordering guarantees) |
-| Agent lifecycle coordination | Custom state machine | `AgentPool` with explicit state transitions and heartbeat timer | State machines are error-prone (missing transitions, deadlocks); explicit lifecycle methods are clearer and testable |
-| Worker thread pooling | Custom worker spawn/management | `node:worker_threads` + `llm_map` wrapper | Custom pooling risks thread leaks, context loss, and ordering violations; built-in workers have battle-tested lifecycle management |
-| Dependency injection | Hand-wired class instantiation | `ComposeRootModule` with explicit constructor injection | Explicit wiring is verbose but reveals dependencies; hidden DI (containers, globals) masks tight coupling |
-| Parallel task dispatch with ordering | Manual promise array handling | `llm_map` with task ID mapping and sort | Manual dispatch loses track of which result belongs to which task; llm_map sorts results by original order |
-| Context propagation across async boundaries | Manual context threading | `AsyncLocalStorage` from `node:async_hooks` | Manual threading loses context on worker spawning; AsyncLocalStorage is the standard mechanism in Node.js for async context |
+| Problem                                     | Don't Build                    | Use Instead                                                     | Why                                                                                                                                |
+| ------------------------------------------- | ------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Event routing between components            | Custom callback map            | `EventBus` with EventEmitter base class                         | EventEmitter is the Node.js standard; hand-rolled systems miss edge cases (unsubscribe, async error handling, ordering guarantees) |
+| Agent lifecycle coordination                | Custom state machine           | `AgentPool` with explicit state transitions and heartbeat timer | State machines are error-prone (missing transitions, deadlocks); explicit lifecycle methods are clearer and testable               |
+| Worker thread pooling                       | Custom worker spawn/management | `node:worker_threads` + `llm_map` wrapper                       | Custom pooling risks thread leaks, context loss, and ordering violations; built-in workers have battle-tested lifecycle management |
+| Dependency injection                        | Hand-wired class instantiation | `ComposeRootModule` with explicit constructor injection         | Explicit wiring is verbose but reveals dependencies; hidden DI (containers, globals) masks tight coupling                          |
+| Parallel task dispatch with ordering        | Manual promise array handling  | `llm_map` with task ID mapping and sort                         | Manual dispatch loses track of which result belongs to which task; llm_map sorts results by original order                         |
+| Context propagation across async boundaries | Manual context threading       | `AsyncLocalStorage` from `node:async_hooks`                     | Manual threading loses context on worker spawning; AsyncLocalStorage is the standard mechanism in Node.js for async context        |
 
 **Key insight:** Phase 5 integrates existing modules, not new ones. The temptation to hand-roll "simpler" versions of EventBus or AgentPool will introduce subtle bugs (missed events, orphaned agents, dropped errors). Use the patterns documented here.
 
@@ -508,11 +521,13 @@ EventBus:
 **Why it happens:** Module isolation is disciplined. Under pressure to integrate, developers skip it and let modules import from each other.
 
 **How to avoid:**
+
 - Run the isolation test suite in every module: `src/*/isolation.test.ts`
 - These tests verify zero cross-imports (except orchestrator importing all four)
 - Add pre-commit hook: `npm test -- isolation.test.ts` must pass before committing
 
 **Warning signs:**
+
 - TypeScript compile error "Circular dependency detected" (rare in Node.js but happens with strict configurations)
 - A module's isolation.test.ts fails (explicit guard test)
 - You need to `import ... from '../some-other-module'` in a Phase 1-4 module
@@ -524,17 +539,21 @@ EventBus:
 **Why it happens:** EventEmitter pattern requires explicit `unsubscribe()` calls. Forgetting them is a classic memory leak in event systems.
 
 **How to avoid:**
+
 - Always pair `subscribe()` with corresponding `unsubscribe()` in cleanup paths
 - Store subscription function references so they can be unsubscribed later:
   ```typescript
-  const metricsHandler = (event: SOCMetricsEvent) => { /* ... */ };
-  this.eventBus.subscribe('soc:metrics', metricsHandler);
+  const metricsHandler = (event: SOCMetricsEvent) => {
+    /* ... */
+  };
+  this.eventBus.subscribe("soc:metrics", metricsHandler);
   // Later, in shutdown:
-  this.eventBus.unsubscribe('soc:metrics', metricsHandler);
+  this.eventBus.unsubscribe("soc:metrics", metricsHandler);
   ```
 - Test: verify subscriber count decreases after unsubscribe
 
 **Warning signs:**
+
 - Memory usage increases with each reasoning round (not per-task, but per orchestrator instance)
 - Test logs show the same event firing multiple times in a single round
 - `eventBus.getSubscriberCount('soc:metrics')` returns > 1 unexpectedly
@@ -546,7 +565,9 @@ EventBus:
 **Why it happens:** Worker threads have separate heap memory. Complex objects (functions, instances, circular references) cannot be serialized to the worker. Only primitive types and plain objects survive `postMessage()`.
 
 **How to avoid:**
+
 - Serialize context explicitly before passing to worker:
+
   ```typescript
   // BAD: passing a class instance
   worker.postMessage({ task, contextObject: myInstance }); // myInstance becomes {}
@@ -559,10 +580,12 @@ EventBus:
   };
   worker.postMessage({ task, context: contextData });
   ```
+
 - Document what context data is available in `TaskWorker.ts`
 - Test with `typeof` checks in worker script to catch serialization failures
 
 **Warning signs:**
+
 - Worker receives undefined values for context fields
 - Methods on context objects are missing in worker
 - `llm_map` tests fail with "object has no method" errors
@@ -574,15 +597,16 @@ EventBus:
 **Why it happens:** Using `Promise.all()` without per-agent timeouts means one slow agent delays heartbeat checks for all others.
 
 **How to avoid:**
+
 - Wrap each agent's heartbeat in a race against a timeout promise:
   ```typescript
   const heartbeatWithTimeout = Promise.race([
     agent.heartbeat(),
     new Promise((_, reject) =>
       setTimeout(
-        () => reject(new Error('Heartbeat timeout')),
-        this.#config.heartbeatTimeoutMs
-      )
+        () => reject(new Error("Heartbeat timeout")),
+        this.#config.heartbeatTimeoutMs,
+      ),
     ),
   ]);
   ```
@@ -590,6 +614,7 @@ EventBus:
 - Log and monitor heartbeat failures per agent ID
 
 **Warning signs:**
+
 - Heartbeat interval increases over time (one stuck agent delays the next heartbeat)
 - Logs show only some agents being checked per heartbeat cycle
 - Pool status shows all agents as "idle" even though one is actually hanging
@@ -601,6 +626,7 @@ EventBus:
 **Why it happens:** `llm_map` must handle partial failures gracefully but return all results (not just successes) so the caller can decide what to do.
 
 **How to avoid:**
+
 - Always check `TaskResult.success` before accessing `result` field:
   ```typescript
   const results = await llm_map(tasks, workerScriptPath);
@@ -616,6 +642,7 @@ EventBus:
 - Test partial failure scenarios explicitly (1 success + 1 failure in pool of 4)
 
 **Warning signs:**
+
 - Tests pass with all-success case but fail with mixed success/failure
 - Logs show "Cannot read property 'field' of undefined" after worker errors
 - Caller code doesn't check `success` field before accessing results
@@ -627,11 +654,13 @@ EventBus:
 **Why it happens:** The orchestrator should accept any object conforming to the `Agent` interface; instead, it checks `instanceof MySpecificAgent`.
 
 **How to avoid:**
+
 - Define a minimal `Agent` interface with only the methods orchestrator needs (spawn, heartbeat, cleanup)
 - Accept agents as constructor arguments or factory functions, not by hardcoded class
 - Test with a `MockAgent` that implements the interface but is a simple stub
 
 **Warning signs:**
+
 - Orchestrator imports a specific agent class from `src/agents/SpecificAgent.ts`
 - Test setup requires creating instances of that specific class
 - Adding a new agent type requires modifying orchestrator code
@@ -644,8 +673,8 @@ EventBus:
 
 ```typescript
 // Source: EventBus subscription pattern
-import { Orchestrator } from './orchestrator/index.js';
-import type { SOCMetricsEvent } from './types/Events.js';
+import { Orchestrator } from "./orchestrator/index.js";
+import type { SOCMetricsEvent } from "./types/Events.js";
 
 const orchestrator = new Orchestrator(embedder);
 
@@ -655,37 +684,39 @@ const handleMetrics = (event: SOCMetricsEvent) => {
   console.log(`  Von Neumann Entropy: ${event.vonNeumannEntropy.toFixed(4)}`);
   console.log(`  Embedding Entropy: ${event.embeddingEntropy.toFixed(4)}`);
   console.log(`  CDP: ${event.cdp.toFixed(4)}`);
-  console.log(`  Surprising Edge Ratio: ${event.surprisingEdgeRatio.toFixed(2)}`);
+  console.log(
+    `  Surprising Edge Ratio: ${event.surprisingEdgeRatio.toFixed(2)}`,
+  );
   console.log(`  Phase Transition: ${event.isPhaseTransition}`);
 };
 
-orchestrator.eventBus.subscribe('soc:metrics', handleMetrics);
+orchestrator.eventBus.subscribe("soc:metrics", handleMetrics);
 
 // Run reasoning
-await orchestrator.runReasoning('Some prompt');
+await orchestrator.runReasoning("Some prompt");
 
 // Unsubscribe when done
-orchestrator.eventBus.unsubscribe('soc:metrics', handleMetrics);
+orchestrator.eventBus.unsubscribe("soc:metrics", handleMetrics);
 ```
 
 ### Pattern: Parallel Task Dispatch with Context
 
 ```typescript
 // Source: llm_map usage for parallel LLM inference
-import { llm_map } from './orchestrator/llm_map.js';
-import type { Task, TaskResult } from './orchestrator/interfaces.js';
+import { llm_map } from "./orchestrator/llm_map.js";
+import type { Task, TaskResult } from "./orchestrator/interfaces.js";
 
 const tasks: Task<string>[] = [
-  { id: 'task-1', payload: { prompt: 'What is X?' } },
-  { id: 'task-2', payload: { prompt: 'What is Y?' } },
-  { id: 'task-3', payload: { prompt: 'What is Z?' } },
+  { id: "task-1", payload: { prompt: "What is X?" } },
+  { id: "task-2", payload: { prompt: "What is Y?" } },
+  { id: "task-3", payload: { prompt: "What is Z?" } },
 ];
 
 // Dispatch to worker pool (4 workers, processes all 3 tasks in parallel)
 const results = await llm_map(
   tasks,
-  new URL('./orchestrator/workers/TaskWorker.ts', import.meta.url).pathname,
-  4 // pool size
+  new URL("./orchestrator/workers/TaskWorker.ts", import.meta.url).pathname,
+  4, // pool size
 );
 
 // Results are returned in original task order
@@ -702,14 +733,14 @@ for (const result of results) {
 
 ```typescript
 // Source: AgentPool spawn/heartbeat/cleanup cycle
-import { AgentPool } from './orchestrator/AgentPool.js';
-import type { Agent } from './orchestrator/interfaces.js';
+import { AgentPool } from "./orchestrator/AgentPool.js";
+import type { Agent } from "./orchestrator/interfaces.js";
 
 // Define a simple agent type
 class ReasoningAgent implements Agent {
   id: string;
-  status: 'spawning' | 'active' | 'idle' | 'terminating' | 'terminated' =
-    'spawning';
+  status: "spawning" | "active" | "idle" | "terminating" | "terminated" =
+    "spawning";
 
   constructor(id: string) {
     this.id = id;
@@ -718,35 +749,32 @@ class ReasoningAgent implements Agent {
   async spawn(): Promise<void> {
     console.log(`Agent ${this.id} spawning...`);
     await new Promise((resolve) => setTimeout(resolve, 100)); // Simulate init
-    this.status = 'active';
+    this.status = "active";
     console.log(`Agent ${this.id} active`);
   }
 
   async heartbeat(): Promise<void> {
-    if (this.status === 'active' || this.status === 'idle') {
+    if (this.status === "active" || this.status === "idle") {
       // Perform any periodic checks
-      this.status = 'idle';
+      this.status = "idle";
     }
   }
 
   async cleanup(): Promise<void> {
     console.log(`Agent ${this.id} cleaning up...`);
-    this.status = 'terminating';
+    this.status = "terminating";
     await new Promise((resolve) => setTimeout(resolve, 100)); // Simulate cleanup
-    this.status = 'terminated';
+    this.status = "terminated";
     console.log(`Agent ${this.id} terminated`);
   }
 }
 
 // Create pool
-const pool = new AgentPool(
-  () => new ReasoningAgent(`agent-${Math.random()}`),
-  {
-    poolSize: 4,
-    heartbeatIntervalMs: 5000,
-    heartbeatTimeoutMs: 2000,
-  }
-);
+const pool = new AgentPool(() => new ReasoningAgent(`agent-${Math.random()}`), {
+  poolSize: 4,
+  heartbeatIntervalMs: 5000,
+  heartbeatTimeoutMs: 2000,
+});
 
 // Initialize (spawns all agents, starts heartbeat timer)
 await pool.initialize();
@@ -763,8 +791,8 @@ await pool.shutdown();
 
 ```typescript
 // Source: Orchestrator wiring all four modules together
-import { Orchestrator } from './orchestrator/ComposeRootModule.js';
-import { TransformersEmbedder } from './lcm/TransformersEmbedder.js';
+import { Orchestrator } from "./orchestrator/ComposeRootModule.js";
+import { TransformersEmbedder } from "./lcm/TransformersEmbedder.js";
 
 // Get real embedder
 const embedder = await TransformersEmbedder.getInstance();
@@ -773,15 +801,15 @@ const embedder = await TransformersEmbedder.getInstance();
 const orchestrator = new Orchestrator(embedder);
 
 // All components are now accessible and event-connected
-console.log('Orchestrator ready:');
-console.log('  - Sheaf:', orchestrator.sheaf);
-console.log('  - LCM:', orchestrator.lcmClient);
-console.log('  - TNA:', orchestrator.tnaGraph);
-console.log('  - SOC:', orchestrator.socTracker);
-console.log('  - EventBus:', orchestrator.eventBus);
+console.log("Orchestrator ready:");
+console.log("  - Sheaf:", orchestrator.sheaf);
+console.log("  - LCM:", orchestrator.lcmClient);
+console.log("  - TNA:", orchestrator.tnaGraph);
+console.log("  - SOC:", orchestrator.socTracker);
+console.log("  - EventBus:", orchestrator.eventBus);
 
 // Run a reasoning round
-await orchestrator.runReasoning('Why is the sky blue?');
+await orchestrator.runReasoning("Why is the sky blue?");
 // Events are automatically emitted and routed
 
 // Cleanup
@@ -846,15 +874,16 @@ await orchestrator.shutdown();
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-|--------------|------------------|--------------|--------|
-| Custom callback maps for events | Node.js `EventEmitter` + `on()`/`off()` pattern | Node 0.10+ (standard) | Eliminates need to manage callback arrays manually; handles unsubscribe cleanup automatically |
-| Spawning OS processes for parallelism | Node.js `worker_threads` (ES2022) | Node 10+ | True parallelism without OS process overhead; shared memory via `SharedArrayBuffer` optional |
-| Manual thread pool management | `node:worker_threads` with graceful lifecycle | Node 18+ | Built-in API; no external pooling libraries needed |
-| Implicit async context (rely on `this` binding) | `AsyncLocalStorage` from `node:async_hooks` | Node 12.17+ | Explicit context propagation across async boundaries; used by major frameworks (Express.js middleware, Next.js, etc.) |
-| Single-threaded event loop | Hybrid: event loop + worker threads | Node 10+ | Main thread handles I/O and coordination; workers handle CPU-bound tasks (inference, transformation) |
+| Old Approach                                    | Current Approach                                | When Changed          | Impact                                                                                                                |
+| ----------------------------------------------- | ----------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Custom callback maps for events                 | Node.js `EventEmitter` + `on()`/`off()` pattern | Node 0.10+ (standard) | Eliminates need to manage callback arrays manually; handles unsubscribe cleanup automatically                         |
+| Spawning OS processes for parallelism           | Node.js `worker_threads` (ES2022)               | Node 10+              | True parallelism without OS process overhead; shared memory via `SharedArrayBuffer` optional                          |
+| Manual thread pool management                   | `node:worker_threads` with graceful lifecycle   | Node 18+              | Built-in API; no external pooling libraries needed                                                                    |
+| Implicit async context (rely on `this` binding) | `AsyncLocalStorage` from `node:async_hooks`     | Node 12.17+           | Explicit context propagation across async boundaries; used by major frameworks (Express.js middleware, Next.js, etc.) |
+| Single-threaded event loop                      | Hybrid: event loop + worker threads             | Node 10+              | Main thread handles I/O and coordination; workers handle CPU-bound tasks (inference, transformation)                  |
 
 **Deprecated/outdated:**
+
 - **Custom EventEmitter implementations** — Node.js EventEmitter is the standard; hand-rolled callbacks are error-prone
 - **OS process forking for parallelism** — Worker threads are lighter and share memory more efficiently
 - **Hardcoded dependency instantiation** — Composition root / dependency injection is now the standard pattern
@@ -927,6 +956,7 @@ await orchestrator.shutdown();
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: **HIGH** — All dependencies are Node.js built-ins or already installed
 - Architecture patterns: **HIGH** — EventEmitter, worker threads, and dependency injection are well-established Node.js patterns
 - Integration points: **HIGH** — Examined all Phase 1-4 code and module boundaries

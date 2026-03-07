@@ -137,7 +137,7 @@ class AgemBridge {
    */
   async runCycle(
     userMessage: string,
-    _onProgress?: (event: string, data: unknown) => void
+    _onProgress?: (event: string, data: unknown) => void,
   ): Promise<{ artifacts: Artifact[]; state: AgemStateSnapshot }> {
     await this.#orchestrator.runReasoning(userMessage);
 
@@ -293,7 +293,7 @@ class AgemBridge {
   /** Semantic search across the LCM context store. */
   async searchContext(
     query: string,
-    maxResults?: number
+    maxResults?: number,
   ): Promise<ContextSearchResult[]> {
     const grepResults = await this.#grep.grep(query, {
       maxResults: maxResults ?? 10,
@@ -313,9 +313,11 @@ class AgemBridge {
    * Spawn a new agent. Currently the VdW spawner is internally triggered
    * by obstruction events and not externally controllable.
    */
-  spawnAgent(
-    persona: string
-  ): { success: boolean; message: string; state: AgemStateSnapshot } {
+  spawnAgent(persona: string): {
+    success: boolean;
+    message: string;
+    state: AgemStateSnapshot;
+  } {
     return {
       success: false,
       message:

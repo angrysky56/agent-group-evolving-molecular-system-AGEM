@@ -36,7 +36,11 @@ export function Header({ onOpenSettings }: Props) {
       <div className="header__model-selector">
         <span className={`status-badge status-badge--online`}>
           <span className="status-badge__dot" />
-          {provider === "ollama" ? "Ollama" : provider === "anthropic" ? "Anthropic" : "OpenRouter"}
+          {provider === "ollama"
+            ? "Ollama"
+            : provider === "anthropic"
+              ? "Anthropic"
+              : "OpenRouter"}
         </span>
         <select
           className="header__select"

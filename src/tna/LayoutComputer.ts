@@ -31,16 +31,16 @@
  * Module isolation is verified by src/tna/isolation.test.ts.
  */
 
-import { EventEmitter } from 'events';
-import { createRequire } from 'module';
-import type { CooccurrenceGraph } from './CooccurrenceGraph.js';
+import { EventEmitter } from "events";
+import { createRequire } from "module";
+import type { CooccurrenceGraph } from "./CooccurrenceGraph.js";
 import type {
   LayoutConfig,
   LayoutOutput,
   LayoutExportJSON,
   LayoutComputerConfig,
   NodePosition,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Load ForceAtlas2 via createRequire (CJS interop — no exports field)
@@ -49,12 +49,26 @@ import type {
 const _require = createRequire(import.meta.url);
 
 interface IForceAtlas2 {
-  (graph: unknown, params: { iterations: number; settings?: Record<string, unknown>; getEdgeWeight?: string | null }): Record<string, { x: number; y: number }>;
-  assign(graph: unknown, params: { iterations: number; settings?: Record<string, unknown>; getEdgeWeight?: string | null }): void;
+  (
+    graph: unknown,
+    params: {
+      iterations: number;
+      settings?: Record<string, unknown>;
+      getEdgeWeight?: string | null;
+    },
+  ): Record<string, { x: number; y: number }>;
+  assign(
+    graph: unknown,
+    params: {
+      iterations: number;
+      settings?: Record<string, unknown>;
+      getEdgeWeight?: string | null;
+    },
+  ): void;
   inferSettings(order: number): Record<string, unknown>;
 }
 
-const forceAtlas2 = _require('graphology-layout-forceatlas2') as IForceAtlas2;
+const forceAtlas2 = _require("graphology-layout-forceatlas2") as IForceAtlas2;
 
 // ---------------------------------------------------------------------------
 // Default configurations
@@ -132,7 +146,7 @@ export class LayoutComputer extends EventEmitter {
   constructor(
     cooccurrenceGraph: CooccurrenceGraph,
     layoutConfig?: Partial<LayoutConfig>,
-    computerConfig?: Partial<LayoutComputerConfig>
+    computerConfig?: Partial<LayoutComputerConfig>,
   ) {
     super();
     this.#cooccurrenceGraph = cooccurrenceGraph;
@@ -198,27 +212,30 @@ export class LayoutComputer extends EventEmitter {
         scalingRatio: this.#layoutConfig.scalingRatio,
         strongGravityMode: this.#layoutConfig.strongGravityMode,
       },
-      getEdgeWeight: 'weight',
+      getEdgeWeight: "weight",
     });
 
     // Step 3: Read positions from graph node attributes.
     const currentPositions = new Map<string, NodePosition>();
     graph.forEachNode((nodeId: string) => {
-      const x = graph.getNodeAttribute(nodeId, 'x') as number | undefined;
-      const y = graph.getNodeAttribute(nodeId, 'y') as number | undefined;
+      const x = graph.getNodeAttribute(nodeId, "x") as number | undefined;
+      const y = graph.getNodeAttribute(nodeId, "y") as number | undefined;
       if (x !== undefined && y !== undefined && isFinite(x) && isFinite(y)) {
         currentPositions.set(nodeId, { x, y });
       } else {
         // Fallback: use seeded position if ForceAtlas2 produced invalid values.
         const fallback = this.#hashPosition(nodeId);
         currentPositions.set(nodeId, fallback);
-        graph.setNodeAttribute(nodeId, 'x', fallback.x);
-        graph.setNodeAttribute(nodeId, 'y', fallback.y);
+        graph.setNodeAttribute(nodeId, "x", fallback.x);
+        graph.setNodeAttribute(nodeId, "y", fallback.y);
       }
     });
 
     // Step 4: Compute convergence energy.
-    const energy = this.#computeEnergy(this.#previousPositions, currentPositions);
+    const energy = this.#computeEnergy(
+      this.#previousPositions,
+      currentPositions,
+    );
 
     // Step 5: Write positions to CooccurrenceGraph metadata.
     for (const [nodeId, pos] of currentPositions) {
@@ -239,8 +256,8 @@ export class LayoutComputer extends EventEmitter {
     this.#lastLayout = output;
 
     // Step 8: Emit event.
-    this.emit('tna:layout-updated', {
-      type: 'tna:layout-updated',
+    this.emit("tna:layout-updated", {
+      type: "tna:layout-updated",
       iteration: this.#lastComputeIteration,
       energy,
       nodeCount,
@@ -277,7 +294,13 @@ export class LayoutComputer extends EventEmitter {
 
     // Determine iterations count for this run.
     const physicsIter = this.#hasComputedInitial
-      ? Math.max(1, Math.round(this.#layoutConfig.iterations * this.#computerConfig.incrementalMultiplier))
+      ? Math.max(
+          1,
+          Math.round(
+            this.#layoutConfig.iterations *
+              this.#computerConfig.incrementalMultiplier,
+          ),
+        )
       : this.#layoutConfig.iterations;
 
     this.computeLayout(physicsIter);
@@ -302,11 +325,11 @@ export class LayoutComputer extends EventEmitter {
    */
   adjustInterval(regime: string): void {
     switch (regime) {
-      case 'transitioning':
-      case 'critical':
+      case "transitioning":
+      case "critical":
         this.#currentInterval = this.#computerConfig.urgentComputeInterval;
         break;
-      case 'stable':
+      case "stable":
         this.#currentInterval = this.#computerConfig.relaxedComputeInterval;
         break;
       default:
@@ -358,13 +381,20 @@ export class LayoutComputer extends EventEmitter {
 
     // Build edge list.
     const edges: Array<{ source: string; target: string; weight: number }> = [];
-    graph.forEachEdge((_edgeId: string, attrs: Record<string, unknown>, source: string, target: string) => {
-      edges.push({
-        source,
-        target,
-        weight: (attrs['weight'] as number | undefined) ?? 1,
-      });
-    });
+    graph.forEachEdge(
+      (
+        _edgeId: string,
+        attrs: Record<string, unknown>,
+        source: string,
+        target: string,
+      ) => {
+        edges.push({
+          source,
+          target,
+          weight: (attrs["weight"] as number | undefined) ?? 1,
+        });
+      },
+    );
 
     const lastLayout = this.#lastLayout;
 
@@ -406,7 +436,9 @@ export class LayoutComputer extends EventEmitter {
    */
   isConverged(): boolean {
     if (this.#lastLayout === null) return false;
-    return this.#lastLayout.energy < this.#computerConfig.convergenceEnergyThreshold;
+    return (
+      this.#lastLayout.energy < this.#computerConfig.convergenceEnergyThreshold
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -427,7 +459,7 @@ export class LayoutComputer extends EventEmitter {
    */
   #computeEnergy(
     prev: Map<string, NodePosition> | null,
-    curr: Map<string, NodePosition>
+    curr: Map<string, NodePosition>,
   ): number {
     if (prev === null || prev.size === 0) {
       return Infinity;
@@ -473,17 +505,21 @@ export class LayoutComputer extends EventEmitter {
     };
 
     g.forEachNode((nodeId: string) => {
-      const existingX = g.getNodeAttribute(nodeId, 'x');
-      const existingY = g.getNodeAttribute(nodeId, 'y');
+      const existingX = g.getNodeAttribute(nodeId, "x");
+      const existingY = g.getNodeAttribute(nodeId, "y");
 
       // Only seed if node has no position OR position is 0 (default uninitialized).
       if (existingX === undefined || existingX === null || existingX === 0) {
         const pos = this.#hashPosition(nodeId);
-        g.setNodeAttribute(nodeId, 'x', pos.x);
-        g.setNodeAttribute(nodeId, 'y', pos.y);
-      } else if (existingY === undefined || existingY === null || existingY === 0) {
+        g.setNodeAttribute(nodeId, "x", pos.x);
+        g.setNodeAttribute(nodeId, "y", pos.y);
+      } else if (
+        existingY === undefined ||
+        existingY === null ||
+        existingY === 0
+      ) {
         const pos = this.#hashPosition(nodeId);
-        g.setNodeAttribute(nodeId, 'y', pos.y);
+        g.setNodeAttribute(nodeId, "y", pos.y);
       }
     });
   }
@@ -510,13 +546,13 @@ export class LayoutComputer extends EventEmitter {
     for (let i = 0; i < nodeId.length; i++) {
       const code = nodeId.charCodeAt(i);
       hashX = ((hashX << 5) + hashX + code) | 0; // Bernstein hash
-      hashY = ((hashY * 31) ^ code) | 0;          // FNV-variant
+      hashY = ((hashY * 31) ^ code) | 0; // FNV-variant
     }
 
     // Map to [-50, 50] using modulo + offset.
     // Use Math.abs to handle negative integers from bitwise ops.
-    const x = ((Math.abs(hashX) % 100) - 50);
-    const y = ((Math.abs(hashY) % 100) - 50);
+    const x = (Math.abs(hashX) % 100) - 50;
+    const y = (Math.abs(hashY) % 100) - 50;
 
     return { x: x === 0 ? 0.1 : x, y: y === 0 ? 0.1 : y };
   }

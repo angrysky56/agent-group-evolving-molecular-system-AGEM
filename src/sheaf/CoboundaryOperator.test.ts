@@ -17,12 +17,17 @@
  *   target vertex → POSITIVE block (+F_{v<-e})
  */
 
-import { describe, it, expect } from 'vitest';
-import * as math from 'mathjs';
-import { buildCoboundaryMatrix } from './CoboundaryOperator.js';
-import { CellularSheaf } from './CellularSheaf.js';
-import { buildThreeCycleInconsistentSheaf } from './helpers/threeCycleFactory.js';
-import type { VertexId, EdgeId, SheafVertex, SheafEdge } from '../types/index.js';
+import { describe, it, expect } from "vitest";
+import * as math from "mathjs";
+import { buildCoboundaryMatrix } from "./CoboundaryOperator.js";
+import { CellularSheaf } from "./CellularSheaf.js";
+import { buildThreeCycleInconsistentSheaf } from "./helpers/threeCycleFactory.js";
+import type {
+  VertexId,
+  EdgeId,
+  SheafVertex,
+  SheafEdge,
+} from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helper: build identity matrix as row-major Float64Array
@@ -55,7 +60,7 @@ function matSize(m: math.Matrix): [number, number] {
 // T3: Hand-computed coboundary matrix (2-vertex, 1-edge, identity restriction maps)
 // ---------------------------------------------------------------------------
 
-describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2D maps)', () => {
+describe("T3: Coboundary matrix hand-computed verification (2-vertex, identity 2D maps)", () => {
   /**
    * Setup:
    *   v0: dim=2, v1: dim=2
@@ -67,25 +72,25 @@ describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2
    *
    * N_0 = 4 (2+2), N_1 = 2 (2)
    */
-  it('T3.1: B has shape [2, 4] for 2-vertex 2D sheaf', () => {
-    const v0: SheafVertex = { id: 'v0' as VertexId, stalkSpace: { dim: 2 } };
-    const v1: SheafVertex = { id: 'v1' as VertexId, stalkSpace: { dim: 2 } };
+  it("T3.1: B has shape [2, 4] for 2-vertex 2D sheaf", () => {
+    const v0: SheafVertex = { id: "v0" as VertexId, stalkSpace: { dim: 2 } };
+    const v1: SheafVertex = { id: "v1" as VertexId, stalkSpace: { dim: 2 } };
 
     const e01: SheafEdge = {
-      id: 'e01' as EdgeId,
-      sourceVertex: 'v0' as VertexId,
-      targetVertex: 'v1' as VertexId,
+      id: "e01" as EdgeId,
+      sourceVertex: "v0" as VertexId,
+      targetVertex: "v1" as VertexId,
       stalkSpace: { dim: 2 },
       sourceRestriction: {
-        sourceVertexId: 'v0' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v0" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
       },
       targetRestriction: {
-        sourceVertexId: 'v1' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v1" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
@@ -100,25 +105,25 @@ describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2
     expect(cols).toBe(4); // N_0 = 4
   });
 
-  it('T3.2: B = [[-1, 0, 1, 0], [0, -1, 0, 1]] element-wise (tolerance 1e-14)', () => {
-    const v0: SheafVertex = { id: 'v0' as VertexId, stalkSpace: { dim: 2 } };
-    const v1: SheafVertex = { id: 'v1' as VertexId, stalkSpace: { dim: 2 } };
+  it("T3.2: B = [[-1, 0, 1, 0], [0, -1, 0, 1]] element-wise (tolerance 1e-14)", () => {
+    const v0: SheafVertex = { id: "v0" as VertexId, stalkSpace: { dim: 2 } };
+    const v1: SheafVertex = { id: "v1" as VertexId, stalkSpace: { dim: 2 } };
 
     const e01: SheafEdge = {
-      id: 'e01' as EdgeId,
-      sourceVertex: 'v0' as VertexId,
-      targetVertex: 'v1' as VertexId,
+      id: "e01" as EdgeId,
+      sourceVertex: "v0" as VertexId,
+      targetVertex: "v1" as VertexId,
       stalkSpace: { dim: 2 },
       sourceRestriction: {
-        sourceVertexId: 'v0' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v0" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
       },
       targetRestriction: {
-        sourceVertexId: 'v1' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v1" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
@@ -130,7 +135,10 @@ describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2
     const arr = matToArray(B);
 
     // Expected: [[-1, 0, 1, 0], [0, -1, 0, 1]]
-    const expected = [[-1, 0, 1, 0], [0, -1, 0, 1]];
+    const expected = [
+      [-1, 0, 1, 0],
+      [0, -1, 0, 1],
+    ];
 
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c < 4; c++) {
@@ -139,26 +147,26 @@ describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2
     }
   });
 
-  it('T3.3: B * constant_section = 0 (global section is in ker B)', () => {
+  it("T3.3: B * constant_section = 0 (global section is in ker B)", () => {
     // A constant section for a flat sheaf is [1, 0, 1, 0] (same state at each vertex).
-    const v0: SheafVertex = { id: 'v0' as VertexId, stalkSpace: { dim: 2 } };
-    const v1: SheafVertex = { id: 'v1' as VertexId, stalkSpace: { dim: 2 } };
+    const v0: SheafVertex = { id: "v0" as VertexId, stalkSpace: { dim: 2 } };
+    const v1: SheafVertex = { id: "v1" as VertexId, stalkSpace: { dim: 2 } };
 
     const e01: SheafEdge = {
-      id: 'e01' as EdgeId,
-      sourceVertex: 'v0' as VertexId,
-      targetVertex: 'v1' as VertexId,
+      id: "e01" as EdgeId,
+      sourceVertex: "v0" as VertexId,
+      targetVertex: "v1" as VertexId,
       stalkSpace: { dim: 2 },
       sourceRestriction: {
-        sourceVertexId: 'v0' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v0" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
       },
       targetRestriction: {
-        sourceVertexId: 'v1' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v1" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
@@ -182,7 +190,7 @@ describe('T3: Coboundary matrix hand-computed verification (2-vertex, identity 2
 // T3b: Coboundary matrix for 3-vertex path with heterogeneous stalks
 // ---------------------------------------------------------------------------
 
-describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims', () => {
+describe("T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims", () => {
   /**
    * Topology: v0 -e01-> v1 -e12-> v2
    *
@@ -204,9 +212,9 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
    *        targetRestriction (v2 -> e12): 1x1 identity [[1]]
    */
   function buildHeterogeneousSheaf(): CellularSheaf {
-    const v0: SheafVertex = { id: 'v0' as VertexId, stalkSpace: { dim: 3 } };
-    const v1: SheafVertex = { id: 'v1' as VertexId, stalkSpace: { dim: 2 } };
-    const v2: SheafVertex = { id: 'v2' as VertexId, stalkSpace: { dim: 1 } };
+    const v0: SheafVertex = { id: "v0" as VertexId, stalkSpace: { dim: 3 } };
+    const v1: SheafVertex = { id: "v1" as VertexId, stalkSpace: { dim: 2 } };
+    const v2: SheafVertex = { id: "v2" as VertexId, stalkSpace: { dim: 1 } };
 
     // e01: v0(dim=3) -> v1(dim=2), edge stalk dim=2
     // sourceRestriction: 2x3 matrix projecting R^3 -> R^2 (drop third coord)
@@ -215,20 +223,20 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     const e01tgt = identityEntries(2);
 
     const e01: SheafEdge = {
-      id: 'e01' as EdgeId,
-      sourceVertex: 'v0' as VertexId,
-      targetVertex: 'v1' as VertexId,
+      id: "e01" as EdgeId,
+      sourceVertex: "v0" as VertexId,
+      targetVertex: "v1" as VertexId,
       stalkSpace: { dim: 2 },
       sourceRestriction: {
-        sourceVertexId: 'v0' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v0" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 3,
         targetDim: 2,
         entries: e01src,
       },
       targetRestriction: {
-        sourceVertexId: 'v1' as VertexId,
-        edgeId: 'e01' as EdgeId,
+        sourceVertexId: "v1" as VertexId,
+        edgeId: "e01" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: e01tgt,
@@ -242,20 +250,20 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     const e12tgt = new Float64Array([1]);
 
     const e12: SheafEdge = {
-      id: 'e12' as EdgeId,
-      sourceVertex: 'v1' as VertexId,
-      targetVertex: 'v2' as VertexId,
+      id: "e12" as EdgeId,
+      sourceVertex: "v1" as VertexId,
+      targetVertex: "v2" as VertexId,
       stalkSpace: { dim: 1 },
       sourceRestriction: {
-        sourceVertexId: 'v1' as VertexId,
-        edgeId: 'e12' as EdgeId,
+        sourceVertexId: "v1" as VertexId,
+        edgeId: "e12" as EdgeId,
         sourceDim: 2,
         targetDim: 1,
         entries: e12src,
       },
       targetRestriction: {
-        sourceVertexId: 'v2' as VertexId,
-        edgeId: 'e12' as EdgeId,
+        sourceVertexId: "v2" as VertexId,
+        edgeId: "e12" as EdgeId,
         sourceDim: 1,
         targetDim: 1,
         entries: e12tgt,
@@ -265,7 +273,7 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     return new CellularSheaf([v0, v1, v2], [e01, e12]);
   }
 
-  it('T3b.1: B has shape [3, 6] for heterogeneous stalk dims', () => {
+  it("T3b.1: B has shape [3, 6] for heterogeneous stalk dims", () => {
     const sheaf = buildHeterogeneousSheaf();
     const B = buildCoboundaryMatrix(sheaf);
     const [rows, cols] = matSize(B);
@@ -274,7 +282,7 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     expect(cols).toBe(6); // N_0 = 6
   });
 
-  it('T3b.2: specific block entries match hand computation for e01 source block', () => {
+  it("T3b.2: specific block entries match hand computation for e01 source block", () => {
     /**
      * e01: eRow=0, eDim=2
      *   srcCol=0 (v0 offset), srcDim=3
@@ -294,7 +302,7 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     expect(arr[1][2]).toBeCloseTo(0, 14);
   });
 
-  it('T3b.3: target block of e01 is +identity at tgtCol=3 (v1 offset)', () => {
+  it("T3b.3: target block of e01 is +identity at tgtCol=3 (v1 offset)", () => {
     /**
      * e01: eRow=0, eDim=2
      *   tgtCol=3 (v1 offset = dim(v0) = 3), tgtDim=2
@@ -311,7 +319,7 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
     expect(arr[1][4]).toBeCloseTo(1, 14);
   });
 
-  it('T3b.4: source block of e12 is -[1, 0] at eRow=2, srcCol=3 (v1 offset)', () => {
+  it("T3b.4: source block of e12 is -[1, 0] at eRow=2, srcCol=3 (v1 offset)", () => {
     /**
      * e12: eRow=2, eDim=1
      *   srcCol=3 (v1 offset), srcDim=2
@@ -330,7 +338,7 @@ describe('T3b: Coboundary matrix for 3-vertex path with heterogeneous stalk dims
 // T3c: PITFALL GATE — three-cycle B has shape [3, 6] NOT [3, 3]
 // ---------------------------------------------------------------------------
 
-describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification', () => {
+describe("T3c: PITFALL GATE — three-cycle coboundary matrix shape verification", () => {
   /**
    * The three-cycle inconsistency sheaf:
    *   - 3 vertices with R^2 stalks (N_0 = 6)
@@ -343,7 +351,7 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
    * graph incidence matrix (scalar +1/-1 entries) instead of the sheaf coboundary
    * operator (matrix-valued blocks). This is the silent substitution error.
    */
-  it('T3c.1: PITFALL GATE — B has shape [3, 6] not [3, 3]', () => {
+  it("T3c.1: PITFALL GATE — B has shape [3, 6] not [3, 3]", () => {
     const sheaf = buildThreeCycleInconsistentSheaf();
     const B = buildCoboundaryMatrix(sheaf);
     const [rows, cols] = matSize(B);
@@ -355,7 +363,7 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
     expect(cols).toBe(6); // N_0 = 6 (3 vertices × R^2) -- NOT 3!
   });
 
-  it('T3c.2: at least one block entry is not +1 or -1 (proves non-scalar restriction maps)', () => {
+  it("T3c.2: at least one block entry is not +1 or -1 (proves non-scalar restriction maps)", () => {
     /**
      * The three-cycle has 1x2 restriction maps like [1, 0] and [0, 1].
      * These are NOT the scalar +1/-1 entries of a graph incidence matrix.
@@ -400,9 +408,9 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
     //   source block: -[1, 0] at cols 0,1 → B[0,0]=-1, B[0,1]=0
     //   target block: +[0, 1] at cols 2,3 → B[0,2]=0, B[0,3]=1
     const expectedB = [
-      [-1,  0,  0,  1,  0,  0],
-      [ 0,  0, -1,  0,  0,  1],
-      [ 0,  1,  0,  0, -1,  0],
+      [-1, 0, 0, 1, 0, 0],
+      [0, 0, -1, 0, 0, 1],
+      [0, 1, 0, 0, -1, 0],
     ];
 
     for (let r = 0; r < 3; r++) {
@@ -412,7 +420,7 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
     }
   });
 
-  it('T3c.3: B * x != 0 for a random x (three-cycle has no non-trivial global section)', () => {
+  it("T3c.3: B * x != 0 for a random x (three-cycle has no non-trivial global section)", () => {
     /**
      * The three-cycle has no non-trivial global section due to holonomy.
      * For a generic random x, B * x != 0.
@@ -434,7 +442,7 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
     const BxRaw = math.multiply(B, x);
     const Bx: number[] = Array.isArray(BxRaw)
       ? (BxRaw as number[])
-      : (BxRaw as math.Matrix).toArray() as number[];
+      : ((BxRaw as math.Matrix).toArray() as number[]);
 
     // ||B * x|| should be > 0
     const norm = Math.sqrt(Bx.reduce((s, v) => s + v * v, 0));
@@ -446,7 +454,7 @@ describe('T3c: PITFALL GATE — three-cycle coboundary matrix shape verification
 // T3d: Orientation sign test (swapping source and target negates blocks)
 // ---------------------------------------------------------------------------
 
-describe('T3d: Orientation sign test — swapping source/target negates B blocks', () => {
+describe("T3d: Orientation sign test — swapping source/target negates B blocks", () => {
   /**
    * Build two 2-vertex sheaves with 2D stalks and identity maps:
    *   - sheaf1: e01 with source=v0, target=v1
@@ -460,28 +468,31 @@ describe('T3d: Orientation sign test — swapping source/target negates B blocks
    * we insert vertices in the same order [v0, v1].
    * Only the edge orientation changes.
    */
-  function buildSheaf(sourceId: 'v0' | 'v1', targetId: 'v0' | 'v1'): CellularSheaf {
-    const v0: SheafVertex = { id: 'v0' as VertexId, stalkSpace: { dim: 2 } };
-    const v1: SheafVertex = { id: 'v1' as VertexId, stalkSpace: { dim: 2 } };
+  function buildSheaf(
+    sourceId: "v0" | "v1",
+    targetId: "v0" | "v1",
+  ): CellularSheaf {
+    const v0: SheafVertex = { id: "v0" as VertexId, stalkSpace: { dim: 2 } };
+    const v1: SheafVertex = { id: "v1" as VertexId, stalkSpace: { dim: 2 } };
 
     const srcId = sourceId as VertexId;
     const tgtId = targetId as VertexId;
 
     const edge: SheafEdge = {
-      id: 'e' as EdgeId,
+      id: "e" as EdgeId,
       sourceVertex: srcId,
       targetVertex: tgtId,
       stalkSpace: { dim: 2 },
       sourceRestriction: {
         sourceVertexId: srcId,
-        edgeId: 'e' as EdgeId,
+        edgeId: "e" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
       },
       targetRestriction: {
         sourceVertexId: tgtId,
-        edgeId: 'e' as EdgeId,
+        edgeId: "e" as EdgeId,
         sourceDim: 2,
         targetDim: 2,
         entries: identityEntries(2),
@@ -492,8 +503,8 @@ describe('T3d: Orientation sign test — swapping source/target negates B blocks
     return new CellularSheaf([v0, v1], [edge]);
   }
 
-  it('T3d.1: original orientation B[0,0] = -1 (source v0 → negative block)', () => {
-    const sheaf = buildSheaf('v0', 'v1');
+  it("T3d.1: original orientation B[0,0] = -1 (source v0 → negative block)", () => {
+    const sheaf = buildSheaf("v0", "v1");
     const B = buildCoboundaryMatrix(sheaf);
     const arr = matToArray(B);
 
@@ -505,7 +516,7 @@ describe('T3d: Orientation sign test — swapping source/target negates B blocks
     expect(arr[1][3]).toBeCloseTo(1, 14);
   });
 
-  it('T3d.2: swapped orientation B[0,0] = +1 (source v1 → negative block at v1 cols)', () => {
+  it("T3d.2: swapped orientation B[0,0] = +1 (source v1 → negative block at v1 cols)", () => {
     /**
      * Swapped: source=v1, target=v0
      * Now source (v1) is at cols 2-3, gets negative block
@@ -514,7 +525,7 @@ describe('T3d: Orientation sign test — swapping source/target negates B blocks
      * B[0,0] = +1 (target v0 block, positive)
      * B[0,2] = -1 (source v1 block, negative)
      */
-    const sheaf = buildSheaf('v1', 'v0');
+    const sheaf = buildSheaf("v1", "v0");
     const B = buildCoboundaryMatrix(sheaf);
     const arr = matToArray(B);
 
@@ -526,9 +537,9 @@ describe('T3d: Orientation sign test — swapping source/target negates B blocks
     expect(arr[1][1]).toBeCloseTo(1, 14);
   });
 
-  it('T3d.3: swapped B is the negative of original B (blocks negated)', () => {
-    const sheaf1 = buildSheaf('v0', 'v1');
-    const sheaf2 = buildSheaf('v1', 'v0');
+  it("T3d.3: swapped B is the negative of original B (blocks negated)", () => {
+    const sheaf1 = buildSheaf("v0", "v1");
+    const sheaf2 = buildSheaf("v1", "v0");
 
     const B1 = buildCoboundaryMatrix(sheaf1);
     const B2 = buildCoboundaryMatrix(sheaf2);

@@ -27,14 +27,14 @@
  *   - ICompressor, ITokenCounter, EscalationThresholds, EscalationLevel from interfaces.js
  */
 
-import { EventEmitter } from 'node:events';
-import { encode, decode } from 'gpt-tokenizer';
+import { EventEmitter } from "node:events";
+import { encode, decode } from "gpt-tokenizer";
 import type {
   ICompressor,
   ITokenCounter,
   EscalationThresholds,
   EscalationLevel,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Public result type
@@ -109,7 +109,7 @@ export function deterministicChunkCompress(
 ): { output: string; chunks: number } {
   // Step 1: Split on double newlines for logical chunk boundaries.
   // If no double newlines, treat the whole text as a single chunk.
-  const rawChunks = text.split('\n\n').filter((c) => c.length > 0);
+  const rawChunks = text.split("\n\n").filter((c) => c.length > 0);
   const chunkCount = rawChunks.length === 0 ? 1 : rawChunks.length;
   const chunks = rawChunks.length === 0 ? [text] : rawChunks;
 
@@ -124,7 +124,7 @@ export function deterministicChunkCompress(
   }
 
   // Step 3: Concatenate with double newline separators.
-  const concatenated = compressedChunks.join('\n\n');
+  const concatenated = compressedChunks.join("\n\n");
 
   // Step 4: Check total token count.
   const totalTokens = encode(concatenated).length;
@@ -195,7 +195,8 @@ export class EscalationProtocol extends EventEmitter {
    */
   async escalate(text: string): Promise<EscalationResult> {
     const inputTokens = this.#tokenCounter.countTokens(text);
-    const { level1TokenLimit, level2MinRatio, level3KTokens } = this.#thresholds;
+    const { level1TokenLimit, level2MinRatio, level3KTokens } =
+      this.#thresholds;
 
     // No escalation needed — return as-is.
     if (inputTokens <= level1TokenLimit) {
@@ -225,26 +226,36 @@ export class EscalationProtocol extends EventEmitter {
         outputTokens: l1Tokens,
         compressorUsed: true,
       };
-      this.emit('escalation', { level: 1, inputTokens, outputTokens: l1Tokens });
+      this.emit("escalation", {
+        level: 1,
+        inputTokens,
+        outputTokens: l1Tokens,
+      });
       return result;
     }
 
     // -------------------------------------------------------------------------
     // Level 2: Multi-chunk indexing — compress each logical segment independently.
     // -------------------------------------------------------------------------
-    const l2Chunks = text.split('\n\n').filter((c) => c.length > 0);
+    const l2Chunks = text.split("\n\n").filter((c) => c.length > 0);
     const segments = l2Chunks.length > 0 ? l2Chunks : [text];
 
     // Compress each segment independently (multiple compress() calls = multi-compression indexing).
     const compressedSegments: string[] = [];
     for (const segment of segments) {
       const segTokens = this.#tokenCounter.countTokens(segment);
-      const segTargetRatio = Math.min(1.0, level1TokenLimit / Math.max(segTokens, 1));
-      const compressed = await this.#compressor.compress(segment, segTargetRatio);
+      const segTargetRatio = Math.min(
+        1.0,
+        level1TokenLimit / Math.max(segTokens, 1),
+      );
+      const compressed = await this.#compressor.compress(
+        segment,
+        segTargetRatio,
+      );
       compressedSegments.push(compressed);
     }
 
-    const l2Output = compressedSegments.join('\n\n');
+    const l2Output = compressedSegments.join("\n\n");
     const l2Tokens = this.#tokenCounter.countTokens(l2Output);
     const l2Ratio = l2Tokens / inputTokens;
 
@@ -257,7 +268,11 @@ export class EscalationProtocol extends EventEmitter {
         outputTokens: l2Tokens,
         compressorUsed: true,
       };
-      this.emit('escalation', { level: 2, inputTokens, outputTokens: l2Tokens });
+      this.emit("escalation", {
+        level: 2,
+        inputTokens,
+        outputTokens: l2Tokens,
+      });
       return result;
     }
 
@@ -270,10 +285,8 @@ export class EscalationProtocol extends EventEmitter {
     // Implements CONTEXT.md locked decision: "Chunking first, fall back to
     // deterministic truncation at K tokens."
     // -------------------------------------------------------------------------
-    const { output: l3Output, chunks: l3ChunkCount } = deterministicChunkCompress(
-      text,
-      level3KTokens,
-    );
+    const { output: l3Output, chunks: l3ChunkCount } =
+      deterministicChunkCompress(text, level3KTokens);
     const l3Tokens = this.#tokenCounter.countTokens(l3Output);
 
     const result: EscalationResult = {
@@ -284,7 +297,7 @@ export class EscalationProtocol extends EventEmitter {
       compressorUsed: false, // L3 NEVER uses the compressor — deterministic only
       chunks: l3ChunkCount,
     };
-    this.emit('escalation', { level: 3, inputTokens, outputTokens: l3Tokens });
+    this.emit("escalation", { level: 3, inputTokens, outputTokens: l3Tokens });
     return result;
   }
 }

@@ -28,10 +28,10 @@
  * NO imports from lcm/, sheaf/, soc/, or orchestrator/.
  */
 
-import type { CooccurrenceGraph } from './CooccurrenceGraph.js';
-import type { LouvainDetector } from './LouvainDetector.js';
-import type { CentralityAnalyzer } from './CentralityAnalyzer.js';
-import type { GapMetrics, TextNodeId } from './interfaces.js';
+import type { CooccurrenceGraph } from "./CooccurrenceGraph.js";
+import type { LouvainDetector } from "./LouvainDetector.js";
+import type { CentralityAnalyzer } from "./CentralityAnalyzer.js";
+import type { GapMetrics, TextNodeId } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // GapDetector class
@@ -63,7 +63,7 @@ export class GapDetector {
   constructor(
     cooccurrenceGraph: CooccurrenceGraph,
     louvainDetector: LouvainDetector,
-    centralityAnalyzer: CentralityAnalyzer
+    centralityAnalyzer: CentralityAnalyzer,
   ) {
     this.#cooccurrenceGraph = cooccurrenceGraph;
     this.#louvainDetector = louvainDetector;
@@ -95,7 +95,9 @@ export class GapDetector {
     }
 
     const membersByCommunity = this.#getMembersByCommunity();
-    const communityIds = Array.from(membersByCommunity.keys()).sort((a, b) => a - b);
+    const communityIds = Array.from(membersByCommunity.keys()).sort(
+      (a, b) => a - b,
+    );
 
     // If only 1 community, no gaps possible.
     if (communityIds.length <= 1) {
@@ -115,7 +117,13 @@ export class GapDetector {
         const membersA = membersByCommunity.get(commA) ?? [];
         const membersB = membersByCommunity.get(commB) ?? [];
 
-        const gap = this.#evaluateCommPair(graph, commA, commB, membersA, membersB);
+        const gap = this.#evaluateCommPair(
+          graph,
+          commA,
+          commB,
+          membersA,
+          membersB,
+        );
         if (gap) {
           newGaps.push(gap);
         }
@@ -157,7 +165,7 @@ export class GapDetector {
     commA: number,
     commB: number,
     membersA: string[],
-    membersB: string[]
+    membersB: string[],
   ): GapMetrics | null {
     // Count inter-community edges.
     let interEdges = 0;
@@ -238,7 +246,10 @@ export class GapDetector {
    * @param communityB - Second community ID.
    * @returns GapMetrics or undefined if not found.
    */
-  getGapBetween(communityA: number, communityB: number): GapMetrics | undefined {
+  getGapBetween(
+    communityA: number,
+    communityB: number,
+  ): GapMetrics | undefined {
     const gaps = this.findGaps();
     for (const gap of gaps) {
       if (
@@ -265,7 +276,7 @@ export class GapDetector {
   #computeShortestPathLength(
     graph: any,
     membersA: string[],
-    membersB: string[]
+    membersB: string[],
   ): number {
     const sampleSize = Math.min(3, membersA.length);
     const sample = membersA.slice(0, sampleSize);
@@ -331,7 +342,7 @@ export class GapDetector {
   #estimateModularityDelta(
     graph: any,
     membersA: string[],
-    membersB: string[]
+    membersB: string[],
   ): number {
     // Count inter- and intra-community edges.
     let interEdges = 0;
@@ -366,7 +377,8 @@ export class GapDetector {
     // (Low inter-community density relative to intra-community density indicates
     // that merging would reduce modularity, so delta is positive.)
     const totalIntra = intraEdgesA + intraEdgesB;
-    const intraRatio = totalIntra > 0 ? totalIntra / (totalIntra + interEdges) : 1;
+    const intraRatio =
+      totalIntra > 0 ? totalIntra / (totalIntra + interEdges) : 1;
 
     // Scale to a reasonable range (0 to ~1).
     return Math.max(0.01, Math.min(1, intraRatio - 0.5));
@@ -394,8 +406,6 @@ export class GapDetector {
 
     // Take top nodes (up to 2 for small gaps, more for larger).
     const topN = Math.max(2, Math.floor(candidates.length * 0.3));
-    return candidates
-      .slice(0, topN)
-      .map(c => c.nodeId as TextNodeId);
+    return candidates.slice(0, topN).map((c) => c.nodeId as TextNodeId);
   }
 }

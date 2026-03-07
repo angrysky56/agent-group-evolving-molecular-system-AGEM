@@ -2,7 +2,16 @@
 phase: 06-p2-enhancements
 plan: 02
 subsystem: orchestrator
-tags: [vdw-agents, obstruction-handling, regime-gating, hysteresis, token-budget, event-bus, tna]
+tags:
+  [
+    vdw-agents,
+    obstruction-handling,
+    regime-gating,
+    hysteresis,
+    token-budget,
+    event-bus,
+    tna,
+  ]
 
 # Dependency graph
 requires:
@@ -113,6 +122,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed readonly string[] incompatible with ingestTokens(string[]) in ObstructionHandler**
+
 - **Found during:** Task 3 (ObstructionHandler integration)
 - **Issue:** `VdWAgent.getResults().entitiesAdded` returns `readonly string[]` but `CooccurrenceGraph.ingestTokens()` requires mutable `string[]`. TypeScript error TS2345.
 - **Fix:** Added spread `[...results.entitiesAdded]` to create mutable copy before calling ingestTokens.
@@ -121,6 +131,7 @@ Each task was committed atomically:
 - **Committed in:** c60effa (Task 3 commit)
 
 **2. [Rule 1 - Bug] Fixed EventSubscriber return type violation in test helper**
+
 - **Found during:** Task 5 (barrel export and type fixes)
 - **Issue:** `(e) => events.push(e)` returns `number` (array length) but EventSubscriber requires `void | Promise<void>`. TypeScript error TS2322.
 - **Fix:** Changed to `(e) => { events.push(e); }` (statement body returns void).
@@ -129,6 +140,7 @@ Each task was committed atomically:
 - **Committed in:** bfbe43b (Task 5 commit)
 
 **3. [Rule 1 - Bug] Fixed `as Record<string, unknown>` cast incompatibility with typed event union**
+
 - **Found during:** Task 5 (barrel export and type fixes)
 - **Issue:** `VdWAgentSpawnedEvent | undefined` cannot be directly cast to `Record<string, unknown>` because the interface lacks an index signature. TypeScript error TS2352.
 - **Fix:** Added intermediate `as unknown` cast: `... as unknown as Record<string, unknown>`.
@@ -164,5 +176,6 @@ None - no external service configuration required.
 - `tsc --noEmit` clean
 
 ---
-*Phase: 06-p2-enhancements*
-*Completed: 2026-03-06*
+
+_Phase: 06-p2-enhancements_
+_Completed: 2026-03-06_

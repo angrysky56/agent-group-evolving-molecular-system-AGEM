@@ -2,7 +2,16 @@
 phase: 02-lcm
 plan: 03
 subsystem: context-management
-tags: [immutable-store, uuidv7, sha256, gpt-tokenizer, embeddings, tdd, defense-in-depth]
+tags:
+  [
+    immutable-store,
+    uuidv7,
+    sha256,
+    gpt-tokenizer,
+    embeddings,
+    tdd,
+    defense-in-depth,
+  ]
 
 # Dependency graph
 requires:
@@ -114,6 +123,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] getAll() returned live mutable array reference**
+
 - **Found during:** Task 2 (GREEN phase, T6 test failure)
 - **Issue:** `getAll()` returned `this.#entries as ReadonlyArray<LCMEntry>` — at runtime this is still a mutable JS array. T6 cast and pushed to it, and the push succeeded, causing `store.getAll().length` to be 3 instead of 2.
 - **Fix:** Changed to return `Object.freeze([...this.#entries]) as ReadonlyArray<LCMEntry>` — a frozen shallow copy. Push now throws TypeError, T6 catches it and store size stays at 2.
@@ -141,5 +151,6 @@ None — no external service configuration required.
 - **Pitfall resolved:** "LCM store is mutable" (STATE.md watch) — T1b (TypeError on mutation) and T6 (frozen getAll snapshot) guard this permanently.
 
 ---
-*Phase: 02-lcm*
-*Completed: 2026-02-28*
+
+_Phase: 02-lcm_
+_Completed: 2026-02-28_

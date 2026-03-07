@@ -24,34 +24,43 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type { SOCInputs, SOCMetrics, SOCConfig, MetricsTrend } from './interfaces.js';
+export type {
+  SOCInputs,
+  SOCMetrics,
+  SOCConfig,
+  MetricsTrend,
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Pure functions — entropy computation (SOC-01, SOC-02)
 // ---------------------------------------------------------------------------
 
-export { vonNeumannEntropy, embeddingEntropy, cosineSimilarity } from './entropy.js';
+export {
+  vonNeumannEntropy,
+  embeddingEntropy,
+  cosineSimilarity,
+} from "./entropy.js";
 
 // ---------------------------------------------------------------------------
 // Pure functions — correlation utilities (SOC-03, SOC-05)
 // ---------------------------------------------------------------------------
 
-export { pearsonCorrelation, linearSlope } from './correlation.js';
+export { pearsonCorrelation, linearSlope } from "./correlation.js";
 
 // ---------------------------------------------------------------------------
 // Main class — SOCTracker (SOC-03, SOC-04, SOC-05, SOC-06, SOC-07)
 // ---------------------------------------------------------------------------
 
-export { SOCTracker } from './SOCTracker.js';
+export { SOCTracker } from "./SOCTracker.js";
 
 // ---------------------------------------------------------------------------
 // Phase 6: Regime validation and stability analysis (SOC-06, SOC-07)
 // ---------------------------------------------------------------------------
 
-export { RegimeValidator, RegimeAnalyzer } from './RegimeValidator.js';
+export { RegimeValidator, RegimeAnalyzer } from "./RegimeValidator.js";
 export type {
   RegimeStability,
   RegimeMetrics,
   RegimeValidatorConfig,
   RegimeAnalyzerConfig,
-} from './interfaces.js';
+} from "./interfaces.js";

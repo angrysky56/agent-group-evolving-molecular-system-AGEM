@@ -95,14 +95,14 @@ Internal state: `#currentState`, `#h1ObstructionThreshold (default 2)`, `#h1Crit
 
 State transitions via `updateMetrics(h1Dimension)`:
 
-| From | Condition | To |
-|------|-----------|-----|
-| NORMAL | h1 >= critical | CRITICAL |
-| NORMAL | h1 >= obstruction | OBSTRUCTED |
-| OBSTRUCTED | h1 >= critical | CRITICAL |
-| OBSTRUCTED | h1 < obstruction | NORMAL |
-| CRITICAL | h1 < obstruction | NORMAL |
-| Any | same state | no-op |
+| From       | Condition         | To         |
+| ---------- | ----------------- | ---------- |
+| NORMAL     | h1 >= critical    | CRITICAL   |
+| NORMAL     | h1 >= obstruction | OBSTRUCTED |
+| OBSTRUCTED | h1 >= critical    | CRITICAL   |
+| OBSTRUCTED | h1 < obstruction  | NORMAL     |
+| CRITICAL   | h1 < obstruction  | NORMAL     |
+| Any        | same state        | no-op      |
 
 Key design: CRITICAL does NOT transition to OBSTRUCTED — it must drop all the way to NORMAL (h1 < obstructionThreshold). This is the correct topology-motivated behavior: once the group exits the critical regime, we start fresh rather than lingering in OBSTRUCTED.
 
@@ -116,54 +116,54 @@ Exports: `Agent` (5-stage lifecycle), `PoolConfig` (3 fields), `Task<T>`, `TaskR
 
 ### EventBus (12 tests — T1-T10 + 2 additional)
 
-| Test | Name | Status |
-|------|------|--------|
-| T1 | Single subscriber receives emitted event | PASS |
-| T2 | Multiple subscribers for same event all receive it | PASS |
-| T3 | Different event types route to different subscribers only | PASS |
-| T4 | Unsubscribe prevents handler from receiving subsequent events | PASS |
-| T5 | Async handlers run in parallel, not sequentially | PASS |
-| T6 | emit with no subscribers resolves without error | PASS |
-| T7 | Handler that throws causes emit() to reject | PASS |
-| T8 | Same handler subscribed twice is called twice per emit | PASS |
-| T9 | Event type matching is case-sensitive | PASS |
-| T10 | getSubscriberCount returns accurate counts through subscribe/unsubscribe | PASS |
-| A1 | EventBus has accessible EventEmitter via .emitter property | PASS |
-| A2 | Multiple event types tracked independently | PASS |
+| Test | Name                                                                     | Status |
+| ---- | ------------------------------------------------------------------------ | ------ |
+| T1   | Single subscriber receives emitted event                                 | PASS   |
+| T2   | Multiple subscribers for same event all receive it                       | PASS   |
+| T3   | Different event types route to different subscribers only                | PASS   |
+| T4   | Unsubscribe prevents handler from receiving subsequent events            | PASS   |
+| T5   | Async handlers run in parallel, not sequentially                         | PASS   |
+| T6   | emit with no subscribers resolves without error                          | PASS   |
+| T7   | Handler that throws causes emit() to reject                              | PASS   |
+| T8   | Same handler subscribed twice is called twice per emit                   | PASS   |
+| T9   | Event type matching is case-sensitive                                    | PASS   |
+| T10  | getSubscriberCount returns accurate counts through subscribe/unsubscribe | PASS   |
+| A1   | EventBus has accessible EventEmitter via .emitter property               | PASS   |
+| A2   | Multiple event types tracked independently                               | PASS   |
 
 ### AgentPool (12 tests — T1-T10 + 2 additional)
 
-| Test | Name | Status |
-|------|------|--------|
-| T1 | initialize() spawns all agents in parallel and marks them active | PASS |
-| T2 | getIdleAgents() returns only agents with status idle | PASS |
-| T3 | Heartbeat interval fires periodically on all active agents | PASS |
-| T4 | Per-agent heartbeat timeout marks timed-out agent terminated without blocking others | PASS |
-| T5 | shutdown() calls cleanup() on all agents | PASS |
-| T6 | shutdown() is idempotent — calling twice does not throw | PASS |
-| T7 | getAgents() includes terminated agents | PASS |
-| T8 | Agent status transitions follow lifecycle order | PASS |
-| T9 | Heartbeat failure is caught, agent marked terminated, pool remains responsive | PASS |
-| T10 | Multiple shutdown calls result in exactly one cleanup() per agent | PASS |
-| A1 | getAgentCount() returns total pool size | PASS |
-| A2 | Empty pool (size=0) initializes and shuts down cleanly | PASS |
+| Test | Name                                                                                 | Status |
+| ---- | ------------------------------------------------------------------------------------ | ------ |
+| T1   | initialize() spawns all agents in parallel and marks them active                     | PASS   |
+| T2   | getIdleAgents() returns only agents with status idle                                 | PASS   |
+| T3   | Heartbeat interval fires periodically on all active agents                           | PASS   |
+| T4   | Per-agent heartbeat timeout marks timed-out agent terminated without blocking others | PASS   |
+| T5   | shutdown() calls cleanup() on all agents                                             | PASS   |
+| T6   | shutdown() is idempotent — calling twice does not throw                              | PASS   |
+| T7   | getAgents() includes terminated agents                                               | PASS   |
+| T8   | Agent status transitions follow lifecycle order                                      | PASS   |
+| T9   | Heartbeat failure is caught, agent marked terminated, pool remains responsive        | PASS   |
+| T10  | Multiple shutdown calls result in exactly one cleanup() per agent                    | PASS   |
+| A1   | getAgentCount() returns total pool size                                              | PASS   |
+| A2   | Empty pool (size=0) initializes and shuts down cleanly                               | PASS   |
 
 ### OrchestratorStateManager (12 tests — T1-T8 + 4 additional)
 
-| Test | Name | Status |
-|------|------|--------|
-| E1 | Exports NORMAL, OBSTRUCTED, CRITICAL enum values | PASS |
-| T1 | NORMAL → OBSTRUCTED when H1 reaches obstruction threshold | PASS |
-| T2 | OBSTRUCTED → CRITICAL when H1 exceeds critical threshold | PASS |
-| T3 | CRITICAL → NORMAL when H1 drops below obstruction threshold | PASS |
-| T4 | State change event has all required payload fields | PASS |
-| T5 | getState() and getLastStateChangeTime() update correctly | PASS |
-| T6 | No event emitted when state does not change | PASS |
-| T7 | Custom thresholds control transition points | PASS |
-| T8 | H1=0 brings any state back to NORMAL | PASS |
-| A1 | NORMAL can jump directly to CRITICAL if H1 >= criticalThreshold | PASS |
-| A2 | CRITICAL stays CRITICAL when H1 is between obs and crit thresholds | PASS |
-| A3 | Initial state is NORMAL regardless of construction arguments | PASS |
+| Test | Name                                                               | Status |
+| ---- | ------------------------------------------------------------------ | ------ |
+| E1   | Exports NORMAL, OBSTRUCTED, CRITICAL enum values                   | PASS   |
+| T1   | NORMAL → OBSTRUCTED when H1 reaches obstruction threshold          | PASS   |
+| T2   | OBSTRUCTED → CRITICAL when H1 exceeds critical threshold           | PASS   |
+| T3   | CRITICAL → NORMAL when H1 drops below obstruction threshold        | PASS   |
+| T4   | State change event has all required payload fields                 | PASS   |
+| T5   | getState() and getLastStateChangeTime() update correctly           | PASS   |
+| T6   | No event emitted when state does not change                        | PASS   |
+| T7   | Custom thresholds control transition points                        | PASS   |
+| T8   | H1=0 brings any state back to NORMAL                               | PASS   |
+| A1   | NORMAL can jump directly to CRITICAL if H1 >= criticalThreshold    | PASS   |
+| A2   | CRITICAL stays CRITICAL when H1 is between obs and crit thresholds | PASS   |
+| A3   | Initial state is NORMAL regardless of construction arguments       | PASS   |
 
 **Total: 36 new tests — all passing.**
 **Full suite: 275 tests across 25 test files — zero regressions.**
@@ -184,16 +184,19 @@ Exports: `Agent` (5-stage lifecycle), `PoolConfig` (3 fields), `Task<T>`, `TaskR
 ## Integration Readiness (for Phase 5 Plan 02)
 
 ### EventBus — ready
+
 - All event type routing verified (sheaf/soc events)
 - Async handler support confirmed
 - `getSubscriberCount()` available for integration tests
 
 ### AgentPool — ready
+
 - `Agent` interface stable (id, status, spawn/heartbeat/cleanup)
 - MockAgent pattern established for Phase 02 tests
 - `getIdleAgents()` ready for task assignment logic
 
 ### OrchestratorStateManager — ready
+
 - Default thresholds (obs=2, crit=5) match H^1 typical range in 3-agent AGEM
 - StateChangeEvent format stable for downstream consumers
 - `getState()` ready for Orchestrator main loop conditionals
@@ -212,6 +215,7 @@ No circular dependencies — all orchestrator modules import only from `src/type
 ## Self-Check: PASSED
 
 Files checked:
+
 - FOUND: src/orchestrator/interfaces.ts
 - FOUND: src/orchestrator/EventBus.ts
 - FOUND: src/orchestrator/EventBus.test.ts
@@ -221,6 +225,7 @@ Files checked:
 - FOUND: src/orchestrator/OrchestratorState.test.ts
 
 Commits checked:
+
 - FOUND: 6393f0a (interfaces)
 - FOUND: cc76366 (EventBus)
 - FOUND: 34af321 (AgentPool)

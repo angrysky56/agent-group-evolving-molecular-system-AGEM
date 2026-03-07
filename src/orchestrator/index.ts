@@ -29,39 +29,42 @@
 // Main composition root (ORCH-05)
 // ---------------------------------------------------------------------------
 
-export { Orchestrator } from './ComposeRootModule.js';
+export { Orchestrator } from "./ComposeRootModule.js";
 
 // ---------------------------------------------------------------------------
 // Obstruction handling (ROADMAP criteria #3)
 // ---------------------------------------------------------------------------
 
-export { ObstructionHandler } from './ObstructionHandler.js';
-export type { GapFillResult } from './ObstructionHandler.js';
+export { ObstructionHandler } from "./ObstructionHandler.js";
+export type { GapFillResult } from "./ObstructionHandler.js";
 
 // ---------------------------------------------------------------------------
 // State management (ROADMAP criteria #4 / ORCH-03)
 // ---------------------------------------------------------------------------
 
-export { OrchestratorState, OrchestratorStateManager } from './OrchestratorState.js';
-export type { StateChangeEvent } from './OrchestratorState.js';
+export {
+  OrchestratorState,
+  OrchestratorStateManager,
+} from "./OrchestratorState.js";
+export type { StateChangeEvent } from "./OrchestratorState.js";
 
 // ---------------------------------------------------------------------------
 // Core orchestration primitives
 // ---------------------------------------------------------------------------
 
 // EventBus — async event routing (ORCH-04)
-export { EventBus } from './EventBus.js';
+export { EventBus } from "./EventBus.js";
 
 // AgentPool — agent lifecycle management (ORCH-01)
-export { AgentPool } from './AgentPool.js';
+export { AgentPool } from "./AgentPool.js";
 
 // llm_map — parallel task dispatch (ORCH-02)
-export { llm_map, contextStorage, formatTaskForWorker } from './llm_map.js';
-export type { WorkerInboundMessage, WorkerOutboundMessage } from './llm_map.js';
+export { llm_map, contextStorage, formatTaskForWorker } from "./llm_map.js";
+export type { WorkerInboundMessage, WorkerOutboundMessage } from "./llm_map.js";
 
 // Phase 6: VdW agent spawning (ORCH-06)
-export { VdWAgentSpawner, VdWAgent } from './VdWAgentSpawner.js';
-export type { VdWSpawnParams, VdWSpawnerConfig } from './VdWAgentSpawner.js';
+export { VdWAgentSpawner, VdWAgent } from "./VdWAgentSpawner.js";
+export type { VdWSpawnParams, VdWSpawnerConfig } from "./VdWAgentSpawner.js";
 
 // ---------------------------------------------------------------------------
 // Types and interfaces
@@ -74,11 +77,11 @@ export type {
   TaskResult,
   AnyEvent,
   EventSubscriber,
-} from './interfaces.js';
+} from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Re-export IEmbedder from lcm for convenience
 // (Orchestrator consumers need IEmbedder to instantiate Orchestrator)
 // ---------------------------------------------------------------------------
 
-export type { IEmbedder } from '../lcm/interfaces.js';
+export type { IEmbedder } from "../lcm/interfaces.js";

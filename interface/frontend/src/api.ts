@@ -22,7 +22,11 @@ const BASE = "/api/v1";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function json<T>(url: string, init?: RequestInit, retries = 3): Promise<T> {
+async function json<T>(
+  url: string,
+  init?: RequestInit,
+  retries = 3,
+): Promise<T> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -66,7 +70,7 @@ export async function getSession(id: string): Promise<ChatSession> {
 }
 
 export async function createSession(
-  data: CreateSessionRequest = {}
+  data: CreateSessionRequest = {},
 ): Promise<ChatSession> {
   return json(`${BASE}/sessions`, {
     method: "POST",
@@ -96,7 +100,7 @@ export interface StreamCallbacks {
 export function streamChat(
   request: ChatRequest,
   callbacks: StreamCallbacks,
-  apiKey?: string
+  apiKey?: string,
 ): AbortController {
   const controller = new AbortController();
 
@@ -174,7 +178,9 @@ export function streamChat(
                 }
                 break;
               case "error":
-                callbacks.onError(data.message ?? data.content ?? "Unknown error");
+                callbacks.onError(
+                  data.message ?? data.content ?? "Unknown error",
+                );
                 break;
             }
           } catch {
@@ -199,7 +205,7 @@ export async function getConfig(): Promise<SystemConfig> {
 }
 
 export async function updateConfig(
-  config: Partial<SystemConfig>
+  config: Partial<SystemConfig>,
 ): Promise<SystemConfig> {
   return json(`${BASE}/system/config`, {
     method: "POST",
@@ -207,7 +213,10 @@ export async function updateConfig(
   });
 }
 
-export async function listModels(provider?: string, apiKey?: string): Promise<ModelInfo[]> {
+export async function listModels(
+  provider?: string,
+  apiKey?: string,
+): Promise<ModelInfo[]> {
   const params = provider ? `?provider=${provider}` : "";
   const headers: Record<string, string> = {};
   if (apiKey) {
@@ -227,17 +236,13 @@ export async function getStatus(): Promise<{
 
 /* ─── Knowledge Base ─── */
 
-export async function listKnowledge(
-  dir?: string
-): Promise<KnowledgeFile[]> {
+export async function listKnowledge(dir?: string): Promise<KnowledgeFile[]> {
   const params = dir ? `?dir=${encodeURIComponent(dir)}` : "";
   return json(`${BASE}/knowledge${params}`);
 }
 
 export async function readKnowledge(filePath: string): Promise<string> {
-  const res = await fetch(
-    `${BASE}/knowledge/${encodeURIComponent(filePath)}`
-  );
+  const res = await fetch(`${BASE}/knowledge/${encodeURIComponent(filePath)}`);
   if (!res.ok) throw new Error(`API ${res.status}`);
   const data = (await res.json()) as { content: string };
   return data.content;

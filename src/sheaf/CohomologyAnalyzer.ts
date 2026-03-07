@@ -37,14 +37,14 @@
  *   // entries, recalibration may be necessary -- pass explicit tolerance.
  */
 
-import { EventEmitter } from 'events';
-import { Matrix as MlMatrix, SingularValueDecomposition } from 'ml-matrix';
-import type { CohomologyResult, VertexId } from '../types/index.js';
+import { EventEmitter } from "events";
+import { Matrix as MlMatrix, SingularValueDecomposition } from "ml-matrix";
+import type { CohomologyResult, VertexId } from "../types/index.js";
 import type {
   SheafH1ObstructionEvent,
   SheafConsensusReachedEvent,
-} from '../types/index.js';
-import { CellularSheaf } from './CellularSheaf.js';
+} from "../types/index.js";
+import { CellularSheaf } from "./CellularSheaf.js";
 
 // ---------------------------------------------------------------------------
 // computeCohomology — standalone function (mathematical core)
@@ -75,7 +75,7 @@ import { CellularSheaf } from './CellularSheaf.js';
  */
 export function computeCohomology(
   sheaf: CellularSheaf,
-  tolerance?: number
+  tolerance?: number,
 ): CohomologyResult {
   // Full SVD of B is O(N_0 * N_1 * min(N_0, N_1)).
   // For N_0, N_1 < 200 this is acceptable (<10ms). For larger sheaves,
@@ -176,21 +176,21 @@ export class CohomologyAnalyzer extends EventEmitter {
 
     if (result.hasObstruction) {
       const event: SheafH1ObstructionEvent = {
-        type: 'sheaf:h1-obstruction-detected',
+        type: "sheaf:h1-obstruction-detected",
         iteration,
         h1Dimension: result.h1Dimension,
         h1Basis: result.h1Basis,
         affectedVertices: this.findAffectedVertices(result, sheaf),
       };
-      this.emit('sheaf:h1-obstruction-detected', event);
+      this.emit("sheaf:h1-obstruction-detected", event);
     } else {
       const event: SheafConsensusReachedEvent = {
-        type: 'sheaf:consensus-reached',
+        type: "sheaf:consensus-reached",
         iteration,
         h0Dimension: result.h0Dimension,
         dirichletEnergy: 0, // TODO: compute from ADMMSolver in future
       };
-      this.emit('sheaf:consensus-reached', event);
+      this.emit("sheaf:consensus-reached", event);
     }
 
     return result;
@@ -205,7 +205,7 @@ export class CohomologyAnalyzer extends EventEmitter {
    */
   private findAffectedVertices(
     _result: CohomologyResult,
-    sheaf: CellularSheaf
+    sheaf: CellularSheaf,
   ): VertexId[] {
     // For Phase 1: return all vertex IDs.
     // Phase 5 can refine this to identify the specific obstruction cycle.

@@ -24,12 +24,8 @@ app.use(
     origin: ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-OpenRouter-Key",
-    ],
-  })
+    allowedHeaders: ["Content-Type", "Authorization", "X-OpenRouter-Key"],
+  }),
 );
 
 app.use(express.json({ limit: "10mb" }));
@@ -60,14 +56,14 @@ app.use(
     err: Error,
     _req: express.Request,
     res: express.Response,
-    _next: express.NextFunction
+    _next: express.NextFunction,
   ) => {
     console.error("[Server Error]", err.message);
     res.status(500).json({
       error: "Internal Server Error",
       message: err.message,
     });
-  }
+  },
 );
 
 /* ─── Start Server ─── */
@@ -88,12 +84,12 @@ app.listen(PORT, HOST, () => {
   `);
 
   // Initialize Skills Registry
-  skillRegistry.initialize().catch(err => {
+  skillRegistry.initialize().catch((err) => {
     console.error("[SkillRegistry] Failed to start:", err);
   });
 
   // Initialize MCP Manager
-  mcpManager.initialize().catch(err => {
+  mcpManager.initialize().catch((err) => {
     console.error("[MCPManager] Failed to start:", err);
   });
 });

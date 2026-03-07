@@ -23,9 +23,9 @@
  *   - LCMEntry, IEmbedder from interfaces.js
  */
 
-import type { LCMEntry, IEmbedder } from './interfaces.js';
-import { ImmutableStore } from './ImmutableStore.js';
-import { EmbeddingCache } from './EmbeddingCache.js';
+import type { LCMEntry, IEmbedder } from "./interfaces.js";
+import { ImmutableStore } from "./ImmutableStore.js";
+import { EmbeddingCache } from "./EmbeddingCache.js";
 
 // ---------------------------------------------------------------------------
 // Result and options types
@@ -60,7 +60,11 @@ export class LCMGrep {
   readonly #cache: EmbeddingCache;
   readonly #embedder: IEmbedder;
 
-  constructor(store: ImmutableStore, cache: EmbeddingCache, embedder: IEmbedder) {
+  constructor(
+    store: ImmutableStore,
+    cache: EmbeddingCache,
+    embedder: IEmbedder,
+  ) {
     this.#store = store;
     this.#cache = cache;
     this.#embedder = embedder;

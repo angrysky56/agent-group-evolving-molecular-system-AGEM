@@ -307,7 +307,10 @@ Use the read_skill tool to read the full content of any skill if you need more i
           let args: any = {};
           if (typeof tc.function.arguments === "string") {
             args = JSON.parse(tc.function.arguments || "{}");
-          } else if (typeof tc.function.arguments === "object" && tc.function.arguments !== null) {
+          } else if (
+            typeof tc.function.arguments === "object" &&
+            tc.function.arguments !== null
+          ) {
             args = tc.function.arguments;
           }
           let output = "";

@@ -13,15 +13,15 @@
  *   T7: getProcessingStatus() returns accurate state
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ObstructionHandler } from './ObstructionHandler.js';
-import { EventBus } from './EventBus.js';
-import { Preprocessor } from '../tna/Preprocessor.js';
-import { CooccurrenceGraph } from '../tna/CooccurrenceGraph.js';
-import { LouvainDetector } from '../tna/LouvainDetector.js';
-import { CentralityAnalyzer } from '../tna/CentralityAnalyzer.js';
-import { GapDetector } from '../tna/GapDetector.js';
-import type { AnyEvent } from './interfaces.js';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ObstructionHandler } from "./ObstructionHandler.js";
+import { EventBus } from "./EventBus.js";
+import { Preprocessor } from "../tna/Preprocessor.js";
+import { CooccurrenceGraph } from "../tna/CooccurrenceGraph.js";
+import { LouvainDetector } from "../tna/LouvainDetector.js";
+import { CentralityAnalyzer } from "../tna/CentralityAnalyzer.js";
+import { GapDetector } from "../tna/GapDetector.js";
+import type { AnyEvent } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -32,10 +32,10 @@ import type { AnyEvent } from './interfaces.js';
  */
 function createObstructionEvent(
   iteration: number = 1,
-  h1Dimension: number = 2
+  h1Dimension: number = 2,
 ): AnyEvent {
   return {
-    type: 'sheaf:h1-obstruction-detected',
+    type: "sheaf:h1-obstruction-detected",
     iteration,
     h1Dimension,
     h1Basis: [],
@@ -67,7 +67,7 @@ function createRealDependencies(): {
  */
 async function waitForProcessing(
   handler: ObstructionHandler,
-  timeoutMs: number = 2000
+  timeoutMs: number = 2000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -77,38 +77,39 @@ async function waitForProcessing(
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error('waitForProcessing: timeout exceeded');
+  throw new Error("waitForProcessing: timeout exceeded");
 }
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('ObstructionHandler', () => {
-
-  describe('T1: Construction and subscription', () => {
-    it('subscribes to sheaf:h1-obstruction-detected on construction', () => {
+describe("ObstructionHandler", () => {
+  describe("T1: Construction and subscription", () => {
+    it("subscribes to sheaf:h1-obstruction-detected on construction", () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Spy on subscribe to verify the call
-      const subscribeSpy = vi.spyOn(eventBus, 'subscribe');
+      const subscribeSpy = vi.spyOn(eventBus, "subscribe");
 
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
       // Verify subscribe was called with the obstruction event type
       expect(subscribeSpy).toHaveBeenCalledWith(
-        'sheaf:h1-obstruction-detected',
-        expect.any(Function)
+        "sheaf:h1-obstruction-detected",
+        expect.any(Function),
       );
 
       // Cleanup
       void handler.shutdown();
     });
 
-    it('initializes with idle agent pool of specified size', () => {
+    it("initializes with idle agent pool of specified size", () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
-      const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph, { agentPoolSize: 3 });
+      const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph, {
+        agentPoolSize: 3,
+      });
       const status = handler.getProcessingStatus();
 
       expect(status.agentCount).toBe(3);
@@ -119,8 +120,8 @@ describe('ObstructionHandler', () => {
     });
   });
 
-  describe('T2: Obstruction event enqueuing and processing', () => {
-    it('enqueues and processes obstruction event asynchronously', async () => {
+  describe("T2: Obstruction event enqueuing and processing", () => {
+    it("enqueues and processes obstruction event asynchronously", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
@@ -138,25 +139,27 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('processes obstruction event without throwing', async () => {
+    it("processes obstruction event without throwing", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
       // Should not throw
       await expect(
-        eventBus.emit(createObstructionEvent()).then(() => waitForProcessing(handler))
+        eventBus
+          .emit(createObstructionEvent())
+          .then(() => waitForProcessing(handler)),
       ).resolves.not.toThrow();
 
       await handler.shutdown();
     });
   });
 
-  describe('T3: GapDetector agent spawning', () => {
-    it('processes obstruction by calling gapDetector.findGaps()', async () => {
+  describe("T3: GapDetector agent spawning", () => {
+    it("processes obstruction by calling gapDetector.findGaps()", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Spy on findGaps
-      const findGapsSpy = vi.spyOn(gapDetector, 'findGaps');
+      const findGapsSpy = vi.spyOn(gapDetector, "findGaps");
 
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
@@ -169,7 +172,7 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('can handle obstruction event when graph has no gaps', async () => {
+    it("can handle obstruction event when graph has no gaps", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Empty graph → findGaps returns [] (no gaps possible with single/no community)
@@ -187,8 +190,8 @@ describe('ObstructionHandler', () => {
     });
   });
 
-  describe('T4: Gap fill results integration into TNA graph', () => {
-    it('does not add entities to graph when no gaps exist', async () => {
+  describe("T4: Gap fill results integration into TNA graph", () => {
+    it("does not add entities to graph when no gaps exist", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       const initialOrder = tnaGraph.order;
@@ -204,15 +207,15 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('calls ingestTokens to add entities when gaps are found', async () => {
+    it("calls ingestTokens to add entities when gaps are found", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Populate graph to create gap-detectable structure
-      tnaGraph.ingest('alpha beta gamma delta', 1);
-      tnaGraph.ingest('epsilon zeta eta theta', 1);
+      tnaGraph.ingest("alpha beta gamma delta", 1);
+      tnaGraph.ingest("epsilon zeta eta theta", 1);
 
       // Spy on ingestTokens to verify integration
-      const ingestSpy = vi.spyOn(tnaGraph, 'ingestTokens');
+      const ingestSpy = vi.spyOn(tnaGraph, "ingestTokens");
 
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
@@ -231,15 +234,15 @@ describe('ObstructionHandler', () => {
     });
   });
 
-  describe('T5: Multiple obstructions queued in order', () => {
-    it('processes multiple obstruction events in FIFO order', async () => {
+  describe("T5: Multiple obstructions queued in order", () => {
+    it("processes multiple obstruction events in FIFO order", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       const processingOrder: number[] = [];
 
       // Spy on findGaps to track processing order
       let callCount = 0;
-      vi.spyOn(gapDetector, 'findGaps').mockImplementation(() => {
+      vi.spyOn(gapDetector, "findGaps").mockImplementation(() => {
         processingOrder.push(++callCount);
         return [];
       });
@@ -262,11 +265,11 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('handles rapid sequential events without dropping any', async () => {
+    it("handles rapid sequential events without dropping any", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       let processedCount = 0;
-      vi.spyOn(gapDetector, 'findGaps').mockImplementation(() => {
+      vi.spyOn(gapDetector, "findGaps").mockImplementation(() => {
         processedCount++;
         return [];
       });
@@ -292,13 +295,13 @@ describe('ObstructionHandler', () => {
     });
   });
 
-  describe('T6: orch:obstruction-filled event emission', () => {
-    it('emits orch:obstruction-filled after processing', async () => {
+  describe("T6: orch:obstruction-filled event emission", () => {
+    it("emits orch:obstruction-filled after processing", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Subscribe to the filled event
       const filledEvents: unknown[] = [];
-      eventBus.subscribe('orch:obstruction-filled', (event) => {
+      eventBus.subscribe("orch:obstruction-filled", (event) => {
         filledEvents.push(event);
       });
 
@@ -313,11 +316,11 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('orch:obstruction-filled event contains correct fields', async () => {
+    it("orch:obstruction-filled event contains correct fields", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       const filledEvents: unknown[] = [];
-      eventBus.subscribe('orch:obstruction-filled', (event) => {
+      eventBus.subscribe("orch:obstruction-filled", (event) => {
         filledEvents.push(event);
       });
 
@@ -329,24 +332,24 @@ describe('ObstructionHandler', () => {
       expect(filledEvents.length).toBe(1);
 
       const ev = filledEvents[0] as Record<string, unknown>;
-      expect(ev).toHaveProperty('obstructionId');
-      expect(ev).toHaveProperty('gapsDetected');
-      expect(ev).toHaveProperty('entitiesAdded');
-      expect(ev).toHaveProperty('relationsAdded');
-      expect(ev).toHaveProperty('synthQueries');
-      expect(ev).toHaveProperty('timestamp');
+      expect(ev).toHaveProperty("obstructionId");
+      expect(ev).toHaveProperty("gapsDetected");
+      expect(ev).toHaveProperty("entitiesAdded");
+      expect(ev).toHaveProperty("relationsAdded");
+      expect(ev).toHaveProperty("synthQueries");
+      expect(ev).toHaveProperty("timestamp");
 
       // obstructionId should reference the original obstruction
-      expect(String(ev['obstructionId'])).toContain('iter-7');
+      expect(String(ev["obstructionId"])).toContain("iter-7");
 
       await handler.shutdown();
     });
 
-    it('emits separate orch:obstruction-filled for each obstruction', async () => {
+    it("emits separate orch:obstruction-filled for each obstruction", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       const filledCount = { count: 0 };
-      eventBus.subscribe('orch:obstruction-filled', () => {
+      eventBus.subscribe("orch:obstruction-filled", () => {
         filledCount.count++;
       });
 
@@ -364,10 +367,12 @@ describe('ObstructionHandler', () => {
     });
   });
 
-  describe('T7: getProcessingStatus() accuracy', () => {
-    it('returns accurate initial state', () => {
+  describe("T7: getProcessingStatus() accuracy", () => {
+    it("returns accurate initial state", () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
-      const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph, { agentPoolSize: 2 });
+      const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph, {
+        agentPoolSize: 2,
+      });
 
       const status = handler.getProcessingStatus();
       expect(status.isProcessing).toBe(false);
@@ -377,7 +382,7 @@ describe('ObstructionHandler', () => {
       void handler.shutdown();
     });
 
-    it('returns isProcessing=false and queueLength=0 after processing completes', async () => {
+    it("returns isProcessing=false and queueLength=0 after processing completes", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
@@ -391,7 +396,7 @@ describe('ObstructionHandler', () => {
       await handler.shutdown();
     });
 
-    it('reflects correct agent count after construction', () => {
+    it("reflects correct agent count after construction", () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Default pool size is 4
@@ -401,31 +406,43 @@ describe('ObstructionHandler', () => {
       void handler4.shutdown();
 
       // Custom pool size
-      const { eventBus: bus2, gapDetector: gd2, tnaGraph: tg2 } = createRealDependencies();
-      const handler6 = new ObstructionHandler(bus2, gd2, tg2, { agentPoolSize: 6 });
+      const {
+        eventBus: bus2,
+        gapDetector: gd2,
+        tnaGraph: tg2,
+      } = createRealDependencies();
+      const handler6 = new ObstructionHandler(bus2, gd2, tg2, {
+        agentPoolSize: 6,
+      });
       expect(handler6.getProcessingStatus().agentCount).toBe(6);
 
       void handler6.shutdown();
     });
   });
 
-  describe('Shutdown behavior', () => {
-    it('unsubscribes from event bus on shutdown', async () => {
+  describe("Shutdown behavior", () => {
+    it("unsubscribes from event bus on shutdown", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
-      const subscriberCount = eventBus.getSubscriberCount('sheaf:h1-obstruction-detected');
+      const subscriberCount = eventBus.getSubscriberCount(
+        "sheaf:h1-obstruction-detected",
+      );
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
       // Should now have one more subscriber
-      expect(eventBus.getSubscriberCount('sheaf:h1-obstruction-detected')).toBe(subscriberCount + 1);
+      expect(eventBus.getSubscriberCount("sheaf:h1-obstruction-detected")).toBe(
+        subscriberCount + 1,
+      );
 
       await handler.shutdown();
 
       // Should be unsubscribed
-      expect(eventBus.getSubscriberCount('sheaf:h1-obstruction-detected')).toBe(subscriberCount);
+      expect(eventBus.getSubscriberCount("sheaf:h1-obstruction-detected")).toBe(
+        subscriberCount,
+      );
     });
 
-    it('can call shutdown safely multiple times', async () => {
+    it("can call shutdown safely multiple times", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
@@ -440,17 +457,16 @@ describe('ObstructionHandler', () => {
 // Phase 6: VdW agent spawning integration tests
 // ---------------------------------------------------------------------------
 
-import { VdWAgentSpawner } from './VdWAgentSpawner.js';
+import { VdWAgentSpawner } from "./VdWAgentSpawner.js";
 
-describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgentSpawner)', () => {
-
-  describe('T-INT-1: ObstructionHandler with VdW spawner spawns agents on H^1 obstruction', () => {
-    it('spawns VdW agents when regime is critical and hysteresis sustained', async () => {
+describe("Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgentSpawner)", () => {
+  describe("T-INT-1: ObstructionHandler with VdW spawner spawns agents on H^1 obstruction", () => {
+    it("spawns VdW agents when regime is critical and hysteresis sustained", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Populate graph with 2 distinct communities
-      tnaGraph.ingest('alpha beta gamma delta', 1);
-      tnaGraph.ingest('epsilon zeta eta theta', 1);
+      tnaGraph.ingest("alpha beta gamma delta", 1);
+      tnaGraph.ingest("epsilon zeta eta theta", 1);
 
       const vdwSpawner = new VdWAgentSpawner(eventBus, {
         h1HysteresisCount: 2,
@@ -462,13 +478,13 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
       });
 
       // Set regime to critical and sustain H^1 for 2 iterations
-      handler.updateRegime('critical');
+      handler.updateRegime("critical");
       handler.updateH1ForSpawner(3);
       handler.updateH1ForSpawner(3);
 
       // Capture VdW spawn events
       const spawnedEvents: unknown[] = [];
-      eventBus.subscribe('orch:vdw-agent-spawned', (e) => {
+      eventBus.subscribe("orch:vdw-agent-spawned", (e) => {
         spawnedEvents.push(e);
       });
 
@@ -487,26 +503,28 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
     });
   });
 
-  describe('T-INT-2: ObstructionHandler WITHOUT VdW spawner still works (backward compatible)', () => {
-    it('processes obstruction without VdW spawner without crashing', async () => {
+  describe("T-INT-2: ObstructionHandler WITHOUT VdW spawner still works (backward compatible)", () => {
+    it("processes obstruction without VdW spawner without crashing", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // No vdwSpawner injected → null → VdW logic skipped
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
       await expect(
-        eventBus.emit(createObstructionEvent(1, 2)).then(() => waitForProcessing(handler))
+        eventBus
+          .emit(createObstructionEvent(1, 2))
+          .then(() => waitForProcessing(handler)),
       ).resolves.not.toThrow();
 
       await handler.shutdown();
     });
 
-    it('updateRegime() is safe to call when no VdW spawner configured', () => {
+    it("updateRegime() is safe to call when no VdW spawner configured", () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph);
 
       // Should not throw when no vdwSpawner
-      expect(() => handler.updateRegime('critical')).not.toThrow();
+      expect(() => handler.updateRegime("critical")).not.toThrow();
       expect(() => handler.updateH1ForSpawner(5)).not.toThrow();
 
       void handler.shutdown();
@@ -514,11 +532,11 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
   });
 
   describe('T-INT-3: VdW agents NOT spawned during "stable" regime', () => {
-    it('emits zero orch:vdw-agent-spawned events when regime is stable', async () => {
+    it("emits zero orch:vdw-agent-spawned events when regime is stable", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
-      tnaGraph.ingest('alpha beta gamma delta', 1);
-      tnaGraph.ingest('epsilon zeta eta theta', 1);
+      tnaGraph.ingest("alpha beta gamma delta", 1);
+      tnaGraph.ingest("epsilon zeta eta theta", 1);
 
       const vdwSpawner = new VdWAgentSpawner(eventBus);
       const handler = new ObstructionHandler(eventBus, gapDetector, tnaGraph, {
@@ -526,12 +544,12 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
       });
 
       // Set regime to stable — suppresses VdW spawning
-      handler.updateRegime('stable');
+      handler.updateRegime("stable");
       handler.updateH1ForSpawner(5);
       handler.updateH1ForSpawner(5); // hysteresis met
 
       const spawnedCount = { count: 0 };
-      eventBus.subscribe('orch:vdw-agent-spawned', () => {
+      eventBus.subscribe("orch:vdw-agent-spawned", () => {
         spawnedCount.count++;
       });
 
@@ -544,13 +562,13 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
     });
   });
 
-  describe('T-INT-4: VdW agent results integrated into TNA graph', () => {
-    it('new tokens appear in TNA graph after VdW agent entity integration', async () => {
+  describe("T-INT-4: VdW agent results integrated into TNA graph", () => {
+    it("new tokens appear in TNA graph after VdW agent entity integration", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
       // Populate graph to create communities
-      tnaGraph.ingest('alpha beta gamma delta', 1);
-      tnaGraph.ingest('epsilon zeta eta theta', 1);
+      tnaGraph.ingest("alpha beta gamma delta", 1);
+      tnaGraph.ingest("epsilon zeta eta theta", 1);
 
       const initialOrder = tnaGraph.order;
 
@@ -564,7 +582,7 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
       });
 
       // Set critical regime with sustained H^1
-      handler.updateRegime('critical');
+      handler.updateRegime("critical");
       handler.updateH1ForSpawner(5);
       handler.updateH1ForSpawner(5);
 
@@ -586,12 +604,12 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
     });
   });
 
-  describe('T-INT-5: Shutdown cleans up VdW spawner', () => {
-    it('shutdown() terminates all active VdW agents', async () => {
+  describe("T-INT-5: Shutdown cleans up VdW spawner", () => {
+    it("shutdown() terminates all active VdW agents", async () => {
       const { eventBus, gapDetector, tnaGraph } = createRealDependencies();
 
-      tnaGraph.ingest('alpha beta gamma delta', 1);
-      tnaGraph.ingest('epsilon zeta eta theta', 1);
+      tnaGraph.ingest("alpha beta gamma delta", 1);
+      tnaGraph.ingest("epsilon zeta eta theta", 1);
 
       const vdwSpawner = new VdWAgentSpawner(eventBus, {
         h1HysteresisCount: 2,
@@ -601,7 +619,7 @@ describe('Phase 6: VdW agent spawning integration (ObstructionHandler + VdWAgent
         vdwSpawner,
       });
 
-      handler.updateRegime('critical');
+      handler.updateRegime("critical");
       handler.updateH1ForSpawner(5);
       handler.updateH1ForSpawner(5);
 
