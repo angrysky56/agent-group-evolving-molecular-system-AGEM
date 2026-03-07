@@ -38,6 +38,7 @@ knowledge_base/outputs/*
 
 # Session data
 knowledge_base/sessions/
+interface/backend/knowledge_base/
 
 # MCP configuration
 mcp.json
