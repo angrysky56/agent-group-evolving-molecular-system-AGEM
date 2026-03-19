@@ -47,6 +47,11 @@ import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel } from "../lcm/i
 import { LumpabilityAuditor } from "../lumpability/index.js";
 
 // ---------------------------------------------------------------------------
+// Evolution module imports
+// ---------------------------------------------------------------------------
+import { PriceEvolver } from "../evolution/index.js";
+
+// ---------------------------------------------------------------------------
 // TNA module imports
 // ---------------------------------------------------------------------------
 import {
@@ -153,6 +158,9 @@ export class Orchestrator {
   /** Lumpability auditor: detects information loss at LCM compaction boundaries. */
   readonly lumpabilityAuditor!: LumpabilityAuditor;
 
+  /** Price evolver: evolutionary feedback via the Price equation on TNA graph edges. */
+  readonly priceEvolver!: PriceEvolver;
+
   // -------------------------------------------------------------------------
   // Private fields
   // -------------------------------------------------------------------------
@@ -162,6 +170,12 @@ export class Orchestrator {
 
   /** Previous SOC inputs for reference (unused in Phase 5, ready for Phase 6). */
   #previousSocInputs: SOCInputs | null = null;
+
+  /** Cached node embeddings — persists across iterations, only new nodes are embedded. */
+  #nodeEmbeddings: Map<string, Float64Array> = new Map();
+
+  /** Injected embedder reference for node-level embedding computation. */
+  #embedder: IEmbedder;
 
   // -------------------------------------------------------------------------
   // Constructor
@@ -176,12 +190,14 @@ export class Orchestrator {
    */
   constructor(embedder: IEmbedder) {
     this.eventBus = new EventBus();
+    this.#embedder = embedder;
 
     this.#initLcm(embedder);
     this.#initSheaf();
     this.#initTna();
     this.#initSoc();
     this.#initLumpability(embedder);
+    this.#initEvolution();
     this.stateManager = new OrchestratorStateManager(this.eventBus);
     this.#initOrchestration();
 
@@ -206,6 +222,7 @@ export class Orchestrator {
     this.#wireTnaEvents();
     this.#wireStateEvents();
     this.#wireLumpabilityEvents();
+    this.#wireEvolutionEvents();
   }
 
   #wireCohomologyEvents(): void {
@@ -299,6 +316,38 @@ export class Orchestrator {
 
     this.lumpabilityAuditor.on("lumpability:weak-compression", (event: AnyEvent) => {
       void this.eventBus.emit(event);
+    });
+  }
+
+  /**
+   * #wireEvolutionEvents — connect EventBus events to PriceEvolver feedback handlers.
+   *
+   * The PriceEvolver listens to regime changes, cohomology updates, SOC metrics,
+   * and lumpability audits to compute edge fitness and apply Pólya reinforcement.
+   */
+  #wireEvolutionEvents(): void {
+    this.eventBus.subscribe("regime:classification", (event: AnyEvent) => {
+      const e = event as unknown as { regime: string };
+      this.priceEvolver.onRegimeChange(e.regime);
+    });
+
+    this.eventBus.subscribe("sheaf:h1-obstruction-detected", (event: AnyEvent) => {
+      const e = event as unknown as { h1Dimension: number };
+      this.priceEvolver.onCohomologyUpdate(e.h1Dimension);
+    });
+
+    this.eventBus.subscribe("sheaf:consensus-reached", () => {
+      this.priceEvolver.onCohomologyUpdate(0);
+    });
+
+    this.eventBus.subscribe("soc:metrics", (event: AnyEvent) => {
+      const e = event as unknown as { cdp: number };
+      this.priceEvolver.onSOCMetrics(e.cdp);
+    });
+
+    this.eventBus.subscribe("lumpability:weak-compression", (event: AnyEvent) => {
+      const e = event as unknown as { sourceEntryIds: readonly string[] };
+      this.priceEvolver.onWeakLumpability(e.sourceEntryIds);
     });
   }
 
@@ -474,12 +523,15 @@ export class Orchestrator {
       }
     });
 
+    // Build node embeddings for SOC (cache new nodes only)
+    await this.#updateNodeEmbeddings(graphInstance);
+
     const socInputs: SOCInputs = {
       nodeCount: this.tnaGraph.order,
       edges,
-      embeddings: new Map<string, Float64Array>(), // populated from embedder in real system
-      communityAssignments: new Map<string, number>(), // populated from Louvain in real system
-      newEdges: [], // tracks edges added this iteration in real system
+      embeddings: this.#nodeEmbeddings,
+      communityAssignments: this.#buildCommunityMap(),
+      newEdges: this.#getNewEdges(graphInstance, this.#iterationCounter),
       iteration: this.#iterationCounter,
     };
 
@@ -488,6 +540,28 @@ export class Orchestrator {
 
     this.socTracker.computeAndEmit(socInputs);
     // Events 'soc:metrics' and optionally 'phase:transition' fire here
+
+    // Step 8: Evolve reasoning paths via Price equation
+    const decomp = this.priceEvolver.evolve(this.#iterationCounter);
+    console.log(
+      `[ORCH] Iteration ${this.#iterationCounter}: Price equation — ` +
+        `selection=${decomp.selection.toFixed(4)}, ` +
+        `transmission=${decomp.transmission.toFixed(4)}, ` +
+        `explore/exploit=${this.priceEvolver.getExploreExploitRatio().toFixed(2)}`,
+    );
+    void this.eventBus.emit({
+      type: "evolution:price-decomposition",
+      iteration: this.#iterationCounter,
+      timestamp: Date.now(),
+      selection: decomp.selection,
+      transmission: decomp.transmission,
+      totalChange: decomp.totalChange,
+      meanFitness: decomp.meanFitness,
+      populationSize: decomp.populationSize,
+      regime: decomp.regime,
+      learningRate: this.priceEvolver.getCurrentLearningRate(),
+      exploreExploitRatio: this.priceEvolver.getExploreExploitRatio(),
+    } as AnyEvent);
   }
 
   // -------------------------------------------------------------------------
@@ -598,6 +672,10 @@ export class Orchestrator {
     );
   }
 
+  #initEvolution(): void {
+    (this as any).priceEvolver = new PriceEvolver(this.tnaGraph.getGraph());
+  }
+
   #initOrchestration(): void {
     const vdwSpawner = new VdWAgentSpawner(this.eventBus);
     (this as any).obstructionHandler = new ObstructionHandler(
@@ -606,5 +684,56 @@ export class Orchestrator {
       this.tnaGraph,
       { agentPoolSize: 4, vdwSpawner },
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Private: SOCInputs helpers
+  // -------------------------------------------------------------------------
+
+  /** Embed any TNA graph nodes not yet in the cache. */
+  async #updateNodeEmbeddings(graph: ReturnType<CooccurrenceGraph["getGraph"]>): Promise<void> {
+    const nodesToEmbed: string[] = [];
+    graph.forEachNode((nodeId) => {
+      if (!this.#nodeEmbeddings.has(nodeId)) {
+        nodesToEmbed.push(nodeId);
+      }
+    });
+
+    // Embed new nodes (the lemma text IS the node ID in TNA)
+    for (const nodeId of nodesToEmbed) {
+      try {
+        const embedding = await this.#embedder.embed(nodeId);
+        this.#nodeEmbeddings.set(nodeId, embedding);
+      } catch {
+        // Skip failed embeddings — SOC will work with partial data
+      }
+    }
+  }
+
+  /** Build community assignment map from the Louvain detector. */
+  #buildCommunityMap(): Map<string, number> {
+    const map = new Map<string, number>();
+    const graph = this.tnaGraph.getGraph();
+    graph.forEachNode((nodeId, attrs) => {
+      const communityId = (attrs as { communityId?: number }).communityId;
+      if (communityId !== undefined) {
+        map.set(nodeId, communityId);
+      }
+    });
+    return map;
+  }
+
+  /** Get edges created at a specific iteration. */
+  #getNewEdges(
+    graph: ReturnType<CooccurrenceGraph["getGraph"]>,
+    iteration: number,
+  ): Array<{ source: string; target: string; createdAtIteration: number }> {
+    const result: Array<{ source: string; target: string; createdAtIteration: number }> = [];
+    graph.forEachEdge((_edge, attrs, source, target) => {
+      if ((attrs as { createdAtIteration?: number }).createdAtIteration === iteration) {
+        result.push({ source, target, createdAtIteration: iteration });
+      }
+    });
+    return result;
   }
 }

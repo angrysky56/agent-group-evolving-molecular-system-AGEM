@@ -50,11 +50,14 @@ export function Header({ onOpenSettings }: Props) {
           id="model-selector"
         >
           {availableModels.length > 0 ? (
-            availableModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name || m.id}
-              </option>
-            ))
+            availableModels
+              .filter((m) => m.type !== "embedding")
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.supports_tools ? "🔧 " : ""}{m.name || m.id}
+                  {m.context_length ? ` (${Math.round(m.context_length / 1024)}k)` : ""}
+                </option>
+              ))
           ) : (
             <option value={chatModel}>{chatModel}</option>
           )}

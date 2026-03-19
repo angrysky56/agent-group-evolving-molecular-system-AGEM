@@ -98,3 +98,38 @@ systemRouter.get("/events", (req, res) => {
     agemBridge.removeSSEClient(res);
   });
 });
+
+
+/**
+ * POST /embeddings — Get embeddings from the active provider.
+ *
+ * Body: { text: string, model?: string }
+ * Returns: { embedding: number[], model: string, dimensions: number }
+ */
+systemRouter.post("/embeddings", async (req, res) => {
+  const { text, model } = req.body as { text?: string; model?: string };
+
+  if (!text?.trim()) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+
+  try {
+    const provider = createProvider();
+    const embedding = await provider.getEmbedding(text, model);
+
+    if (!embedding || embedding.length === 0) {
+      res.status(502).json({ error: "Embedding provider returned empty result" });
+      return;
+    }
+
+    res.json({
+      embedding,
+      model: model ?? settings.getLLMConfig().embedding_model,
+      dimensions: embedding.length,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});

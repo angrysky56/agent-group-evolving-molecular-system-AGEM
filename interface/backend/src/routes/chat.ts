@@ -75,9 +75,23 @@ chatRouter.post("/completions", async (req, res) => {
     historyMessages.push({
       role: "system",
       content: `You are AGEM, an advanced molecular simulation agent system designed to assist users with complex system architecture and coding tasks.
-Your situational awareness includes Agent Skills.
-${skillRegistry.getAllSkillsSummary()}
-Use the read_skill tool to read the full content of any skill if you need more information about it.`,
+
+CORE TOOLS (use directly):
+- run_agem_cycle: Execute a reasoning cycle on a topic
+- get_agem_state, get_soc_metrics, get_cohomology, get_graph_topology: Inspect engine state
+- detect_gaps, generate_catalyst_questions: Find and bridge knowledge gaps
+- search_context: Semantic search across the LCM store
+- spawn_agem_agent, reset_agem_engine: Agent and lifecycle management
+
+MCP SERVER ACCESS (use the meta-tools to discover and call):
+1. Call list_mcp_servers to see available servers (reasoning, ethics, logic, knowledge graphs, etc.)
+2. Call list_server_tools with a server_name to see its tools
+3. Call call_mcp_tool with server_name, tool_name, and arguments to invoke any tool
+
+Available MCP servers include: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, aseke-compass, and more.
+
+SKILLS: ${skillRegistry.getAllSkillsSummary()}
+Use the read_skill tool to read skill content.`,
     });
 
     historyMessages.push(
@@ -260,16 +274,60 @@ Use the read_skill tool to read the full content of any skill if you need more i
       },
     ];
 
-    // Build tool set — limit for local models which can't handle 50+ tool definitions
+    // ─── Meta-tools: dynamic MCP access without schema flooding ───
+    // Instead of exposing 50+ raw MCP tool schemas (which overwhelms local models),
+    // we provide 3 meta-tools that let the model discover and invoke any MCP tool.
+    // Pattern from mcp_coordinator: model sees ~13 tools, accesses everything.
+    const metaTools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "list_mcp_servers",
+          description: "List all connected MCP servers and how many tools each has. Call this first to see what external capabilities are available (reasoning, ethics, logic, knowledge graphs, etc).",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "list_server_tools",
+          description: "List all tools available on a specific MCP server with their descriptions. Use this to discover what a server can do before calling its tools.",
+          parameters: {
+            type: "object",
+            properties: {
+              server_name: { type: "string", description: "Name of the MCP server (from list_mcp_servers)" },
+            },
+            required: ["server_name"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "call_mcp_tool",
+          description: "Call any tool on any connected MCP server. Use list_server_tools first to see required arguments. Supports servers like: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, and more.",
+          parameters: {
+            type: "object",
+            properties: {
+              server_name: { type: "string", description: "MCP server name" },
+              tool_name: { type: "string", description: "Tool name on that server" },
+              arguments: { type: "object", description: "Tool arguments as key-value pairs" },
+            },
+            required: ["server_name", "tool_name"],
+          },
+        },
+      },
+    ];
+
+    // All providers get AGEM native tools + meta-tools (compact, ~13 total)
+    // Cloud providers additionally get skill tools for direct access
     let tools: any[];
     if (isOllama) {
-      // Ollama local models: only AGEM native tools (10 tools max)
-      // MCP tools overwhelm small models and cause them to output garbage
-      console.log(`[Chat] Ollama mode: using ${agemTools.length} AGEM tools (skipping ${mcpTools.length} MCP + ${skillTools.length} skill tools)`);
-      tools = [...agemTools];
+      tools = [...agemTools, ...metaTools];
+      console.log(`[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta-tools = ${tools.length} total`);
     } else {
-      // Cloud providers (OpenRouter/Anthropic): full tool set
-      tools = [...skillTools, ...mcpTools, ...agemTools];
+      tools = [...skillTools, ...agemTools, ...metaTools];
+      console.log(`[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`);
     }
 
     // Create provider instance
@@ -411,6 +469,39 @@ Use the read_skill tool to read the full content of any skill if you need more i
             } else if (fnName === "reset_agem_engine") {
               await agemBridge.reset();
               output = "AGEM engine reset.";
+            } else if (fnName === "list_mcp_servers") {
+              // Meta-tool: list connected MCP servers
+              const serverNames = mcpManager.getServerNames();
+              const serverList = await Promise.all(
+                serverNames.map(async (name: string) => {
+                  try {
+                    const tools = await mcpManager.getServerTools(name);
+                    return { name, tool_count: tools.length, status: "connected" };
+                  } catch {
+                    return { name, tool_count: 0, status: "error" };
+                  }
+                }),
+              );
+              output = JSON.stringify(serverList, null, 2);
+            } else if (fnName === "list_server_tools") {
+              // Meta-tool: list tools on a specific server
+              const sName = args.server_name ?? args.server ?? "";
+              try {
+                const serverTools = await mcpManager.getServerTools(sName);
+                output = JSON.stringify(serverTools, null, 2);
+              } catch (e: any) {
+                output = `Error: Server '${sName}' not found or not connected. ${e.message}`;
+              }
+            } else if (fnName === "call_mcp_tool") {
+              // Meta-tool: call any tool on any server
+              const sName = args.server_name ?? args.server ?? "";
+              const tName = args.tool_name ?? args.tool ?? "";
+              const tArgs = args.arguments ?? args.args ?? {};
+              try {
+                output = await mcpManager.executeTool(sName, tName, tArgs);
+              } catch (e: any) {
+                output = `Error calling ${sName}/${tName}: ${e.message}`;
+              }
             } else if (fnName.startsWith("mcp__")) {
               const parts = fnName.split("__");
               const serverName = parts[1];

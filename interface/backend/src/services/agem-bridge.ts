@@ -26,12 +26,12 @@ import type {
 import { Orchestrator } from "../../../../src/orchestrator/index.js";
 import { computeCohomology } from "../../../../src/sheaf/CohomologyAnalyzer.js";
 import {
-  MockEmbedder,
   GptTokenCounter,
   ImmutableStore,
   EmbeddingCache,
   LCMGrep,
 } from "../../../../src/lcm/index.js";
+import { ProviderEmbedder } from "./provider-embedder.js";
 import type { GapMetrics } from "../../../../src/tna/interfaces.js";
 
 /* ─── AGEM Engine Bridge ─── */
@@ -52,9 +52,10 @@ class AgemBridge {
   #sseClients: Set<import("express").Response> = new Set();
 
   constructor() {
-    const embedder = new MockEmbedder();
+    const embedder = new ProviderEmbedder();
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
+    console.log("[AgemBridge] Using ProviderEmbedder (real embeddings from Ollama/OpenRouter)");
   }
 
   /* ─────────────── SSE Client Management ─────────────── */
@@ -471,7 +472,7 @@ class AgemBridge {
   /** Reset the engine by tearing down and re-creating the Orchestrator. */
   async reset(): Promise<void> {
     await this.#orchestrator.shutdown();
-    const embedder = new MockEmbedder();
+    const embedder = new ProviderEmbedder();
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
   }
@@ -487,7 +488,7 @@ class AgemBridge {
    * For full integration, the Orchestrator should expose its internal store.
    * TODO: Wire into Orchestrator's LCMClient store once exposed.
    */
-  #buildGrep(embedder: MockEmbedder): LCMGrep {
+  #buildGrep(embedder: ProviderEmbedder): LCMGrep {
     const tokenCounter = new GptTokenCounter();
     const store = new ImmutableStore(tokenCounter);
     const cache = new EmbeddingCache(embedder);

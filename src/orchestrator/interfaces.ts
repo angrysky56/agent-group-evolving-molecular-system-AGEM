@@ -16,6 +16,7 @@ import type {
   OrchestratorEvent,
   TNAEvent,
   LumpabilityEvent,
+  EvolutionEvent,
 } from "../types/Events.js";
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,7 @@ export interface TaskResult<T = unknown> {
  * Covers all events emitted by Phase 1 (CohomologyAnalyzer), Phase 4 (SOCTracker),
  * and Phase 6 orchestrator components (VdWAgentSpawner).
  */
-export type AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent | TNAEvent | LumpabilityEvent;
+export type AnyEvent = SheafEvent | SOCEvent | OrchestratorEvent | TNAEvent | LumpabilityEvent | EvolutionEvent;
 
 /**
  * EventSubscriber — handler function registered with EventBus.subscribe().

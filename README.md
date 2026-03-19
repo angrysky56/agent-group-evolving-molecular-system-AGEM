@@ -2,9 +2,11 @@
 
 RLM-LCM Molecular-CoT Group Evolving Agents — Sheaf-theoretic multi-agent coordination with lumpability-audited context management and self-healing cognitive architecture.
 
-See [RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md](docs/RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md) for the original project specification and technical deep-dive.
+**Documentation**:
+- [Original Project Specification](docs/RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md) — technical deep-dive into the core architecture
+- [Emergent Constraints & Development Plan](docs/emergent-constraints-and-development-plan.md) — theoretical foundation (memory bottlenecks as syntax engines, C-Induction via sheaf cohomology, Price equation for CoT evolution) and development roadmap
 
-AGEM is a multi-agent orchestration framework that uses molecular biological metaphors and advanced mathematical structures to manage group-evolving agent behaviors. It leverages cellular sheaves for agent stalk tracking, cohomology for structural obstruction detection, and information-theoretic auditing to detect when context compression loses critical reasoning variables.
+AGEM is a multi-agent orchestration framework that uses molecular biological metaphors and advanced mathematical structures to manage group-evolving agent behaviors. Instead of programming rules into agents, it creates computational pressures — memory bottlenecks, coordination requirements, topology constraints — and lets the rules emerge. It leverages cellular sheaves for agent stalk tracking, cohomology for structural obstruction detection, information-theoretic auditing to detect when context compression loses critical reasoning variables, and real-time SOC metrics with an interactive dashboard.
 
 ---
 
@@ -100,8 +102,11 @@ AGEM exposes its capabilities through MCP tools that any connected LLM agent can
 - **Molecular Chain-of-Thought**: Reasoning topology using covalent bonds (strong logical dependency), hydrogen bonds (self-reflection), and Van der Waals forces (exploration) with enforced behavioral invariants.
 - **MCP Bridge**: Optional cross-session coordination that maps internal lumpability auditing to external sheaf-consistency-enforcer, verifier-graph, and hipai-montague MCP servers.
 - **Full-Stack Chat Interface**: React + Express interface with SSE streaming, session history, knowledge base persistence, and interactive settings.
+- **Interactive System Dashboard**: Real-time vitals strip (iteration, regime, state, CDP, H¹), tabbed content (Graph visualization, SOC sparklines, event log), quick action buttons with explanatory tooltips, and toast notifications for critical events (System 1, weak lumpability, phase transitions). Independent SSE event stream at `/api/v1/system/events`.
+- **Meta-Tool MCP Access**: Instead of flooding models with 50+ tool schemas, 3 meta-tools (`list_mcp_servers`, `list_server_tools`, `call_mcp_tool`) give every model dynamic access to all connected MCP servers through a compact 13-tool interface. Pattern adapted from the mcp_coordinator project.
+- **Provider Embeddings**: `ProviderEmbedder` calls Ollama (`/api/embeddings` with nomic-embed-text) or OpenRouter (`/embeddings` with gemini-embedding-001) for real semantic similarity. Graceful dimension-aware fallback to hash-based mock. `/api/v1/system/embeddings` endpoint for external consumers.
 - **Interactive CLI**: Commander.js-based terminal REPL for quick chat interactions and system management.
-- **Dual LLM Provider Support**: Seamless switching between Ollama (local) and OpenRouter (cloud) with provider-specific configuration.
+- **Tri-Provider LLM Support**: Ollama (local), OpenRouter (cloud), and Anthropic with provider-correct tool calling formats, model capability detection via `/api/show`, and content fallback parsing for models that output tool calls as text.
 - **Agent Skills System**: YAML-frontmatter based dynamic skill definition loaded natively into the prompt.
 
 ## Tech Stack
@@ -158,7 +163,12 @@ agent-group-evolving-molecular-system-AGEM/
 │   └── types/                 # Shared type definitions + events
 ├── interface/                 # Full-stack chat interface
 │   ├── backend/               #   Express API + SSE streaming
+│   │   └── src/services/      #   LLM providers, agem-bridge, provider-embedder, MCP manager
 │   ├── frontend/              #   React + Vite + TypeScript
+│   │   └── src/
+│   │       ├── components/dashboard/  # SystemVitals, MetricsPanel, EventLog, QuickActions, Toasts
+│   │       ├── hooks/                 # useSystemEvents (SSE connection)
+│   │       └── stores/                # chat.ts, agem.ts (system state), settings.ts
 │   └── shared/                #   FE ↔ BE type contract
 ├── cli/                       # Interactive terminal REPL
 ├── skills/                    # YAML-frontmatter agent skill definitions
@@ -234,15 +244,17 @@ This installs dependencies (if needed), copies `.env.example` → `.env` (if mis
 
 All configuration lives in `.env` at the project root. Key settings:
 
-| Variable              | Default                           | Description                                |
-| --------------------- | --------------------------------- | ------------------------------------------ |
-| `LLM_PROVIDER`        | `ollama`                          | Active provider (`ollama` or `openrouter`) |
-| `OLLAMA_BASE_URL`     | `http://localhost:11434`          | Ollama API endpoint                        |
-| `OLLAMA_MODEL`        | `gemma3:latest`                   | Ollama chat model                          |
-| `OPENROUTER_API_KEY`  | —                                 | OpenRouter API key                         |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1`    | OpenRouter API endpoint                    |
-| `OPENROUTER_MODEL`    | `google/gemini-2.5-flash-preview` | OpenRouter chat model                      |
-| `PORT`                | `8000`                            | Backend server port                        |
+| Variable                    | Default                           | Description                                |
+| --------------------------- | --------------------------------- | ------------------------------------------ |
+| `LLM_PROVIDER`              | `ollama`                          | Active provider (`ollama`, `openrouter`, or `anthropic`) |
+| `OLLAMA_BASE_URL`           | `http://localhost:11434`          | Ollama API endpoint                        |
+| `OLLAMA_MODEL`              | `gemma3:latest`                   | Ollama chat model                          |
+| `OLLAMA_EMBEDDING_MODEL`    | `nomic-embed-text:latest`         | Ollama embedding model                     |
+| `OPENROUTER_API_KEY`        | —                                 | OpenRouter API key                         |
+| `OPENROUTER_BASE_URL`       | `https://openrouter.ai/api/v1`    | OpenRouter API endpoint                    |
+| `OPENROUTER_MODEL`          | `google/gemini-2.5-flash-preview` | OpenRouter chat model                      |
+| `OPENROUTER_EMBEDDING_MODEL`| `google/gemini-embedding-001`     | OpenRouter embedding model                 |
+| `PORT`                      | `8000`                            | Backend server port                        |
 
 ## Architecture
 
@@ -252,7 +264,7 @@ All configuration lives in `.env` at the project root. Key settings:
 User Prompt → Orchestrator.runReasoning()
     │
     ├─→ TNA: preprocess → co-occurrence graph → Louvain → centrality → gaps
-    ├─→ LCM: append to ImmutableStore → embedding cache
+    ├─→ LCM: append to ImmutableStore → ProviderEmbedder → embedding cache
     ├─→ Sheaf: cohomology analysis → H^0 (consensus) or H^1 (obstruction)
     ├─→ SOC: VNE + EE + CDP + SER + correlation → phase transitions → regime
     ├─→ Lumpability: audit compaction → entropy ratio → strong/weak classification
@@ -260,6 +272,11 @@ User Prompt → Orchestrator.runReasoning()
     ├─→ [H^1 detected] → ObstructionHandler → GapDetector → VdW agent spawn
     ├─→ [Weak lumpability] → EventBus → recovery via lcm_expand
     ├─→ [System 1 override] → soc:system1-early-convergence event
+    │
+    ├─→ MCP Meta-Tools: list_mcp_servers → list_server_tools → call_mcp_tool
+    │   (dynamic discovery of sheaf-enforcer, advanced-reasoning, hipai, etc.)
+    │
+    ├─→ Dashboard SSE: /api/v1/system/events → SystemVitals + Sparklines + EventLog
     │
     └─→ MCP Bridge (optional): register states with sheaf-consistency-enforcer,
         log provenance in verifier-graph, track beliefs in hipai-montague
@@ -284,8 +301,10 @@ Each module (sheaf, lcm, tna, soc, lumpability) has **zero cross-imports** to ot
 
 The interface wraps the AGEM engine with a chat-like experience:
 
-- **Backend** serves a REST + SSE API on port 8000. Chat completions stream tokens via Server-Sent Events. Sessions persist as JSON files.
-- **Frontend** is a React SPA with a dark glassmorphism theme. It uses Zustand for state management and a typed fetch-based API client with SSE streaming support.
+- **Backend** serves a REST + SSE API on port 8000. Chat completions stream tokens via Server-Sent Events. A separate `/system/events` SSE endpoint streams engine state, SOC metrics, phase transitions, and obstructions to the dashboard in real-time. Sessions persist as JSON files.
+- **Frontend** is a React SPA with a dark glassmorphism theme. The left panel shows chat; the right panel is an interactive dashboard with system vitals, SOC sparklines, event log, graph visualization, and quick action buttons. Uses Zustand for state management with separate stores for chat and system state.
+- **Dashboard** shows real-time engine state: iteration count, regime classification, operational state, CDP, H¹ obstructions, graph stats. Metrics tab renders SOC sparklines (VNE, EE, CDP, SER, Correlation). Events tab shows a filtered stream of system events. Toast notifications surface critical events (System 1 override, weak lumpability, phase transitions).
+- **Meta-Tool Access** lets the LLM dynamically discover and invoke any connected MCP server through 3 compact meta-tools, instead of overwhelming the context with 50+ tool schemas.
 - **CLI** provides a fully interactive terminal REPL for quick querying, testing, and managing the server.
 - **Agent Skills** system traverses the `skills/` directory, extracts context from YAML frontmatter in `.md` files, and exposes them as selectable knowledge areas to the agent.
 - **MCP Integration** connects to configured external Model Context Protocol servers (see `mcp.json`) to dynamically register tools that the LLM agent can call natively.

@@ -49,7 +49,8 @@ export interface ChatCompletionResult {
 interface LLMProvider {
   readonly type: LLMProviderType;
   chat(options: ChatCompletionOptions): Promise<ChatCompletionResult>;
-  listModels(): Promise<ModelInfo[]>;
+  listModels(apiKey?: string): Promise<ModelInfo[]>;
+  getEmbedding(text: string, model?: string): Promise<number[]>;
 }
 
 /* ─── Ollama Provider ─── */
@@ -276,20 +277,78 @@ class OllamaProvider implements LLMProvider {
         }>;
       };
 
-      return (data.models ?? []).map((m) => ({
-        id: m.name,
-        name: m.name,
-        provider: "ollama" as const,
-        context_length: 0, // Ollama doesn't expose this in /api/tags
-        description: m.details?.parameter_size
-          ? `${m.details.family ?? ""} ${m.details.parameter_size}`.trim()
-          : undefined,
-        type: m.name.toLowerCase().includes("embed")
-          ? ("embedding" as const)
-          : ("chat" as const),
-      }));
+      // Query each model's actual capabilities via /api/show
+      const models: ModelInfo[] = [];
+      for (const m of data.models ?? []) {
+        const nameLower = m.name.toLowerCase();
+        const isEmbedding =
+          nameLower.includes("embed") ||
+          nameLower.includes("nomic") ||
+          nameLower.includes("bert");
+
+        // Check capabilities from /api/show (fast local call)
+        let supportsTools = false;
+        let contextLength = 0;
+        try {
+          const showResp = await fetch(`${this.#baseUrl}/api/show`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: m.name }),
+          });
+          if (showResp.ok) {
+            const showData = (await showResp.json()) as {
+              capabilities?: string[];
+              model_info?: Record<string, unknown>;
+            };
+            supportsTools = showData.capabilities?.includes("tools") ?? false;
+            // Extract context_length from model_info if available
+            const infoKeys = Object.keys(showData.model_info ?? {});
+            const ctxKey = infoKeys.find((k) => k.endsWith(".context_length"));
+            if (ctxKey && showData.model_info) {
+              contextLength = (showData.model_info[ctxKey] as number) ?? 0;
+            }
+          }
+        } catch {
+          // /api/show failed — leave defaults
+        }
+
+        models.push({
+          id: m.name,
+          name: m.name,
+          provider: "ollama" as const,
+          context_length: contextLength,
+          description: m.details?.parameter_size
+            ? `${m.details.family ?? ""} ${m.details.parameter_size}`.trim()
+            : undefined,
+          type: isEmbedding ? ("embedding" as const) : ("chat" as const),
+          supports_tools: supportsTools,
+        });
+      }
+
+      return models;
     } catch (error) {
       console.error("[LLM] Failed to list Ollama models:", error);
+      return [];
+    }
+  }
+
+  /** Get embeddings via Ollama /api/embeddings endpoint. */
+  async getEmbedding(text: string, model?: string): Promise<number[]> {
+    const embModel = model ?? settings.getLLMConfig().embedding_model ?? "nomic-embed-text:latest";
+    try {
+      const response = await fetch(`${this.#baseUrl}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: embModel, prompt: text }),
+      });
+      if (!response.ok) {
+        console.error(`[LLM] Ollama embedding failed: ${response.status}`);
+        return [];
+      }
+      const data = (await response.json()) as { embedding?: number[] };
+      return data.embedding ?? [];
+    } catch (error) {
+      console.error("[LLM] Ollama embedding error:", error);
       return [];
     }
   }
@@ -430,13 +489,14 @@ class OpenRouterProvider implements LLMProvider {
 
   async listModels(apiKey?: string): Promise<ModelInfo[]> {
     const key = this.#getApiKey(apiKey);
+    const authHeaders = {
+      Authorization: `Bearer ${key}`,
+      "HTTP-Referer": "https://agem.local",
+    };
 
     try {
       const response = await fetch(`${this.#baseUrl}/models`, {
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "HTTP-Referer": "https://agem.local",
-        },
+        headers: authHeaders,
       });
       if (!response.ok) return [];
 
@@ -449,15 +509,13 @@ class OpenRouterProvider implements LLMProvider {
           pricing?: {
             prompt: string;
             completion: string;
-            request?: string;
-            image?: string;
           };
           supported_parameters?: string[];
           top_provider?: { context_length?: number };
         }>;
       };
 
-      return (data.data ?? []).map((m) => ({
+      const models: ModelInfo[] = (data.data ?? []).map((m) => ({
         id: m.id,
         name: m.name ?? m.id,
         provider: "openrouter" as const,
@@ -469,8 +527,66 @@ class OpenRouterProvider implements LLMProvider {
         pricing: m.pricing,
         supports_tools: m.supported_parameters?.includes("tools") ?? false,
       }));
+
+      // Fetch embedding models from separate endpoint (per graph-rlm pattern)
+      try {
+        const embResponse = await fetch(`${this.#baseUrl}/embeddings/models`, {
+          headers: authHeaders,
+        });
+        if (embResponse.ok) {
+          const embData = (await embResponse.json()) as {
+            data?: Array<{ id: string; name?: string; context_length?: number; pricing?: any }>;
+          };
+          for (const em of embData.data ?? []) {
+            // Skip if already in chat models list
+            if (!models.some((m) => m.id === em.id)) {
+              models.push({
+                id: em.id,
+                name: em.name ?? em.id,
+                provider: "openrouter" as const,
+                context_length: em.context_length ?? 0,
+                type: "embedding" as const,
+                pricing: em.pricing,
+                supports_tools: false,
+              });
+            }
+          }
+        }
+      } catch {
+        // Embedding models endpoint may not be available
+      }
+
+      return models;
     } catch (error) {
       console.error("[LLM] Failed to list OpenRouter models:", error);
+      return [];
+    }
+  }
+
+  /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
+  async getEmbedding(text: string, model?: string): Promise<number[]> {
+    const embModel = model ?? settings.getLLMConfig().embedding_model ?? "google/gemini-embedding-001";
+    const key = this.#getApiKey();
+    try {
+      const response = await fetch(`${this.#baseUrl}/embeddings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          "HTTP-Referer": "https://agem.local",
+        },
+        body: JSON.stringify({ model: embModel, input: text }),
+      });
+      if (!response.ok) {
+        console.error(`[LLM] OpenRouter embedding failed: ${response.status}`);
+        return [];
+      }
+      const data = (await response.json()) as {
+        data?: Array<{ embedding?: number[] }>;
+      };
+      return data.data?.[0]?.embedding ?? [];
+    } catch (error) {
+      console.error("[LLM] OpenRouter embedding error:", error);
       return [];
     }
   }
@@ -661,6 +777,12 @@ class AnthropicProvider implements LLMProvider {
         type: "chat",
       },
     ];
+  }
+
+  /** Anthropic doesn't have a public embedding API — return empty. */
+  async getEmbedding(_text: string, _model?: string): Promise<number[]> {
+    console.warn("[LLM] Anthropic does not provide an embedding API.");
+    return [];
   }
 }
 

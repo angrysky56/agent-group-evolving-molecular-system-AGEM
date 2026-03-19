@@ -96,6 +96,24 @@ export class MCPManager {
     return allTools;
   }
 
+  /** Get names of all connected servers. */
+  getServerNames(): string[] {
+    return [...this.clients.keys()];
+  }
+
+  /** Get tools for a specific server with name + description (for meta-tool discovery). */
+  async getServerTools(serverName: string): Promise<Array<{ name: string; description: string }>> {
+    const client = this.clients.get(serverName);
+    if (!client) {
+      throw new Error(`MCP Server '${serverName}' not connected.`);
+    }
+    const response: any = await client.listTools();
+    return (response.tools || []).map((t: any) => ({
+      name: t.name,
+      description: t.description ?? "",
+    }));
+  }
+
   async executeTool(serverName: string, toolName: string, args: any) {
     const client = this.clients.get(serverName);
     if (!client) {

@@ -389,3 +389,57 @@ export interface System1EarlyConvergenceEvent {
   readonly vneSlope: number;
   readonly timestamp: number;
 }
+
+
+// ---------------------------------------------------------------------------
+// Evolution event types (Price equation feedback)
+// ---------------------------------------------------------------------------
+
+/**
+ * EvolutionEventType — string literal union of evolution event types.
+ * Emitted by PriceEvolver after each evolution step.
+ */
+export type EvolutionEventType =
+  | "evolution:price-decomposition"
+  | "evolution:reinforcement-applied";
+
+/**
+ * PriceDecompositionEvent — emitted after each PriceEvolver.evolve() call.
+ *
+ * Contains the two-term Price equation decomposition:
+ *   Δz̄ = selection + transmission
+ */
+export interface PriceDecompositionEvent {
+  readonly type: "evolution:price-decomposition";
+  readonly iteration: number;
+  readonly timestamp: number;
+  readonly selection: number;
+  readonly transmission: number;
+  readonly totalChange: number;
+  readonly meanFitness: number;
+  readonly populationSize: number;
+  readonly regime: string;
+  readonly learningRate: number;
+  readonly exploreExploitRatio: number;
+}
+
+/**
+ * ReinforcementAppliedEvent — emitted when Pólya reinforcement
+ * modifies edge weights in the TNA graph.
+ */
+export interface ReinforcementAppliedEvent {
+  readonly type: "evolution:reinforcement-applied";
+  readonly iteration: number;
+  readonly timestamp: number;
+  readonly edgesModified: number;
+  readonly meanWeightChange: number;
+  readonly maxFitness: number;
+  readonly minFitness: number;
+}
+
+/**
+ * EvolutionEvent — discriminated union of evolution events.
+ */
+export type EvolutionEvent =
+  | PriceDecompositionEvent
+  | ReinforcementAppliedEvent;
