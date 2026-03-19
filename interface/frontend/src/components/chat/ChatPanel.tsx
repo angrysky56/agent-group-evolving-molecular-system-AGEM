@@ -5,6 +5,7 @@
 import { useCallback, useRef, useEffect } from "react";
 import { Atom } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
+import { useAgemStore } from "../../stores/agem";
 import { useSettingsStore } from "../../stores/settings";
 import { useSessionStore } from "../../stores/sessions";
 import { MessageBubble } from "./MessageBubble";
@@ -73,6 +74,8 @@ export function ChatPanel() {
           },
           onAgemState: (data) => {
             chat.setAgemState(data as never);
+            // Also update dashboard store so both panels stay in sync
+            useAgemStore.getState().updateState(data as never);
           },
           onDone: (message) => {
             chat.setIsStreaming(false);

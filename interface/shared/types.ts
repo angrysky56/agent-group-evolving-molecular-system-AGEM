@@ -85,7 +85,21 @@ export interface AgemStateSnapshot {
   gap_count: number;
   iteration: number;
   communities: number;
+  operational_state?: "NORMAL" | "OBSTRUCTED" | "CRITICAL";
   graph_summary?: GraphSummary;
+  soc?: SOCSnapshot;
+  cohomology?: CohomologySnapshot;
+  regime?: {
+    regime: string;
+    cdp_variance: number;
+    correlation_consistency: number;
+    persistence_iterations: number;
+  };
+  lumpability?: {
+    weak_compression_rate: number;
+    avg_entropy_preservation: number;
+    last_classification: "strong" | "weak" | "degenerate" | null;
+  };
 }
 
 /* ─── AGEM Tool Response Types ─── */
@@ -182,6 +196,32 @@ export type SSEEventType =
   | "error"
   | "done"
   | "usage";
+
+/** System event types streamed via /system/events SSE endpoint. */
+export type SystemEventType =
+  | "soc:metrics"
+  | "phase:transition"
+  | "regime:classification"
+  | "sheaf:consensus-reached"
+  | "sheaf:h1-obstruction-detected"
+  | "lumpability:audit-complete"
+  | "lumpability:weak-compression"
+  | "soc:system1-early-convergence"
+  | "orch:vdw-agent-spawned"
+  | "orch:vdw-agent-complete"
+  | "tna:catalyst-questions-generated"
+  | "agem:state-update";
+
+/** A system event for the dashboard event log. */
+export interface SystemEvent {
+  id: string;
+  type: SystemEventType;
+  timestamp: number;
+  iteration?: number;
+  severity: "info" | "warning" | "critical" | "success";
+  summary: string;
+  data?: Record<string, unknown>;
+}
 
 /** Unified SSE event shape (backend sends these as `data:` lines). */
 export interface SSEEvent {

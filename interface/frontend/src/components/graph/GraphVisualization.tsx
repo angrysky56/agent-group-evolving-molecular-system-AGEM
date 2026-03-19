@@ -1,11 +1,14 @@
 import { useRef, useEffect, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { useChatStore } from "../../stores/chat";
+import { useAgemStore } from "../../stores/agem";
 import { Network } from "lucide-react";
 
 export function GraphVisualization() {
-  const agemState = useChatStore((s) => s.agemState);
-  const graphSummary = agemState?.graph_summary;
+  // Prefer agem store (SSE-fed) over chat store (chat-completion-fed)
+  const agemStoreState = useAgemStore((s) => s.state);
+  const chatStoreState = useChatStore((s) => s.agemState);
+  const graphSummary = agemStoreState?.graph_summary ?? chatStoreState?.graph_summary;
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 

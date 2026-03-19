@@ -10,29 +10,29 @@ AGEM is a multi-agent orchestration framework that uses molecular biological met
 
 ## EFHF System — Required MCP Servers
 
-AGEM's cognitive architecture is built on the **Emergent Functional Hierarchy Framework (EFHF)** — a system of coordinated MCP servers that provide mathematical consistency guarantees, ethical constraint enforcement, and reasoning provenance tracking across agent sessions.
+AGEM's cognitive architecture is built on the **Emergent Functional Hierarchy Framework (EFHF)** — [a system of coordinated MCP servers](https://github.com/angrysky56/Emergent-Functional-Hierarchies-Framework) that provide mathematical consistency guarantees, ethical constraint enforcement, and reasoning provenance tracking across agent sessions.
 
-| Server | Role | Repository |
-|--------|------|------------|
-| **sheaf-consistency-enforcer** | Enforces Kernel 1 causal closure across agents via ADMM. Detects H^1 obstructions when agent states become inconsistent. | [angrysky56/sheaf-consistency-enforcer](https://github.com/angrysky56/sheaf-consistency-enforcer) |
-| **conscience-servitor** | EFHF L2–L5 ethical evaluation with triage, intent decoding, and audit logging. Implements the Paraclete Protocol for harm prevention. | [angrysky56/conscience-servitor](https://github.com/angrysky56/conscience-servitor) |
-| **hipai-montague** | Montague-grammar world model with belief tracking, hypothesis evaluation, and the Paraclete Protocol's calibrate/escalate pipeline. | [angrysky56/HiPAI-Montague-Semantic-Cognition](https://github.com/angrysky56/HiPAI-Montague-Semantic-Cognition) |
-| **advanced-reasoning** | Meta-cognitive reasoning with confidence tracking, hypothesis testing, graph-based memory libraries, and SystemJSON structured storage. | [angrysky56/advanced-reasoning-mcp](https://github.com/angrysky56/advanced-reasoning-mcp) |
-| **verifier-graph** | DAG-structured reasoning provenance. Every claim traces back to its premises via the causal light cone. | [angrysky56/vgcp-mcp-server](https://github.com/angrysky56/vgcp-mcp-server) |
-| **mcp-logic** | Formal logic: Prover9/Mace4 theorem proving, abductive explanation, contingency checking, categorical diagram commutativity. | [angrysky56/mcp-logic](https://github.com/angrysky56/mcp-logic) |
-| **cognitive-diagram-nav** | Diagram creation, navigation, reachability analysis, pattern matching, and semantic search over cognitive structures. | [angrysky56/cognitive-diagram-nav-mcp](https://github.com/angrysky56/cognitive-diagram-nav-mcp) |
-| **aseke-compass** | ASEKE behavioral analysis: maps Panksepp primary emotional systems, matches behavioral patterns, bridges to political orientation tendencies. | [angrysky56/aseke-compass-mcp](https://github.com/angrysky56/aseke-compass-mcp) |
+| Server                         | Role                                                                                                                                          | Repository                                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **sheaf-consistency-enforcer** | Enforces Kernel 1 causal closure across agents via ADMM. Detects H^1 obstructions when agent states become inconsistent.                      | [angrysky56/sheaf-consistency-enforcer](https://github.com/angrysky56/sheaf-consistency-enforcer)               |
+| **conscience-servitor**        | EFHF L2–L5 ethical evaluation with triage, intent decoding, and audit logging. Implements the Paraclete Protocol for harm prevention.         | [angrysky56/conscience-servitor](https://github.com/angrysky56/conscience-servitor)                             |
+| **hipai-montague**             | Montague-grammar world model with belief tracking, hypothesis evaluation, and the Paraclete Protocol's calibrate/escalate pipeline.           | [angrysky56/HiPAI-Montague-Semantic-Cognition](https://github.com/angrysky56/HiPAI-Montague-Semantic-Cognition) |
+| **advanced-reasoning**         | Meta-cognitive reasoning with confidence tracking, hypothesis testing, graph-based memory libraries, and SystemJSON structured storage.       | [angrysky56/advanced-reasoning-mcp](https://github.com/angrysky56/advanced-reasoning-mcp)                       |
+| **verifier-graph**             | DAG-structured reasoning provenance. Every claim traces back to its premises via the causal light cone.                                       | [angrysky56/vgcp-mcp-server](https://github.com/angrysky56/vgcp-mcp-server)                                     |
+| **mcp-logic**                  | Formal logic: Prover9/Mace4 theorem proving, abductive explanation, contingency checking, categorical diagram commutativity.                  | [angrysky56/mcp-logic](https://github.com/angrysky56/mcp-logic)                                                 |
+| **cognitive-diagram-nav**      | Diagram creation, navigation, reachability analysis, pattern matching, and semantic search over cognitive structures.                         | [angrysky56/cognitive-diagram-nav-mcp](https://github.com/angrysky56/cognitive-diagram-nav-mcp)                 |
+| **aseke-compass**              | ASEKE behavioral analysis: maps Panksepp primary emotional systems, matches behavioral patterns, bridges to political orientation tendencies. | [angrysky56/aseke-compass-mcp](https://github.com/angrysky56/aseke-compass-mcp)                                 |
 
 ### Utility MCP Servers (included in `mcp.json`)
 
-| Server | Source |
-|--------|--------|
-| sqlite | `uvx mcp-server-sqlite` (PyPI) |
-| memory | `@modelcontextprotocol/server-memory` (npm) |
-| desktop-commander | `@wonderwhy-er/desktop-commander` (npm) |
-| fetch | `uvx mcp-server-fetch` (PyPI) |
-| playwright | `@playwright/mcp` (npm) |
-| docker-mcp | `uvx docker-mcp` (PyPI) |
+| Server            | Source                                      |
+| ----------------- | ------------------------------------------- |
+| sqlite            | `uvx mcp-server-sqlite` (PyPI)              |
+| memory            | `@modelcontextprotocol/server-memory` (npm) |
+| desktop-commander | `@wonderwhy-er/desktop-commander` (npm)     |
+| fetch             | `uvx mcp-server-fetch` (PyPI)               |
+| playwright        | `@playwright/mcp` (npm)                     |
+| docker-mcp        | `uvx docker-mcp` (PyPI)                     |
 
 ---
 
@@ -52,7 +52,7 @@ AGEM exposes its capabilities through MCP tools that any connected LLM agent can
 
 - **`triage`** — Classify any prompt or response by ethical risk level before generation. Returns cluster, confidence, risk level, and whether full L2–L5 evaluation is needed.
 - **`evaluate`** — Run full EFHF L2–L5 evaluation on a list of claims. Returns KERNEL status, consistency scores, tier-by-tier pass/fail, and pre-response guidance.
-- **`decode_intent`** — Read the LLM's predicted response from the embedding *before* generating it. Use when triage flags high-risk content for pre-generation inspection.
+- **`decode_intent`** — Read the LLM's predicted response from the embedding _before_ generating it. Use when triage flags high-risk content for pre-generation inspection.
 - **`add_belief`** — Add a fact to the HiPAI world model in natural language (e.g., "Socrates is a man"). Beliefs persist across the session and are used for hypothesis evaluation.
 - **`evaluate_hypothesis`** — Test a hypothesis against the current knowledge graph. Returns supporting/contradicting evidence from the world model.
 - **`calibrate_belief`** / **`escalate_block`** — The Paraclete Protocol pipeline: when an action is blocked by an ethical axiom, `calibrate_belief` seeks disconfirming evidence for the factual premises, and `escalate_block` resolves the epistemic status to a final ruling.

@@ -10,12 +10,17 @@ import { Sidebar } from "./components/sidebar/Sidebar";
 import { Header } from "./components/Header";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
-import { GraphVisualization } from "./components/graph/GraphVisualization";
+import { Dashboard } from "./components/dashboard/Dashboard";
+import { ToastNotifications } from "./components/dashboard/ToastNotifications";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useSystemEvents } from "./hooks/useSystemEvents";
 import "./index.css";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Connect to AGEM system events SSE on mount
+  useSystemEvents();
 
   return (
     <div className="app-layout">
@@ -45,11 +50,12 @@ export default function App() {
             }}
           >
             <ErrorBoundary>
-              <GraphVisualization />
+              <Dashboard />
             </ErrorBoundary>
           </div>
         </div>
       </div>
+      <ToastNotifications />
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
     </div>
   );

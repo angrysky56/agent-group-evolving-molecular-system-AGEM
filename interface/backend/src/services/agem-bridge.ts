@@ -20,6 +20,7 @@ import type {
   GapSnapshot,
   CatalystQuestionResult,
   ContextSearchResult,
+  SystemEvent,
 } from "../../../shared/types.js";
 
 import { Orchestrator } from "../../../../src/orchestrator/index.js";
@@ -45,11 +46,67 @@ import type { GapMetrics } from "../../../../src/tna/interfaces.js";
 class AgemBridge {
   #orchestrator: Orchestrator;
   #grep: LCMGrep;
+  #eventCounter = 0;
+
+  /** Connected SSE clients for /system/events */
+  #sseClients: Set<import("express").Response> = new Set();
 
   constructor() {
     const embedder = new MockEmbedder();
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
+  }
+
+  /* ─────────────── SSE Client Management ─────────────── */
+
+  /** Register an SSE client for system event streaming. */
+  addSSEClient(res: import("express").Response): void {
+    this.#sseClients.add(res);
+    // Send initial state on connect
+    this.broadcastEvent({
+      id: `evt-${++this.#eventCounter}`,
+      type: "agem:state-update",
+      timestamp: Date.now(),
+      iteration: this.#orchestrator.getIterationCount(),
+      severity: "info",
+      summary: "Connected to AGEM system events",
+      data: { state: this.getState() },
+    });
+  }
+
+  /** Remove a disconnected SSE client. */
+  removeSSEClient(res: import("express").Response): void {
+    this.#sseClients.delete(res);
+  }
+
+  /** Broadcast a SystemEvent to all connected SSE clients. */
+  broadcastEvent(event: SystemEvent): void {
+    const payload = `event: system_event\ndata: ${JSON.stringify(event)}\n\n`;
+    for (const client of this.#sseClients) {
+      try {
+        client.write(payload);
+      } catch {
+        this.#sseClients.delete(client);
+      }
+    }
+  }
+
+  /** Create and broadcast a typed event. */
+  #emitEvent(
+    type: SystemEvent["type"],
+    severity: SystemEvent["severity"],
+    summary: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.broadcastEvent({
+      id: `evt-${++this.#eventCounter}`,
+      type,
+      timestamp: Date.now(),
+      iteration: this.#orchestrator.getIterationCount(),
+      severity,
+      summary,
+      data,
+    });
   }
 
   /* ─────────────── State ─────────────── */
@@ -95,8 +152,48 @@ class AgemBridge {
       gap_count: gapCount,
       iteration: orch.getIterationCount(),
       communities,
+      operational_state: this.#mapOperationalState(orch.getState()),
       graph_summary: this.getGraphSummary(),
+      soc: this.getSOCMetrics(),
+      cohomology: this.#getSafeCohomology(),
+      regime: this.#getRegimeData(),
+      lumpability: this.#getLumpabilityData(),
     };
+  }
+
+  /** Map orchestrator state string to dashboard operational state. */
+  #mapOperationalState(state: string): "NORMAL" | "OBSTRUCTED" | "CRITICAL" {
+    if (state === "OBSTRUCTED" || state === "H1_OBSTRUCTION") return "OBSTRUCTED";
+    if (state === "CRITICAL" || state === "ERROR") return "CRITICAL";
+    return "NORMAL";
+  }
+
+  /** Get regime data for dashboard, returns null-safe object. */
+  #getRegimeData() {
+    const regime = this.#orchestrator.socTracker.getRegimeMetrics();
+    if (!regime) return undefined;
+    return {
+      regime: regime.regime,
+      cdp_variance: regime.cdpVariance,
+      correlation_consistency: regime.correlationConsistency,
+      persistence_iterations: regime.persistenceIterations,
+    };
+  }
+
+  /** Get lumpability data for dashboard. */
+  #getLumpabilityData() {
+    // LumpabilityAuditor is on ComposeRootModule, not base Orchestrator.
+    // Return placeholder until full CRM integration is wired.
+    return undefined;
+  }
+
+  /** Safe cohomology getter for dashboard (returns undefined if sheaf empty). */
+  #getSafeCohomology(): CohomologySnapshot | undefined {
+    try {
+      return this.getCohomology();
+    } catch {
+      return undefined;
+    }
   }
 
   /** Get the full graph for visualisation. */
@@ -139,6 +236,8 @@ class AgemBridge {
     userMessage: string,
     _onProgress?: (event: string, data: unknown) => void,
   ): Promise<{ artifacts: Artifact[]; state: AgemStateSnapshot }> {
+    this.#emitEvent("agem:state-update", "info", `Starting cycle: ${userMessage.slice(0, 80)}`);
+
     await this.#orchestrator.runReasoning(userMessage);
 
     const state = this.getState();
@@ -177,6 +276,46 @@ class AgemBridge {
         ].join("\n"),
       },
     ];
+
+    // Broadcast post-cycle events to SSE clients
+    this.#emitEvent("agem:state-update", "success",
+      `Cycle ${state.iteration} complete — ${state.graph_summary?.node_count ?? 0} nodes, ${state.communities} communities`,
+      { state },
+    );
+
+    if (latestSOC) {
+      this.#emitEvent("soc:metrics", "info",
+        `VNE=${latestSOC.vonNeumannEntropy.toFixed(3)} EE=${latestSOC.embeddingEntropy.toFixed(3)} CDP=${latestSOC.cdp.toFixed(3)}`,
+        {
+          vne: latestSOC.vonNeumannEntropy,
+          ee: latestSOC.embeddingEntropy,
+          cdp: latestSOC.cdp,
+          ser: latestSOC.surprisingEdgeRatio,
+          correlation: latestSOC.correlationCoefficient,
+          iteration: latestSOC.iteration,
+        },
+      );
+
+      if (latestSOC.isPhaseTransition) {
+        this.#emitEvent("phase:transition", "warning",
+          `Phase transition detected at iteration ${latestSOC.iteration}`,
+        );
+      }
+    }
+
+    if (state.sheaf_energy > 0) {
+      this.#emitEvent("sheaf:h1-obstruction-detected", "warning",
+        `H¹ obstruction: dimension ${state.sheaf_energy}`,
+        { h1_dimension: state.sheaf_energy },
+      );
+    }
+
+    if (state.regime) {
+      this.#emitEvent("regime:classification", "info",
+        `Regime: ${state.regime.regime} (persistence: ${state.regime.persistence_iterations})`,
+        state.regime as unknown as Record<string, unknown>,
+      );
+    }
 
     return { artifacts, state };
   }

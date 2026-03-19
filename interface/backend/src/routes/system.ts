@@ -7,6 +7,7 @@
 import { Router } from "express";
 import { settings } from "../config.js";
 import { createProvider } from "../services/llm.js";
+import { agemBridge } from "../services/agem-bridge.js";
 import type { LLMProviderType } from "../../../shared/types.js";
 
 export const systemRouter = Router();
@@ -62,5 +63,38 @@ systemRouter.get("/status", (_req, res) => {
     provider: config.provider,
     model: config.model,
     agem_engine: true,
+  });
+});
+
+/**
+ * GET /events — Server-Sent Events stream for AGEM system events.
+ *
+ * Independent of chat completions SSE. Streams system events
+ * (SOC metrics, phase transitions, regime changes, obstructions, etc.)
+ * to the dashboard frontend in real-time.
+ */
+systemRouter.get("/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  // Register this client for broadcasts
+  agemBridge.addSSEClient(res);
+
+  // Heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": heartbeat\n\n");
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 30000);
+
+  // Cleanup on disconnect
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    agemBridge.removeSSEClient(res);
   });
 });
