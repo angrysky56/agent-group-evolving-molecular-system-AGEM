@@ -48,6 +48,7 @@ import type {
   SOCPhaseTransitionEvent,
   PhaseTransitionConfirmedEvent,
   RegimeClassificationEvent,
+  System1EarlyConvergenceEvent,
 } from "../types/Events.js";
 import {
   vonNeumannEntropy,
@@ -297,6 +298,23 @@ export class SOCTracker extends EventEmitter {
       persistenceIterations: regimeMetrics.persistenceIterations,
     };
     this.emit("regime:classification", classificationEvent);
+
+    // Phase 7: System 1 override detection (entropy pair tracking)
+    // Track the VNE/EE pair every iteration for early convergence analysis.
+    this.#regimeValidator.trackEntropyPair(vne, ee, iteration);
+
+    // Check for System 1 override: semantic convergence before structural development.
+    const earlyConvergence = this.#regimeValidator.detectEarlyConvergence();
+    if (earlyConvergence.detected) {
+      const s1Event: System1EarlyConvergenceEvent = {
+        type: "soc:system1-early-convergence",
+        iteration,
+        eeVariance: earlyConvergence.eeVariance,
+        vneSlope: earlyConvergence.vneSlope,
+        timestamp: Date.now(),
+      };
+      this.emit("soc:system1-early-convergence", s1Event);
+    }
 
     return metrics;
   }

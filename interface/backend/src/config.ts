@@ -27,7 +27,7 @@ const ConfigSchema = z.object({
 
   // Active Provider
   LLM_PROVIDER: z
-    .enum(["ollama", "openrouter"])
+    .enum(["ollama", "openrouter", "anthropic"])
     .default("ollama") as z.ZodType<LLMProviderType>,
 
   // Ollama
@@ -40,6 +40,12 @@ const ConfigSchema = z.object({
   OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
   OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash-preview"),
   OPENROUTER_EMBEDDING_MODEL: z.string().default("google/gemini-embedding-001"),
+
+  // Anthropic
+  ANTHROPIC_API_KEY: z.string().default(""),
+  ANTHROPIC_BASE_URL: z.string().default("https://api.anthropic.com/v1"),
+  ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
+  ANTHROPIC_EMBEDDING_MODEL: z.string().default(""),
 
   // Knowledge Base
   KNOWLEDGE_BASE_PATH: z
@@ -86,6 +92,16 @@ class ConfigService {
       };
     }
 
+    if (provider === "anthropic") {
+      return {
+        provider,
+        api_key: this.#config.ANTHROPIC_API_KEY,
+        base_url: this.#config.ANTHROPIC_BASE_URL,
+        model: this.#config.ANTHROPIC_MODEL,
+        embedding_model: this.#config.ANTHROPIC_EMBEDDING_MODEL,
+      };
+    }
+
     return {
       provider,
       api_key: this.#config.OPENROUTER_API_KEY,
@@ -105,6 +121,8 @@ class ConfigService {
       ollama_base_url: this.#config.OLLAMA_BASE_URL,
       openrouter_base_url: this.#config.OPENROUTER_BASE_URL,
       knowledge_base_path: this.#config.KNOWLEDGE_BASE_PATH,
+      // Never expose the key itself — only whether one is configured
+      has_api_key: llm.api_key.length > 0,
     };
   }
 

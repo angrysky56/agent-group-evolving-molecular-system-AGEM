@@ -2,35 +2,125 @@
   "mcpServers": {
     "sqlite": {
       "command": "uvx",
-      "args": ["mcp-server-sqlite", "--db-path", "./knowledge_base/agem_test.db"]
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "./knowledge_base/agem_test.db"
+      ]
     },
     "memory": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
     },
     "docker-mcp": {
       "command": "uvx",
-      "args": ["docker-mcp"]
+      "args": [
+        "docker-mcp"
+      ]
     },
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest", "--browser", "chrome"]
-    },
-    "gitmcp": {
-      "command": "npx",
-      "args": ["mcp-remote", "https://gitmcp.io/docs"]
-    },
-    "notebooklm": {
-      "command": "npx",
-      "args": ["notebooklm-mcp@latest"]
+      "args": [
+        "@playwright/mcp@latest",
+        "--browser",
+        "chrome"
+      ]
     },
     "desktop-commander": {
       "command": "npx",
-      "args": ["-y", "@wonderwhy-er/desktop-commander@latest"]
+      "args": [
+        "-y",
+        "@wonderwhy-er/desktop-commander@latest"
+      ]
     },
     "fetch": {
       "command": "uvx",
-      "args": ["mcp-server-fetch"]
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "data-forge": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/data-forge-mcp",
+        "run",
+        "-m",
+        "src.server"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "LOG_LEVEL": "WARNING",
+        "NUMBA_DISABLE_CUDA": "1",
+        "NUMBA_ENABLE_CUDASIM": "1"
+      }
+    },
+    "mcp-logic": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/mcp-logic/src/mcp_logic",
+        "run",
+        "mcp_logic",
+        "--prover-path",
+        "/home/ty/Repositories/ai_workspace/mcp-logic/ladr/bin"
+      ]
+    },
+    "advanced-reasoning": {
+      "command": "node",
+      "args": ["/home/ty/Repositories/ai_workspace/advanced-reasoning-mcp/build/index.js"]
+    },
+    "cognitive-diagram-nav": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/cognitive-diagram-nav-mcp",
+        "run",
+        "cognitive-diagram-nav"
+      ]
+    },
+    "verifier-graph": {
+      "command": "node",
+      "args": ["/home/ty/Repositories/ai_workspace/vgcp-mcp-server/build/index.js"]
+    },
+    "hipai-montague": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/HiPAI-Montague-Semantic-Cognition",
+        "run",
+        "python",
+        "-m",
+        "hipai.mcp_server"
+      ],
+      "env": {
+        "PYTHONPATH": "src"
+      }
+    },
+    "sheaf-consistency-enforcer": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/sheaf-consistency-enforcer",
+        "run",
+        "sheaf-enforcer"
+      ]
+    },
+    "conscience-servitor": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/conscience-servitor",
+        "run",
+        "conscience-servitor"
+      ]
+    },
+    "aseke-compass": {
+      "command": "/home/ty/.nvm/versions/node/v22.21.0/bin/node",
+      "args": ["/home/ty/Repositories/ai_workspace/aseke-compass-mcp/dist/index.js"]
     }
   }
 }

@@ -124,6 +124,33 @@ export class MCPManager {
       throw error;
     }
   }
+
+  /** Gracefully close all connected MCP servers. */
+  async close(): Promise<void> {
+    const names = [...this.clients.keys()];
+    if (names.length === 0) return;
+
+    console.log("[MCP] Shutting down MCP servers...");
+
+    await Promise.allSettled(
+      names.map(async (name) => {
+        try {
+          const client = this.clients.get(name);
+          const transport = this.transports.get(name);
+          if (client) await client.close();
+          if (transport) await transport.close();
+          console.log(`[MCP] Disconnected '${name}'`);
+        } catch {
+          // Best-effort — swallow errors during shutdown
+        } finally {
+          this.clients.delete(name);
+          this.transports.delete(name);
+        }
+      }),
+    );
+
+    console.log("[MCP] All MCP servers shut down.");
+  }
 }
 
 // Export singleton instance

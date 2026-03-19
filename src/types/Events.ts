@@ -78,7 +78,8 @@ export type SOCEventType =
   | "soc:metrics"
   | "phase:transition"
   | "phase:transition-confirmed"
-  | "regime:classification";
+  | "regime:classification"
+  | "soc:system1-early-convergence";
 
 // ---------------------------------------------------------------------------
 // SOC concrete event types
@@ -182,7 +183,8 @@ export type SOCEvent =
   | SOCMetricsEvent
   | SOCPhaseTransitionEvent
   | PhaseTransitionConfirmedEvent
-  | RegimeClassificationEvent;
+  | RegimeClassificationEvent
+  | System1EarlyConvergenceEvent;
 
 // ---------------------------------------------------------------------------
 // Phase 6 Orchestrator event types (ORCH-06)
@@ -304,3 +306,86 @@ export type TNAEvent =
   | CentralityChangeDetectedEvent
   | TopologyReorganizedEvent
   | LayoutUpdatedEvent;
+
+
+// ---------------------------------------------------------------------------
+// Lumpability event types (LUMP-01)
+// ---------------------------------------------------------------------------
+
+/**
+ * LumpabilityEventType — string literal union of lumpability auditor event types.
+ * Emitted by LumpabilityAuditor when compaction boundaries are audited.
+ */
+export type LumpabilityEventType =
+  | "lumpability:audit-complete"
+  | "lumpability:weak-compression";
+
+/**
+ * LumpabilityAuditCompleteEvent — emitted after every compaction audit.
+ *
+ * Contains the full audit result including entropy profiles, preservation ratio,
+ * centroid similarity, and classification (strong/weak/degenerate).
+ */
+export interface LumpabilityAuditCompleteEvent {
+  readonly type: "lumpability:audit-complete";
+  readonly summaryNodeId: string;
+  readonly escalationLevel: 1 | 2 | 3;
+  readonly entropyPreservationRatio: number;
+  readonly centroidSimilarity: number;
+  readonly classification: "strong" | "weak" | "degenerate";
+  readonly timestamp: number;
+}
+
+/**
+ * LumpabilityWeakCompressionEvent — emitted ONLY when classification = 'weak'.
+ *
+ * This event drives the recovery feedback loop: ObstructionHandler can subscribe
+ * and trigger lcm_expand to re-inject lost context from the ImmutableStore.
+ *
+ * The sourceEntryIds field enables targeted recovery — the handler knows exactly
+ * which original entries need to be re-expanded.
+ */
+export interface LumpabilityWeakCompressionEvent {
+  readonly type: "lumpability:weak-compression";
+  readonly summaryNodeId: string;
+  readonly sourceEntryIds: readonly string[];
+  readonly escalationLevel: 1 | 2 | 3;
+  readonly entropyPreservationRatio: number;
+  readonly centroidSimilarity: number;
+  readonly threshold: number;
+  readonly timestamp: number;
+}
+
+/**
+ * LumpabilityEvent — discriminated union of all lumpability events.
+ */
+export type LumpabilityEvent =
+  | LumpabilityAuditCompleteEvent
+  | LumpabilityWeakCompressionEvent;
+
+
+// ---------------------------------------------------------------------------
+// System 1 override event type (SOC-08)
+// ---------------------------------------------------------------------------
+
+/**
+ * System1EarlyConvergenceEvent — emitted when the system detects that
+ * embedding entropy (semantic space) has stabilized before structural
+ * entropy (VNE) has finished developing.
+ *
+ * This is the mathematical signature of a System 1 override:
+ * the model has "decided" its answer before the reasoning chain has
+ * been fully constructed. The structural complexity is post-hoc
+ * rationalization for a pre-determined semantic conclusion.
+ *
+ * In lumpability terms: the system has collapsed to a weakly lumpable
+ * attractor that only works for the specific distribution the model
+ * has already committed to.
+ */
+export interface System1EarlyConvergenceEvent {
+  readonly type: "soc:system1-early-convergence";
+  readonly iteration: number;
+  readonly eeVariance: number;
+  readonly vneSlope: number;
+  readonly timestamp: number;
+}

@@ -70,7 +70,7 @@ app.use(
 
 const { PORT, HOST } = settings.all;
 
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   const config = settings.getLLMConfig();
   console.log(`
 ╔══════════════════════════════════════════════╗
@@ -93,5 +93,25 @@ app.listen(PORT, HOST, () => {
     console.error("[MCPManager] Failed to start:", err);
   });
 });
+
+/* ─── Graceful Shutdown ─── */
+
+async function shutdown(signal: string) {
+  console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
+  try {
+    await mcpManager.close();
+  } catch {
+    // Best-effort
+  }
+  server.close(() => {
+    console.log("[Server] HTTP server closed. Goodbye!");
+    process.exit(0);
+  });
+  // Force exit after 5 seconds if cleanup hangs
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 export default app;

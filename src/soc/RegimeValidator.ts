@@ -20,6 +20,7 @@ import type {
   RegimeMetrics,
   SOCMetrics,
 } from "./interfaces.js";
+import { linearSlope } from "./correlation.js";
 
 // ---------------------------------------------------------------------------
 // Private math helpers
@@ -95,8 +96,37 @@ export class RegimeValidator {
   /** Last confirmed transition iteration (for duplicate suppression). */
   #lastConfirmedIteration: number | null = null;
 
-  constructor(config: Partial<RegimeValidatorConfig> = {}) {
+  // ---- System 1 override detection (early convergence) ----
+
+  /**
+   * Rolling history of entropy pairs (VNE, EE) per iteration.
+   * Used to detect when embedding entropy stabilizes while structural
+   * complexity is still growing — the mathematical signature of
+   * "conclusion precedes logic" (System 1 override).
+   */
+  #entropyPairs: Array<{ vne: number; ee: number; iteration: number }> = [];
+
+  /** Maximum entropy pair history size (2x early convergence window). */
+  readonly #maxEntropyHistory: number = 20;
+
+  /** Minimum EE variance below which we consider semantics "converged". Default: 0.01 */
+  readonly #eeStabilizationThreshold: number;
+
+  /** Minimum VNE slope above which structure is still "growing". Default: 0.05 */
+  readonly #vneGrowthThreshold: number;
+
+  /** Minimum iterations before early convergence detection activates. Default: 5 */
+  readonly #earlyConvergenceMinIterations: number;
+
+  constructor(config: Partial<RegimeValidatorConfig> & {
+    eeStabilizationThreshold?: number;
+    vneGrowthThreshold?: number;
+    earlyConvergenceMinIterations?: number;
+  } = {}) {
     this.#config = { ...DEFAULT_VALIDATOR_CONFIG, ...config };
+    this.#eeStabilizationThreshold = config.eeStabilizationThreshold ?? 0.01;
+    this.#vneGrowthThreshold = config.vneGrowthThreshold ?? 0.05;
+    this.#earlyConvergenceMinIterations = config.earlyConvergenceMinIterations ?? 5;
   }
 
   /**
@@ -205,6 +235,82 @@ export class RegimeValidator {
       startIteration: this.#candidateStartIteration,
       sign: this.#candidateSign,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // System 1 Override Detection (Early Convergence)
+  // -------------------------------------------------------------------------
+
+  /**
+   * trackEntropyPair — record VNE and EE for this iteration.
+   *
+   * Called by SOCTracker.computeAndEmit() every iteration.
+   * Maintains a rolling window for early convergence analysis.
+   *
+   * @param vne - Von Neumann entropy (structural complexity) for this iteration.
+   * @param ee  - Embedding entropy (semantic diversity) for this iteration.
+   * @param iteration - Current iteration number.
+   */
+  trackEntropyPair(vne: number, ee: number, iteration: number): void {
+    this.#entropyPairs.push({ vne, ee, iteration });
+    if (this.#entropyPairs.length > this.#maxEntropyHistory) {
+      this.#entropyPairs.shift();
+    }
+  }
+
+  /**
+   * detectEarlyConvergence — check for System 1 override pattern.
+   *
+   * The mathematical signature of "conclusion precedes logic":
+   *   - Embedding entropy (semantic space) has STABILIZED: variance(EE) < threshold.
+   *     This means the model has already converged on a semantic cluster — it "knows"
+   *     its answer before the reasoning has developed.
+   *   - Von Neumann entropy (structural complexity) is still GROWING: slope(VNE) > threshold.
+   *     This means new graph topology is being built, but the semantic conclusion
+   *     was predetermined — the structure is post-hoc rationalization.
+   *
+   * In Markov chain terms: the embedding entropy reaching equilibrium before
+   * structural entropy indicates the system has collapsed to a low-dimensional
+   * attractor in semantic space — a weakly lumpable state that only works for
+   * the specific distribution the model has already committed to.
+   *
+   * @param windowSize - Number of recent entropy pairs to analyze. Default: 5.
+   * @returns { detected: boolean; eeVariance: number; vneSlope: number }
+   */
+  detectEarlyConvergence(windowSize: number = 5): {
+    detected: boolean;
+    eeVariance: number;
+    vneSlope: number;
+  } {
+    if (this.#entropyPairs.length < Math.max(windowSize, this.#earlyConvergenceMinIterations)) {
+      return { detected: false, eeVariance: NaN, vneSlope: NaN };
+    }
+
+    const recent = this.#entropyPairs.slice(-windowSize);
+    const eeValues = recent.map((p) => p.ee);
+    const vneValues = recent.map((p) => p.vne);
+
+    // Compute EE variance — low variance means semantic space has converged
+    const eeVariance = variance(eeValues);
+
+    // Compute VNE slope — positive slope means structure is still growing
+    const vneSlope = linearSlope(vneValues);
+
+    // System 1 override detected when:
+    //   (a) semantic space has converged (low EE variance)
+    //   (b) structural complexity is still developing (positive VNE slope)
+    const detected =
+      eeVariance < this.#eeStabilizationThreshold &&
+      vneSlope > this.#vneGrowthThreshold;
+
+    return { detected, eeVariance, vneSlope };
+  }
+
+  /**
+   * getEntropyPairs — returns defensive copy of entropy pair history.
+   */
+  getEntropyPairs(): ReadonlyArray<{ vne: number; ee: number; iteration: number }> {
+    return [...this.#entropyPairs];
   }
 }
 

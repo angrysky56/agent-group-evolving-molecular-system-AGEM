@@ -39,7 +39,12 @@ import {
   EmbeddingCache,
   GptTokenCounter,
 } from "../lcm/index.js";
-import type { IEmbedder } from "../lcm/index.js";
+import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel } from "../lcm/index.js";
+
+// ---------------------------------------------------------------------------
+// Lumpability module imports
+// ---------------------------------------------------------------------------
+import { LumpabilityAuditor } from "../lumpability/index.js";
 
 // ---------------------------------------------------------------------------
 // TNA module imports
@@ -145,6 +150,9 @@ export class Orchestrator {
   /** Obstruction handler: H^1 detection → gapDetector agent spawn pipeline. */
   readonly obstructionHandler!: ObstructionHandler;
 
+  /** Lumpability auditor: detects information loss at LCM compaction boundaries. */
+  readonly lumpabilityAuditor!: LumpabilityAuditor;
+
   // -------------------------------------------------------------------------
   // Private fields
   // -------------------------------------------------------------------------
@@ -173,6 +181,7 @@ export class Orchestrator {
     this.#initSheaf();
     this.#initTna();
     this.#initSoc();
+    this.#initLumpability(embedder);
     this.stateManager = new OrchestratorStateManager(this.eventBus);
     this.#initOrchestration();
 
@@ -196,6 +205,7 @@ export class Orchestrator {
     this.#wireSocEvents();
     this.#wireTnaEvents();
     this.#wireStateEvents();
+    this.#wireLumpabilityEvents();
   }
 
   #wireCohomologyEvents(): void {
@@ -233,6 +243,10 @@ export class Orchestrator {
       const regimeEvent = event as unknown as { regime: string };
       this.obstructionHandler.updateRegime(regimeEvent.regime);
     });
+
+    this.socTracker.on("soc:system1-early-convergence", (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
   }
 
   #wireTnaEvents(): void {
@@ -268,6 +282,23 @@ export class Orchestrator {
         `[ORCH] Iteration ${this.#iterationCounter}: State transition to ` +
           `${stateEvent.newState} (reason: ${stateEvent.reason})`,
       );
+    });
+  }
+
+  /**
+   * #wireLumpabilityEvents — forward lumpability auditor events to EventBus.
+   *
+   * Also subscribes to 'lumpability:weak-compression' for triggering recovery:
+   * when weak lumpability is detected, the ObstructionHandler's existing
+   * feedback loop can use lcm_expand to re-inject lost context.
+   */
+  #wireLumpabilityEvents(): void {
+    this.lumpabilityAuditor.on("lumpability:audit-complete", (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+    });
+
+    this.lumpabilityAuditor.on("lumpability:weak-compression", (event: AnyEvent) => {
+      void this.eventBus.emit(event);
     });
   }
 
@@ -314,6 +345,31 @@ export class Orchestrator {
       console.log(
         `[ORCH] Iteration ${e.iteration ?? "?"}: PHASE TRANSITION detected ` +
           `(r=${(e.correlationCoefficient ?? 0).toFixed(3)})`,
+      );
+    });
+
+    this.eventBus.subscribe("lumpability:weak-compression", (event) => {
+      const e = event as {
+        summaryNodeId?: string;
+        escalationLevel?: number;
+        entropyPreservationRatio?: number;
+      };
+      console.log(
+        `[ORCH] WEAK LUMPABILITY at ${e.summaryNodeId ?? "?"} ` +
+          `(L${e.escalationLevel ?? "?"}, ratio=${(e.entropyPreservationRatio ?? 0).toFixed(3)})`,
+      );
+    });
+
+    this.eventBus.subscribe("soc:system1-early-convergence", (event) => {
+      const e = event as {
+        iteration?: number;
+        eeVariance?: number;
+        vneSlope?: number;
+      };
+      console.log(
+        `[ORCH] SYSTEM 1 OVERRIDE detected at iteration ${e.iteration ?? "?"}: ` +
+          `EE variance=${(e.eeVariance ?? 0).toFixed(4)}, ` +
+          `VNE slope=${(e.vneSlope ?? 0).toFixed(4)}`,
       );
     });
   }
@@ -467,6 +523,36 @@ export class Orchestrator {
     return this.stateManager.getState();
   }
 
+  /**
+   * auditCompaction — trigger a lumpability audit on a compaction result.
+   *
+   * Called when ContextDAG creates a SummaryNode via EscalationProtocol.
+   * Compares embedding entropy of the source entries against the summary
+   * to detect information loss (weak lumpability).
+   *
+   * Events emitted via EventBus:
+   *   - 'lumpability:audit-complete' (every audit)
+   *   - 'lumpability:weak-compression' (only when classification = 'weak')
+   *
+   * In Phase 5: available for explicit invocation.
+   * In Phase 6+: auto-triggered when the LCM engine compacts context.
+   *
+   * @param summaryNode    - The SummaryNode produced by compaction.
+   * @param sourceEntries  - The original LCMEntries that were compacted.
+   * @param escalationLevel - Which level produced this summary (1, 2, or 3).
+   */
+  async auditCompaction(
+    summaryNode: SummaryNode,
+    sourceEntries: readonly LCMEntry[],
+    escalationLevel: EscalationLevel,
+  ): Promise<void> {
+    await this.lumpabilityAuditor.audit(
+      summaryNode,
+      sourceEntries,
+      escalationLevel,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Private Initialization Methods
   // -------------------------------------------------------------------------
@@ -502,6 +588,14 @@ export class Orchestrator {
 
   #initSoc(): void {
     (this as any).socTracker = new SOCTracker({ correlationWindowSize: 10 });
+  }
+
+  #initLumpability(embedder: IEmbedder): void {
+    const tokenCounter = new GptTokenCounter();
+    (this as any).lumpabilityAuditor = new LumpabilityAuditor(
+      embedder,
+      tokenCounter,
+    );
   }
 
   #initOrchestration(): void {

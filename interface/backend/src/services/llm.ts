@@ -352,6 +352,14 @@ class OpenRouterProvider implements LLMProvider {
           name: string;
           context_length?: number;
           description?: string;
+          pricing?: {
+            prompt: string;
+            completion: string;
+            request?: string;
+            image?: string;
+          };
+          supported_parameters?: string[];
+          top_provider?: { context_length?: number };
         }>;
       };
 
@@ -359,11 +367,13 @@ class OpenRouterProvider implements LLMProvider {
         id: m.id,
         name: m.name ?? m.id,
         provider: "openrouter" as const,
-        context_length: m.context_length ?? 0,
+        context_length: m.context_length ?? m.top_provider?.context_length ?? 0,
         description: m.description,
         type: m.id.toLowerCase().includes("embed")
           ? ("embedding" as const)
           : ("chat" as const),
+        pricing: m.pricing,
+        supports_tools: m.supported_parameters?.includes("tools") ?? false,
       }));
     } catch (error) {
       console.error("[LLM] Failed to list OpenRouter models:", error);

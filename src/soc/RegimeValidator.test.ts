@@ -1012,3 +1012,113 @@ describe("RegimeAnalyzer (SOC-07)", () => {
     });
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// System 1 Early Convergence Detection Tests (SOC-08)
+// ---------------------------------------------------------------------------
+
+describe("System 1 Early Convergence Detection (SOC-08)", () => {
+  describe("Entropy pair tracking", () => {
+    it("T45: trackEntropyPair records VNE/EE pairs", () => {
+      const validator = new RegimeValidator();
+      validator.trackEntropyPair(1.5, 0.8, 1);
+      validator.trackEntropyPair(1.7, 0.82, 2);
+
+      const pairs = validator.getEntropyPairs();
+      expect(pairs).toHaveLength(2);
+      expect(pairs[0]!.vne).toBe(1.5);
+      expect(pairs[0]!.ee).toBe(0.8);
+      expect(pairs[1]!.iteration).toBe(2);
+    });
+
+    it("T46: entropy pair history trims to max size", () => {
+      const validator = new RegimeValidator();
+      // Default max is 20
+      for (let i = 1; i <= 30; i++) {
+        validator.trackEntropyPair(i * 0.1, 0.5, i);
+      }
+      const pairs = validator.getEntropyPairs();
+      expect(pairs.length).toBeLessThanOrEqual(20);
+    });
+
+    it("T47: getEntropyPairs returns defensive copy", () => {
+      const validator = new RegimeValidator();
+      validator.trackEntropyPair(1.0, 0.5, 1);
+      const p1 = validator.getEntropyPairs() as Array<{vne: number; ee: number; iteration: number}>;
+      p1.push({ vne: 999, ee: 999, iteration: 999 });
+      expect(validator.getEntropyPairs()).toHaveLength(1);
+    });
+  });
+
+  describe("Early convergence detection", () => {
+    it("T48: not detected with insufficient iterations", () => {
+      const validator = new RegimeValidator({
+        earlyConvergenceMinIterations: 5,
+      });
+      // Feed only 3 pairs — below the minimum
+      for (let i = 1; i <= 3; i++) {
+        validator.trackEntropyPair(i * 0.1, 0.5, i);
+      }
+      const result = validator.detectEarlyConvergence();
+      expect(result.detected).toBe(false);
+      expect(isNaN(result.eeVariance)).toBe(true);
+    });
+
+    it("T49: DETECTED when EE stabilized but VNE growing (System 1 override)", () => {
+      // EE variance < 0.01, VNE slope > 0.05
+      // This is the signature: semantic space converged, structure still building
+      const validator = new RegimeValidator({
+        eeStabilizationThreshold: 0.01,
+        vneGrowthThreshold: 0.05,
+        earlyConvergenceMinIterations: 5,
+      });
+
+      // EE is flat at 0.5 (converged), VNE is linearly increasing
+      for (let i = 1; i <= 6; i++) {
+        validator.trackEntropyPair(0.5 + i * 0.1, 0.5, i);
+      }
+
+      const result = validator.detectEarlyConvergence(5);
+      expect(result.detected).toBe(true);
+      expect(result.eeVariance).toBeLessThan(0.01);
+      expect(result.vneSlope).toBeGreaterThan(0.05);
+    });
+
+    it("T50: NOT detected when both EE and VNE are growing (healthy reasoning)", () => {
+      const validator = new RegimeValidator({
+        eeStabilizationThreshold: 0.01,
+        vneGrowthThreshold: 0.05,
+        earlyConvergenceMinIterations: 5,
+      });
+
+      // Both entropies growing — healthy exploration, no shortcutting
+      for (let i = 1; i <= 6; i++) {
+        validator.trackEntropyPair(0.5 + i * 0.1, 0.3 + i * 0.08, i);
+      }
+
+      const result = validator.detectEarlyConvergence(5);
+      expect(result.detected).toBe(false);
+      // EE variance should be high (growing)
+      expect(result.eeVariance).toBeGreaterThan(0.01);
+    });
+
+    it("T51: NOT detected when VNE is flat (no structural growth)", () => {
+      const validator = new RegimeValidator({
+        eeStabilizationThreshold: 0.01,
+        vneGrowthThreshold: 0.05,
+        earlyConvergenceMinIterations: 5,
+      });
+
+      // Both flat — stable state, not a System 1 override
+      for (let i = 1; i <= 6; i++) {
+        validator.trackEntropyPair(1.5, 0.5, i);
+      }
+
+      const result = validator.detectEarlyConvergence(5);
+      expect(result.detected).toBe(false);
+      // VNE slope should be ~0
+      expect(Math.abs(result.vneSlope)).toBeLessThan(0.05);
+    });
+  });
+});

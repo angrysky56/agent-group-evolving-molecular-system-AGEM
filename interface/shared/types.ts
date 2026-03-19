@@ -200,6 +200,8 @@ export interface SystemConfig {
   ollama_base_url: string;
   openrouter_base_url: string;
   knowledge_base_path: string;
+  /** True when the backend already has an API key from the environment (never exposes the key itself). */
+  has_api_key?: boolean;
 }
 
 /** System status health check. */
