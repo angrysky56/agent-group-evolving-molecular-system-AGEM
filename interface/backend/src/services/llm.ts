@@ -71,6 +71,9 @@ class OllamaProvider implements LLMProvider {
         model,
         messages: options.messages,
         stream: true,
+        options: {
+          num_ctx: 32000, // Larger context improves tool calling reliability
+        },
       };
       if (includeTools && options.tools && options.tools.length > 0) {
         body.tools = options.tools;
@@ -145,8 +148,16 @@ class OllamaProvider implements LLMProvider {
           }
 
           if (parsed.message?.tool_calls) {
-            // Ollama usually sends the whole tool_call block at once
-            toolCalls = parsed.message.tool_calls;
+            // Ollama native format: {function: {name, arguments: OBJECT}}
+            // Normalize to add id/type but keep arguments as-is (chat.ts handles both)
+            toolCalls = parsed.message.tool_calls.map((tc: any, i: number) => ({
+              id: tc.id ?? `ollama_call_${Date.now()}_${i}`,
+              type: tc.type ?? "function",
+              function: {
+                name: tc.function?.name ?? tc.name,
+                arguments: tc.function?.arguments ?? {},
+              },
+            }));
           }
 
           if (parsed.done) {
@@ -159,6 +170,17 @@ class OllamaProvider implements LLMProvider {
       }
     }
 
+    // Fallback: if model output tool calls as text, extract them
+    if (!toolCalls && options.tools && options.tools.length > 0) {
+      const extracted = this.#extractToolCallsFromContent(fullContent);
+      if (extracted) {
+        console.log(`[LLM] Extracted ${extracted.length} tool call(s) from content text for model '${model}'`);
+        toolCalls = extracted;
+        // Clear content since it was actually a tool call, not a response
+        fullContent = "";
+      }
+    }
+
     return {
       content: fullContent,
       tool_calls: toolCalls,
@@ -168,6 +190,78 @@ class OllamaProvider implements LLMProvider {
         total_tokens: promptTokens + completionTokens,
       },
     };
+  }
+
+  /**
+   * Some Ollama models accept tools but output calls as JSON text
+   * instead of using the structured tool_calls field. Detect and extract.
+   */
+  #extractToolCallsFromContent(content: string): any[] | undefined {
+    if (!content) return undefined;
+    const trimmed = content.trim();
+
+    // Pattern 1: {"tool_name": "...", "input": {...}}  (nemotron style)
+    // Pattern 2: {"name": "...", "arguments": {...}}
+    // Pattern 3: ```json\n{...}\n```
+    let jsonStr = trimmed;
+
+    // Strip markdown code fences
+    const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (fenceMatch) {
+      jsonStr = fenceMatch[1]!.trim();
+    }
+
+    // Only try parsing if it looks like JSON
+    if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) return undefined;
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+
+      // Pattern 1: nemotron style
+      if (parsed.tool_name && (parsed.input || parsed.parameters || parsed.arguments)) {
+        return [{
+          id: `call_${Date.now()}`,
+          type: "function",
+          function: {
+            name: parsed.tool_name,
+            arguments: JSON.stringify(parsed.input ?? parsed.parameters ?? parsed.arguments ?? {}),
+          },
+        }];
+      }
+
+      // Pattern 2: OpenAI-ish style
+      if (parsed.name && (parsed.arguments || parsed.parameters)) {
+        return [{
+          id: `call_${Date.now()}`,
+          type: "function",
+          function: {
+            name: parsed.name,
+            arguments: JSON.stringify(parsed.arguments ?? parsed.parameters ?? {}),
+          },
+        }];
+      }
+
+      // Pattern 3: Array of tool calls
+      if (Array.isArray(parsed)) {
+        const calls = parsed
+          .filter((t: any) => t.tool_name || t.name || t.function?.name)
+          .map((t: any, i: number) => ({
+            id: `call_${Date.now()}_${i}`,
+            type: "function",
+            function: {
+              name: t.tool_name ?? t.name ?? t.function?.name,
+              arguments: JSON.stringify(
+                t.input ?? t.arguments ?? t.parameters ?? t.function?.arguments ?? {},
+              ),
+            },
+          }));
+        if (calls.length > 0) return calls;
+      }
+    } catch {
+      // Not valid JSON — that's fine, it's just text
+    }
+
+    return undefined;
   }
 
   async listModels(): Promise<ModelInfo[]> {

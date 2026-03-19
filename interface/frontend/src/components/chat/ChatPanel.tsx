@@ -77,6 +77,11 @@ export function ChatPanel() {
             // Also update dashboard store so both panels stay in sync
             useAgemStore.getState().updateState(data as never);
           },
+          onClearStream: () => {
+            // Model output a tool call as text — clear the displayed JSON
+            assistantText = "";
+            chat.setStreamingContent("");
+          },
           onDone: (message) => {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");

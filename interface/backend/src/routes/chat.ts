@@ -30,6 +30,8 @@ chatRouter.post("/completions", async (req, res) => {
   const { message, model, provider: providerType } = body;
   let sessionId = body.session_id;
 
+  console.log(`[Chat] Request: model=${model}, provider=${providerType}, msg="${message?.slice(0, 60)}..."`);
+
   if (!message?.trim()) {
     res.status(400).json({ error: "Message is required" });
     return;
@@ -90,8 +92,8 @@ Use the read_skill tool to read the full content of any skill if you need more i
       req.headers["authorization"]?.toString().replace("Bearer ", "") ??
       req.headers["x-openrouter-key"]?.toString();
 
-    const provider =
-      settings.getLLMConfig().provider === "ollama" ? "ollama" : "openrouter";
+    const resolvedProvider = providerType ?? settings.getLLMConfig().provider;
+    const isOllama = resolvedProvider === "ollama";
 
     // Setup Tools
     const mcpTools = await mcpManager.getAllTools();
@@ -258,7 +260,17 @@ Use the read_skill tool to read the full content of any skill if you need more i
       },
     ];
 
-    const tools = [...skillTools, ...mcpTools, ...agemTools];
+    // Build tool set — limit for local models which can't handle 50+ tool definitions
+    let tools: any[];
+    if (isOllama) {
+      // Ollama local models: only AGEM native tools (10 tools max)
+      // MCP tools overwhelm small models and cause them to output garbage
+      console.log(`[Chat] Ollama mode: using ${agemTools.length} AGEM tools (skipping ${mcpTools.length} MCP + ${skillTools.length} skill tools)`);
+      tools = [...agemTools];
+    } else {
+      // Cloud providers (OpenRouter/Anthropic): full tool set
+      tools = [...skillTools, ...mcpTools, ...agemTools];
+    }
 
     // Create provider instance
     const llmProvider = createProvider(providerType);
@@ -290,13 +302,43 @@ Use the read_skill tool to read the full content of any skill if you need more i
       });
       lastResult = result;
 
+      // If the model returned tool calls, clear any streamed content
+      // (models that output tool calls as text will have already streamed JSON)
+      if (result.tool_calls && result.tool_calls.length > 0) {
+        sendEvent("clear_stream", {});
+      }
+
       // Append assistant response to history
       const assistantMessage: any = {
         role: "assistant",
         content: result.content,
       };
       if (result.tool_calls) {
-        assistantMessage.tool_calls = result.tool_calls;
+        if (isOllama) {
+          // Ollama expects: tool_calls with type, function.index, and arguments as OBJECT
+          assistantMessage.tool_calls = result.tool_calls.map((tc: any, i: number) => ({
+            type: "function",
+            function: {
+              index: i,
+              name: tc.function.name,
+              arguments: typeof tc.function.arguments === "string"
+                ? JSON.parse(tc.function.arguments || "{}")
+                : tc.function.arguments,
+            },
+          }));
+        } else {
+          // OpenRouter: standard OpenAI format with arguments as STRING
+          assistantMessage.tool_calls = result.tool_calls.map((tc: any) => ({
+            id: tc.id,
+            type: tc.type ?? "function",
+            function: {
+              name: tc.function.name,
+              arguments: typeof tc.function.arguments === "string"
+                ? tc.function.arguments
+                : JSON.stringify(tc.function.arguments ?? {}),
+            },
+          }));
+        }
       }
       historyMessages.push(assistantMessage);
 
@@ -323,8 +365,10 @@ Use the read_skill tool to read the full content of any skill if you need more i
             } else if (fnName === "get_agem_state") {
               output = JSON.stringify(agemBridge.getState(), null, 2);
             } else if (fnName === "run_agem_cycle") {
+              // Accept common parameter name variations from different models
+              const prompt = args.prompt ?? args.conversation_topic ?? args.topic ?? args.message ?? message;
               const runResult = await agemBridge.runCycle(
-                args.prompt,
+                prompt,
                 sendEvent,
               );
               output = `Cycle completed. State:\n${JSON.stringify(runResult.state, null, 2)}`;
@@ -347,19 +391,22 @@ Use the read_skill tool to read the full content of any skill if you need more i
             } else if (fnName === "detect_gaps") {
               output = JSON.stringify(agemBridge.detectGaps(), null, 2);
             } else if (fnName === "generate_catalyst_questions") {
+              const gapId = args.gap_id ?? args.gapId ?? args.gap ?? undefined;
               output = JSON.stringify(
-                agemBridge.generateCatalystQuestions(args.gap_id),
+                agemBridge.generateCatalystQuestions(gapId),
                 null,
                 2,
               );
             } else if (fnName === "search_context") {
+              const query = args.query ?? args.search_query ?? args.text ?? "";
               const results = await agemBridge.searchContext(
-                args.query,
+                query,
                 args.max_results,
               );
               output = JSON.stringify(results, null, 2);
             } else if (fnName === "spawn_agem_agent") {
-              const spawnResult = agemBridge.spawnAgent(args.persona);
+              const persona = args.persona ?? args.agent_persona ?? args.role ?? "General";
+              const spawnResult = agemBridge.spawnAgent(persona);
               output = spawnResult.message;
             } else if (fnName === "reset_agem_engine") {
               await agemBridge.reset();
@@ -376,12 +423,23 @@ Use the read_skill tool to read the full content of any skill if you need more i
             output = `Error executing tool: ${err.message}`;
           }
 
-          historyMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            name: fnName,
-            content: output,
-          });
+          // Format tool result per provider spec
+          if (isOllama) {
+            // Ollama: {role: "tool", tool_name: "...", content: "..."}
+            historyMessages.push({
+              role: "tool",
+              tool_name: fnName,
+              content: output,
+            });
+          } else {
+            // OpenRouter/Anthropic: {role: "tool", tool_call_id: "...", content: "..."}
+            historyMessages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              name: fnName,
+              content: output,
+            });
+          }
         }
       } else {
         // No tool calls, interaction is finished
