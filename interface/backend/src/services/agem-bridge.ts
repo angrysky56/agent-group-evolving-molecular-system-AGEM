@@ -159,6 +159,7 @@ class AgemBridge {
       cohomology: this.#getSafeCohomology(),
       regime: this.#getRegimeData(),
       lumpability: this.#getLumpabilityData(),
+      evolution: this.#getEvolutionData(),
     };
   }
 
@@ -192,6 +193,27 @@ class AgemBridge {
   #getSafeCohomology(): CohomologySnapshot | undefined {
     try {
       return this.getCohomology();
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Get Price equation evolution data for dashboard. */
+  #getEvolutionData() {
+    try {
+      const evolver = (this.#orchestrator as any).priceEvolver;
+      if (!evolver) return undefined;
+      const latest = evolver.getLatest?.();
+      if (!latest) return undefined;
+      return {
+        selection: latest.selection,
+        transmission: latest.transmission,
+        total_change: latest.totalChange,
+        explore_exploit_ratio: evolver.getExploreExploitRatio(),
+        learning_rate: evolver.getCurrentLearningRate(),
+        mean_fitness: latest.meanFitness,
+        population_size: latest.populationSize,
+      };
     } catch {
       return undefined;
     }
@@ -315,6 +337,13 @@ class AgemBridge {
       this.#emitEvent("regime:classification", "info",
         `Regime: ${state.regime.regime} (persistence: ${state.regime.persistence_iterations})`,
         state.regime as unknown as Record<string, unknown>,
+      );
+    }
+
+    if (state.evolution) {
+      this.#emitEvent("evolution:price-decomposition", "info",
+        `Selection=${state.evolution.selection.toFixed(4)} Transmission=${state.evolution.transmission.toFixed(4)} E/E=${state.evolution.explore_exploit_ratio.toFixed(2)}`,
+        state.evolution as unknown as Record<string, unknown>,
       );
     }
 

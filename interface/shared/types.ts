@@ -100,6 +100,15 @@ export interface AgemStateSnapshot {
     avg_entropy_preservation: number;
     last_classification: "strong" | "weak" | "degenerate" | null;
   };
+  evolution?: {
+    selection: number;
+    transmission: number;
+    total_change: number;
+    explore_exploit_ratio: number;
+    learning_rate: number;
+    mean_fitness: number;
+    population_size: number;
+  };
 }
 
 /* ─── AGEM Tool Response Types ─── */
@@ -210,6 +219,7 @@ export type SystemEventType =
   | "orch:vdw-agent-spawned"
   | "orch:vdw-agent-complete"
   | "tna:catalyst-questions-generated"
+  | "evolution:price-decomposition"
   | "agem:state-update";
 
 /** A system event for the dashboard event log. */

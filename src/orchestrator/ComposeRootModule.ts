@@ -699,14 +699,29 @@ export class Orchestrator {
       }
     });
 
-    // Embed new nodes (the lemma text IS the node ID in TNA)
-    for (const nodeId of nodesToEmbed) {
-      try {
-        const embedding = await this.#embedder.embed(nodeId);
-        this.#nodeEmbeddings.set(nodeId, embedding);
-      } catch {
-        // Skip failed embeddings — SOC will work with partial data
+    if (nodesToEmbed.length === 0) return;
+
+    // Parallelize embedding calls (batches of 10 to avoid overwhelming the API)
+    const batchSize = 10;
+    for (let i = 0; i < nodesToEmbed.length; i += batchSize) {
+      const batch = nodesToEmbed.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (nodeId) => {
+          const embedding = await this.#embedder.embed(nodeId);
+          return { nodeId, embedding };
+        }),
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          this.#nodeEmbeddings.set(result.value.nodeId, result.value.embedding);
+        }
       }
+    }
+
+    if (nodesToEmbed.length > 0) {
+      console.log(
+        `[ORCH] Embedded ${this.#nodeEmbeddings.size} TNA nodes (${nodesToEmbed.length} new)`,
+      );
     }
   }
 
