@@ -6,6 +6,8 @@
  */
 
 import { Router } from "express";
+import path from "path";
+import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 import type { ChatMessage, ChatRequest } from "../../../shared/types.js";
 import { createProvider } from "../services/llm.js";
@@ -72,9 +74,16 @@ chatRouter.post("/completions", async (req, res) => {
     const historyMessages = [];
 
     // Inject system prompt with skills summary
+    const agemSkill = skillRegistry.getSkill("agem-expert");
+    const skillContent = agemSkill
+      ? `\n\n--- AGEM EXPERT SKILL ---\n${agemSkill.content}\n--- END SKILL ---`
+      : "";
+
     historyMessages.push({
       role: "system",
-      content: `You are AGEM, an advanced molecular simulation agent system designed to assist users with complex system architecture and coding tasks.
+      content: `You are AGEM, an advanced multi-agent reasoning engine built on mathematical topology. You have access to native AGEM tools AND external MCP servers for consistency enforcement, ethical evaluation, formal logic, and advanced reasoning.
+
+WORKFLOW: Always run_agem_cycle FIRST on new topics. Then use introspection tools to analyze results. For complex or contested topics, run multiple cycles and use MCP servers for external validation.
 
 CORE TOOLS (use directly):
 - run_agem_cycle: Execute a reasoning cycle on a topic
@@ -83,15 +92,19 @@ CORE TOOLS (use directly):
 - search_context: Semantic search across the LCM store
 - spawn_agem_agent, reset_agem_engine: Agent and lifecycle management
 
-MCP SERVER ACCESS (use the meta-tools to discover and call):
-1. Call list_mcp_servers to see available servers (reasoning, ethics, logic, knowledge graphs, etc.)
-2. Call list_server_tools with a server_name to see its tools
-3. Call call_mcp_tool with server_name, tool_name, and arguments to invoke any tool
+MCP SERVER ACCESS (use the 3 meta-tools to discover and call):
+1. list_mcp_servers → see available servers
+2. list_server_tools(server_name) → see tools on that server
+3. call_mcp_tool(server_name, tool_name, arguments) → invoke any tool
 
-Available MCP servers include: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, aseke-compass, and more.
-
-SKILLS: ${skillRegistry.getAllSkillsSummary()}
-Use the read_skill tool to read skill content.`,
+KEY MCP SERVERS:
+- advanced-reasoning: Deep multi-step reasoning with memory
+- sheaf-consistency-enforcer: Cross-agent consistency verification
+- conscience-servitor: Ethical risk triage and full EFHF evaluation
+- hipai-montague: World model knowledge graph with Paraclete Protocol
+- verifier-graph: Reasoning provenance chains
+- mcp-logic: Formal logic proofs (Prover9/Mace4)
+${skillContent}`,
     });
 
     historyMessages.push(
@@ -106,7 +119,13 @@ Use the read_skill tool to read skill content.`,
       req.headers["authorization"]?.toString().replace("Bearer ", "") ??
       req.headers["x-openrouter-key"]?.toString();
 
-    const resolvedProvider = providerType ?? settings.getLLMConfig().provider;
+    let resolvedProvider = providerType ?? settings.getLLMConfig().provider;
+    if (model) {
+      if (model.startsWith("ollama:")) resolvedProvider = "ollama";
+      else if (model.startsWith("openrouter:")) resolvedProvider = "openrouter";
+      else if (model.startsWith("anthropic:")) resolvedProvider = "anthropic";
+    }
+
     const isOllama = resolvedProvider === "ollama";
 
     // Setup Tools
@@ -272,6 +291,50 @@ Use the read_skill tool to read skill content.`,
           },
         },
       },
+      {
+        type: "function" as const,
+        function: {
+          name: "read_skill",
+          description:
+            "Read the full markdown instructions of a loaded agent skill. Use list_mcp_servers or get_agem_state to see available skills first.",
+          parameters: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "The skill name (e.g., 'agem-expert').",
+              },
+            },
+            required: ["name"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "create_skill",
+          description:
+            "Create or update an agent skill. Writes a SKILL.md file with YAML frontmatter (name, description) and markdown body. Skills are loaded on next server restart.",
+          parameters: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "Skill folder name (e.g., 'value-guardian'). Will be created under skills/.",
+              },
+              description: {
+                type: "string",
+                description: "One-line description of the skill.",
+              },
+              content: {
+                type: "string",
+                description: "Full markdown body of the skill (everything after the frontmatter).",
+              },
+            },
+            required: ["name", "description", "content"],
+          },
+        },
+      },
     ];
 
     // ─── Meta-tools: dynamic MCP access without schema flooding ───
@@ -331,7 +394,7 @@ Use the read_skill tool to read skill content.`,
     }
 
     // Create provider instance
-    const llmProvider = createProvider(providerType);
+    const llmProvider = createProvider(resolvedProvider);
 
     let isDone = false;
     let turnCount = 0;
@@ -469,6 +532,20 @@ Use the read_skill tool to read skill content.`,
             } else if (fnName === "reset_agem_engine") {
               await agemBridge.reset();
               output = "AGEM engine reset.";
+            } else if (fnName === "create_skill") {
+              const skillName = args.name ?? "unnamed-skill";
+              const desc = args.description ?? "No description.";
+              const body = args.content ?? "";
+              try {
+                const skillDir = path.resolve(process.cwd(), "..", "..", "skills", skillName);
+                await fs.mkdir(skillDir, { recursive: true });
+                const frontmatter = `---\nname: "${skillName}"\ndescription: "${desc}"\n---\n\n`;
+                await fs.writeFile(path.join(skillDir, "SKILL.md"), frontmatter + body, "utf8");
+                await skillRegistry.initialize();
+                output = `Skill '${skillName}' created/updated and reloaded.`;
+              } catch (err: any) {
+                output = `Error creating skill: ${err.message}`;
+              }
             } else if (fnName === "list_mcp_servers") {
               // Meta-tool: list connected MCP servers
               const serverNames = mcpManager.getServerNames();

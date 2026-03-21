@@ -141,6 +141,15 @@ export interface SOCSnapshot {
   } | null;
   trend: { mean: number; slope: number; window: number };
   history_length: number;
+  history?: Array<{
+    iteration: number;
+    von_neumann_entropy: number;
+    embedding_entropy: number;
+    cdp: number;
+    surprising_edge_ratio: number;
+    correlation_coefficient: number;
+    is_phase_transition: boolean;
+  }>;
 }
 
 /** Structural gap between two communities. */

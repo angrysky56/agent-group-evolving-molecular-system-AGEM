@@ -115,7 +115,14 @@ systemRouter.post("/embeddings", async (req, res) => {
   }
 
   try {
-    const provider = createProvider();
+    let resolvedProvider = settings.getLLMConfig().provider;
+    if (model) {
+      if (model.startsWith("ollama:")) resolvedProvider = "ollama";
+      else if (model.startsWith("openrouter:")) resolvedProvider = "openrouter";
+      else if (model.startsWith("anthropic:")) resolvedProvider = "anthropic";
+    }
+
+    const provider = createProvider(resolvedProvider);
     const embedding = await provider.getEmbedding(text, model);
 
     if (!embedding || embedding.length === 0) {

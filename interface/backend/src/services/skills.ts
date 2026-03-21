@@ -14,13 +14,14 @@ export class SkillRegistry {
   private skillsDir: string;
 
   constructor(basePath: string) {
-    // Assume skills directory is at the root of the project
-    this.skillsDir = path.join(basePath, "skills");
+    // Skills are at the project root (../../skills from interface/backend)
+    this.skillsDir = path.resolve(basePath, "..", "..", "skills");
   }
 
   async initialize() {
     try {
       await fs.mkdir(this.skillsDir, { recursive: true });
+      this.skills.clear(); // Support re-initialization
       const entries = await fs.readdir(this.skillsDir, { withFileTypes: true });
 
       for (const entry of entries) {
@@ -28,7 +29,7 @@ export class SkillRegistry {
           await this.loadSkill(entry.name);
         }
       }
-      console.log(`[SkillRegistry] Loaded ${this.skills.size} skills.`);
+      console.log(`[SkillRegistry] Loaded ${this.skills.size} skills from ${this.skillsDir}`);
     } catch (error) {
       console.error(
         "[SkillRegistry] Failed to initialize skills directory:",

@@ -74,8 +74,22 @@ export function ChatPanel() {
           },
           onAgemState: (data) => {
             chat.setAgemState(data as never);
-            // Also update dashboard store so both panels stay in sync
-            useAgemStore.getState().updateState(data as never);
+            // Update dashboard store with state
+            const agemStore = useAgemStore.getState();
+            agemStore.updateState(data as never);
+            // Extract SOC data point from embedded metrics
+            const state = data as any;
+            if (state.soc?.latest) {
+              const soc = state.soc.latest;
+              agemStore.addSOCDataPoint({
+                iteration: soc.iteration ?? state.iteration ?? 0,
+                vne: soc.von_neumann_entropy ?? 0,
+                ee: soc.embedding_entropy ?? 0,
+                cdp: soc.cdp ?? 0,
+                ser: soc.surprising_edge_ratio ?? 0,
+                correlation: soc.correlation_coefficient ?? 0,
+              });
+            }
           },
           onClearStream: () => {
             // Model output a tool call as text — clear the displayed JSON

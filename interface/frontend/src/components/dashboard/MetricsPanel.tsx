@@ -24,7 +24,7 @@ function Sparkline({
   width?: number;
   height?: number;
 }) {
-  if (data.length < 2) {
+  if (data.length < 1) {
     return (
       <div className="spark">
         <div className="spark__header">
@@ -32,6 +32,26 @@ function Sparkline({
           <span className="spark__value" style={{ color }}>—</span>
         </div>
         <div className="spark__empty">awaiting data</div>
+      </div>
+    );
+  }
+
+  // Single data point: show a dot at center
+  if (data.length === 1) {
+    return (
+      <div className="spark">
+        <div className="spark__header">
+          <span className="spark__label">{label}</span>
+          <span className="spark__value" style={{ color }}>{currentValue}</span>
+        </div>
+        <svg
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
+          className="spark__svg"
+        >
+          <circle cx={width / 2} cy={height / 2} r="3" fill={color} />
+        </svg>
       </div>
     );
   }

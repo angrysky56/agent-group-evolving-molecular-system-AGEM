@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "AGEM Interface Backend — Express + TypeScript",
   "type": "module",
+  "imports": {
+    "#agem/*": "agent-group-evolving-molecular-system/dist/*"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
@@ -13,6 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "agent-group-evolving-molecular-system": "file:../..",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",

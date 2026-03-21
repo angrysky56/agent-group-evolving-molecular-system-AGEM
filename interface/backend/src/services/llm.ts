@@ -65,7 +65,8 @@ class OllamaProvider implements LLMProvider {
 
   async chat(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
     const config = settings.getLLMConfig();
-    const model = options.model ?? config.model;
+    let model = options.model ?? config.model;
+    if (model.startsWith("ollama:")) model = model.substring(7);
 
     const buildBody = (includeTools: boolean) => {
       const body: any = {
@@ -82,10 +83,14 @@ class OllamaProvider implements LLMProvider {
       return body;
     };
 
+    const initialBody = buildBody(true);
+    const fs = await import('fs');
+    fs.writeFileSync('/tmp/ollama_req.json', JSON.stringify(initialBody, null, 2));
+
     let response = await fetch(`${this.#baseUrl}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildBody(true)),
+      body: JSON.stringify(initialBody),
       signal: options.signal,
     });
 
@@ -334,7 +339,8 @@ class OllamaProvider implements LLMProvider {
 
   /** Get embeddings via Ollama /api/embeddings endpoint. */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    const embModel = model ?? settings.getLLMConfig().embedding_model ?? "nomic-embed-text:latest";
+    let embModel = model ?? settings.getLLMConfig().embedding_model ?? "nomic-embed-text:latest";
+    if (embModel.startsWith("ollama:")) embModel = embModel.substring(7);
     try {
       const response = await fetch(`${this.#baseUrl}/api/embeddings`, {
         method: "POST",
@@ -373,7 +379,8 @@ class OpenRouterProvider implements LLMProvider {
     options: ChatCompletionOptions & { apiKey?: string },
   ): Promise<ChatCompletionResult> {
     const config = settings.getLLMConfig();
-    const model = options.model ?? config.model;
+    let model = options.model ?? config.model;
+    if (model.startsWith("openrouter:")) model = model.substring(11);
     const apiKey = this.#getApiKey(options.apiKey);
 
     const bodyObj: any = {
@@ -565,7 +572,8 @@ class OpenRouterProvider implements LLMProvider {
 
   /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    const embModel = model ?? settings.getLLMConfig().embedding_model ?? "google/gemini-embedding-001";
+    let embModel = model ?? settings.getLLMConfig().embedding_model ?? "google/gemini-embedding-001";
+    if (embModel.startsWith("openrouter:")) embModel = embModel.substring(11);
     const key = this.#getApiKey();
     try {
       const response = await fetch(`${this.#baseUrl}/embeddings`, {
@@ -611,7 +619,8 @@ class AnthropicProvider implements LLMProvider {
     options: ChatCompletionOptions & { apiKey?: string },
   ): Promise<ChatCompletionResult> {
     const config = settings.getLLMConfig();
-    const model = options.model ?? config.model;
+    let model = options.model ?? config.model;
+    if (model.startsWith("anthropic:")) model = model.substring(10);
     const apiKey = this.#getApiKey(options.apiKey);
 
     // Filter out system messages since Anthropic puts it in a top-level `system` field

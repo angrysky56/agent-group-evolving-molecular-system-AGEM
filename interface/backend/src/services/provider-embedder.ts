@@ -8,8 +8,8 @@
  */
 
 import { createHash } from "node:crypto";
-import type { IEmbedder } from "../../../../src/lcm/interfaces.js";
-import { EMBEDDING_DIM } from "../../../../src/lcm/interfaces.js";
+import type { IEmbedder } from "#agem/lcm/interfaces.js";
+import { EMBEDDING_DIM } from "#agem/lcm/interfaces.js";
 import { createProvider } from "./llm.js";
 
 export class ProviderEmbedder implements IEmbedder {

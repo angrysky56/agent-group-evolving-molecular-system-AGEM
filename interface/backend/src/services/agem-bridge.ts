@@ -23,16 +23,16 @@ import type {
   SystemEvent,
 } from "../../../shared/types.js";
 
-import { Orchestrator } from "../../../../src/orchestrator/index.js";
-import { computeCohomology } from "../../../../src/sheaf/CohomologyAnalyzer.js";
+import { Orchestrator } from "#agem/orchestrator/index.js";
+import { computeCohomology } from "#agem/sheaf/CohomologyAnalyzer.js";
 import {
   GptTokenCounter,
   ImmutableStore,
   EmbeddingCache,
   LCMGrep,
-} from "../../../../src/lcm/index.js";
+} from "#agem/lcm/index.js";
 import { ProviderEmbedder } from "./provider-embedder.js";
-import type { GapMetrics } from "../../../../src/tna/interfaces.js";
+import type { GapMetrics } from "#agem/tna/interfaces.js";
 
 /* ─── AGEM Engine Bridge ─── */
 
@@ -396,6 +396,15 @@ class AgemBridge {
         : null,
       trend: { mean: trend.mean, slope: trend.slope, window: trend.window },
       history_length: history.length,
+      history: history.map((h) => ({
+        iteration: h.iteration,
+        von_neumann_entropy: h.vonNeumannEntropy,
+        embedding_entropy: h.embeddingEntropy,
+        cdp: h.cdp,
+        surprising_edge_ratio: h.surprisingEdgeRatio,
+        correlation_coefficient: h.correlationCoefficient,
+        is_phase_transition: h.isPhaseTransition,
+      })),
     };
   }
 

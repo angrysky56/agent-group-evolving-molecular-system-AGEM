@@ -172,7 +172,23 @@ export function QuickActions() {
       },
       {
         onToken: (text) => appendStreamingContent(text),
-        onAgemState: (data) => updateState(data as any),
+        onAgemState: (data) => {
+          const agemStore = useAgemStore.getState();
+          agemStore.updateState(data as any);
+          // Extract SOC data point from embedded metrics
+          const state = data as any;
+          if (state.soc?.latest) {
+            const soc = state.soc.latest;
+            agemStore.addSOCDataPoint({
+              iteration: soc.iteration ?? state.iteration ?? 0,
+              vne: soc.von_neumann_entropy ?? 0,
+              ee: soc.embedding_entropy ?? 0,
+              cdp: soc.cdp ?? 0,
+              ser: soc.surprising_edge_ratio ?? 0,
+              correlation: soc.correlation_coefficient ?? 0,
+            });
+          }
+        },
         onClearStream: () => setStreamingContent(""),
         onDone: (message) => {
           addMessage(message);

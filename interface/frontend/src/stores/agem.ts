@@ -44,6 +44,7 @@ export interface AgemSystemState {
   addToast: (event: SystemEvent) => void;
   removeToast: (id: string) => void;
   clearEvents: () => void;
+  setSocHistory: (history: SOCDataPoint[]) => void;
 }
 
 let toastCounter = 0;
@@ -62,6 +63,8 @@ export const useAgemStore = create<AgemSystemState>((set) => ({
     set((s) => ({
       socHistory: [...s.socHistory.slice(-99), point],
     })),
+
+  setSocHistory: (history) => set({ socHistory: history }),
 
   addEvent: (event) =>
     set((s) => ({

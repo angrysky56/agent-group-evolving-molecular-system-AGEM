@@ -23,12 +23,6 @@ export function useSystemEvents() {
   const retryRef = useRef(0);
   const esRef = useRef<EventSource | null>(null);
 
-  const updateState = useAgemStore((s) => s.updateState);
-  const addSOCDataPoint = useAgemStore((s) => s.addSOCDataPoint);
-  const addEvent = useAgemStore((s) => s.addEvent);
-  const addToast = useAgemStore((s) => s.addToast);
-  const setSseConnected = useAgemStore((s) => s.setSseConnected);
-
   useEffect(() => {
     let mounted = true;
 
@@ -39,38 +33,55 @@ export function useSystemEvents() {
       esRef.current = es;
 
       es.onopen = () => {
-        setSseConnected(true);
+        useAgemStore.getState().setSseConnected(true);
         retryRef.current = 0;
       };
 
       es.addEventListener("system_event", (e) => {
         try {
           const event: SystemEvent = JSON.parse(e.data);
+          const store = useAgemStore.getState();
 
           // Always add to event log
-          addEvent(event);
+          store.addEvent(event);
 
           // Route by event type
           if (event.type === "agem:state-update" && event.data?.state) {
-            updateState(event.data.state as any);
+            const state = event.data.state as any;
+            // Only update if this state has actual data (don't overwrite cycle data with empty)
+            if (state.iteration > 0 || !store.state) {
+              store.updateState(state);
+            }
+
+            // Extract SOC data point from embedded SOC metrics
+            if (state.soc?.latest) {
+              const soc = state.soc.latest;
+              store.addSOCDataPoint({
+                iteration: soc.iteration ?? state.iteration ?? 0,
+                vne: soc.von_neumann_entropy ?? 0,
+                ee: soc.embedding_entropy ?? 0,
+                cdp: soc.cdp ?? 0,
+                ser: soc.surprising_edge_ratio ?? 0,
+                correlation: soc.correlation_coefficient ?? 0,
+              });
+            }
           }
 
           if (event.type === "soc:metrics" && event.data) {
             const d = event.data;
-            const point: SOCDataPoint = {
+            store.addSOCDataPoint({
               iteration: (d.iteration as number) ?? 0,
               vne: (d.vne as number) ?? 0,
               ee: (d.ee as number) ?? 0,
               cdp: (d.cdp as number) ?? 0,
               ser: (d.ser as number) ?? 0,
               correlation: (d.correlation as number) ?? 0,
-            };
-            addSOCDataPoint(point);
+            });
           }
 
           // Toast for critical events
           if (TOAST_TYPES.has(event.type)) {
-            addToast(event);
+            store.addToast(event);
           }
         } catch {
           // Skip malformed events
@@ -78,7 +89,7 @@ export function useSystemEvents() {
       });
 
       es.onerror = () => {
-        setSseConnected(false);
+        useAgemStore.getState().setSseConnected(false);
         es.close();
         esRef.current = null;
 
@@ -95,7 +106,7 @@ export function useSystemEvents() {
       mounted = false;
       esRef.current?.close();
       esRef.current = null;
-      setSseConnected(false);
+      useAgemStore.getState().setSseConnected(false);
     };
-  }, [updateState, addSOCDataPoint, addEvent, addToast, setSseConnected]);
+  }, []); // No deps — uses getState() pattern for store access
 }
