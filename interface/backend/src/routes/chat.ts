@@ -60,6 +60,9 @@ chatRouter.post("/completions", async (req, res) => {
 
     sendEvent("session", { session_id: sessionId });
 
+    // Link engine state to this session for persistence
+    agemBridge.setActiveSession(sessionId);
+
     // Persist user message
     const userMessage: ChatMessage = {
       id: uuidv4(),
@@ -117,7 +120,8 @@ ${skillContent}`,
     // Get API key from request headers (for OpenRouter)
     const apiKey =
       req.headers["authorization"]?.toString().replace("Bearer ", "") ??
-      req.headers["x-openrouter-key"]?.toString();
+      req.headers["x-openrouter-key"]?.toString() ??
+      req.headers["x-api-key"]?.toString();
 
     let resolvedProvider = providerType ?? settings.getLLMConfig().provider;
     if (model) {

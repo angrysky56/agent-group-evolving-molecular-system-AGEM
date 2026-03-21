@@ -32,6 +32,8 @@ import {
   LCMGrep,
 } from "#agem/lcm/index.js";
 import { ProviderEmbedder } from "./provider-embedder.js";
+import { saveEngineState, loadEngineState } from "./state/index.js";
+import type { EngineSnapshot } from "./state/index.js";
 import type { GapMetrics } from "#agem/tna/interfaces.js";
 
 /* ─── AGEM Engine Bridge ─── */
@@ -47,6 +49,13 @@ class AgemBridge {
   #orchestrator: Orchestrator;
   #grep: LCMGrep;
   #eventCounter = 0;
+  #activeSessionId = "default";
+
+  /** Cached SOC history from loaded state (supplements live tracker). */
+  #restoredSocHistory: EngineSnapshot["socHistory"] = [];
+
+  /** Cached evolution history from loaded state. */
+  #restoredEvolutionHistory: EngineSnapshot["evolutionHistory"] = [];
 
   /** Connected SSE clients for /system/events */
   #sseClients: Set<import("express").Response> = new Set();
@@ -56,6 +65,9 @@ class AgemBridge {
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
     console.log("[AgemBridge] Using ProviderEmbedder (real embeddings from Ollama/OpenRouter)");
+
+    // Attempt to load saved state (async, non-blocking)
+    void this.loadSession("default");
   }
 
   /* ─────────────── SSE Client Management ─────────────── */
@@ -347,6 +359,11 @@ class AgemBridge {
       );
     }
 
+    // Auto-save state after each cycle
+    void this.saveState().catch((err) =>
+      console.error("[AgemBridge] Auto-save failed:", err),
+    );
+
     return { artifacts, state };
   }
 
@@ -372,7 +389,40 @@ class AgemBridge {
     const latest = tracker.getLatestMetrics();
     const regime = tracker.getRegimeMetrics();
     const trend = tracker.getMetricsTrend();
-    const history = tracker.getMetricsHistory();
+    const liveHistory = tracker.getMetricsHistory();
+
+    // Merge restored history with live history (restored comes first, dedup by iteration)
+    const seenIterations = new Set<number>();
+    const mergedHistory: SOCSnapshot["history"] = [];
+
+    for (const h of this.#restoredSocHistory) {
+      if (!seenIterations.has(h.iteration)) {
+        seenIterations.add(h.iteration);
+        mergedHistory.push({
+          iteration: h.iteration,
+          von_neumann_entropy: h.vonNeumannEntropy,
+          embedding_entropy: h.embeddingEntropy,
+          cdp: h.cdp,
+          surprising_edge_ratio: h.surprisingEdgeRatio,
+          correlation_coefficient: h.correlationCoefficient,
+          is_phase_transition: h.isPhaseTransition,
+        });
+      }
+    }
+    for (const h of liveHistory) {
+      if (!seenIterations.has(h.iteration)) {
+        seenIterations.add(h.iteration);
+        mergedHistory.push({
+          iteration: h.iteration,
+          von_neumann_entropy: h.vonNeumannEntropy,
+          embedding_entropy: h.embeddingEntropy,
+          cdp: h.cdp,
+          surprising_edge_ratio: h.surprisingEdgeRatio,
+          correlation_coefficient: h.correlationCoefficient,
+          is_phase_transition: h.isPhaseTransition,
+        });
+      }
+    }
 
     return {
       latest: latest
@@ -385,7 +435,9 @@ class AgemBridge {
             correlation_coefficient: latest.correlationCoefficient,
             is_phase_transition: latest.isPhaseTransition,
           }
-        : null,
+        : mergedHistory.length > 0
+          ? mergedHistory[mergedHistory.length - 1]!
+          : null,
       regime: regime
         ? {
             regime: regime.regime,
@@ -395,16 +447,8 @@ class AgemBridge {
           }
         : null,
       trend: { mean: trend.mean, slope: trend.slope, window: trend.window },
-      history_length: history.length,
-      history: history.map((h) => ({
-        iteration: h.iteration,
-        von_neumann_entropy: h.vonNeumannEntropy,
-        embedding_entropy: h.embeddingEntropy,
-        cdp: h.cdp,
-        surprising_edge_ratio: h.surprisingEdgeRatio,
-        correlation_coefficient: h.correlationCoefficient,
-        is_phase_transition: h.isPhaseTransition,
-      })),
+      history_length: mergedHistory.length,
+      history: mergedHistory,
     };
   }
 
@@ -506,6 +550,144 @@ class AgemBridge {
   }
 
   /* ─────────────── Reset ─────────────── */
+
+  /* ─────────────── State Persistence ─────────────── */
+
+  /** Capture current engine state as a serializable snapshot. */
+  captureSnapshot(): EngineSnapshot {
+    const orch = this.#orchestrator;
+    const graph = orch.tnaGraph.getGraph();
+
+    // Export graph nodes + edges
+    const nodes: EngineSnapshot["graph"]["nodes"] = [];
+    graph.forEachNode((key, attrs) => {
+      nodes.push({ key, attributes: { ...attrs } });
+    });
+    const edges: EngineSnapshot["graph"]["edges"] = [];
+    graph.forEachEdge((key, attrs, source, target) => {
+      edges.push({ key, source, target, attributes: { ...attrs } });
+    });
+
+    // SOC history
+    const socHistory = orch.socTracker.getMetricsHistory().map((h) => ({
+      iteration: h.iteration,
+      vonNeumannEntropy: h.vonNeumannEntropy,
+      embeddingEntropy: h.embeddingEntropy,
+      cdp: h.cdp,
+      surprisingEdgeRatio: h.surprisingEdgeRatio,
+      correlationCoefficient: h.correlationCoefficient,
+      isPhaseTransition: h.isPhaseTransition,
+      timestamp: h.timestamp,
+    }));
+
+    // LCM entries
+    const lcmEntries = [...orch.lcmClient.store.getAll()].map((e) => ({
+      id: e.id, content: e.content, tokenCount: e.tokenCount,
+      hash: e.hash, timestamp: e.timestamp, sequenceNumber: e.sequenceNumber,
+    }));
+
+    // Price evolver history
+    const evolver = (orch as any).priceEvolver;
+    const evolutionHistory = evolver?.getHistory?.()?.map((h: any) => ({
+      iteration: h.iteration, selection: h.selection,
+      transmission: h.transmission, totalChange: h.totalChange,
+      meanFitness: h.meanFitness, populationSize: h.populationSize,
+      regime: h.regime,
+    })) ?? [];
+
+    // Node embeddings
+    const nodeEmbeddings: Record<string, number[]> = {};
+    for (const [key, vec] of orch.getNodeEmbeddings()) {
+      nodeEmbeddings[key] = Array.from(vec);
+    }
+
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      iteration: orch.getIterationCount(),
+      graph: { nodes, edges },
+      socHistory: socHistory.length > 0 ? socHistory : this.#restoredSocHistory,
+      lcmEntries,
+      evolutionHistory: evolutionHistory.length > 0 ? evolutionHistory : this.#restoredEvolutionHistory,
+      nodeEmbeddings,
+    };
+  }
+
+  /** Restore engine state from a snapshot. */
+  async restoreFromSnapshot(snapshot: EngineSnapshot): Promise<void> {
+    const orch = this.#orchestrator;
+    const graph = orch.tnaGraph.getGraph();
+
+    // Restore TNA graph
+    for (const node of snapshot.graph.nodes) {
+      if (!graph.hasNode(node.key)) {
+        graph.addNode(node.key, node.attributes);
+      }
+    }
+    for (const edge of snapshot.graph.edges) {
+      if (!graph.hasEdge(edge.source, edge.target)) {
+        try {
+          graph.addEdge(edge.source, edge.target, edge.attributes);
+        } catch { /* skip duplicates */ }
+      }
+    }
+
+    // Run Louvain to restore community assignments
+    if (graph.order > 0) {
+      try {
+        orch.tnaLouvain.detect(42);
+        orch.tnaCentrality.compute();
+      } catch { /* skip if graph too small */ }
+    }
+
+    // Restore LCM entries
+    for (const entry of snapshot.lcmEntries) {
+      await orch.lcmClient.append(entry.content);
+    }
+
+    // Restore iteration counter
+    orch.setIterationCount(snapshot.iteration);
+
+    // Cache SOC history for dashboard hydration
+    this.#restoredSocHistory = snapshot.socHistory;
+    this.#restoredEvolutionHistory = snapshot.evolutionHistory;
+
+    // Restore node embeddings
+    if (snapshot.nodeEmbeddings && Object.keys(snapshot.nodeEmbeddings).length > 0) {
+      const embMap = new Map<string, Float64Array>();
+      for (const [key, arr] of Object.entries(snapshot.nodeEmbeddings)) {
+        embMap.set(key, new Float64Array(arr));
+      }
+      orch.setNodeEmbeddings(embMap);
+    }
+
+    console.log(
+      `[AgemBridge] Restored: ${snapshot.graph.nodes.length} nodes, ` +
+      `${snapshot.graph.edges.length} edges, ${snapshot.lcmEntries.length} LCM entries, ` +
+      `${snapshot.socHistory.length} SOC points`,
+    );
+  }
+
+  /** Save current state to disk. */
+  async saveState(): Promise<void> {
+    const snapshot = this.captureSnapshot();
+    await saveEngineState(this.#activeSessionId, snapshot);
+  }
+
+  /** Load a saved session from disk. Returns true if state was restored. */
+  async loadSession(sessionId: string): Promise<boolean> {
+    const snapshot = await loadEngineState(sessionId);
+    if (!snapshot) return false;
+
+    this.#activeSessionId = sessionId;
+    await this.restoreFromSnapshot(snapshot);
+    return true;
+  }
+
+  /** Set the active session ID (for save targeting). */
+  setActiveSession(sessionId: string): void {
+    this.#activeSessionId = sessionId;
+  }
 
   /** Reset the engine by tearing down and re-creating the Orchestrator. */
   async reset(): Promise<void> {

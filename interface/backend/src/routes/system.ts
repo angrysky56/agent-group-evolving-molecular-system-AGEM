@@ -8,7 +8,7 @@ import { Router } from "express";
 import { settings } from "../config.js";
 import { createProvider } from "../services/llm.js";
 import { agemBridge } from "../services/agem-bridge.js";
-import type { LLMProviderType } from "../../../shared/types.js";
+import type { LLMProviderType, SystemEvent } from "../../../shared/types.js";
 
 export const systemRouter = Router();
 
@@ -36,7 +36,8 @@ systemRouter.get("/models", async (req, res) => {
   const providerParam = req.query.provider as string | undefined;
   const apiKey =
     req.headers["authorization"]?.toString().replace("Bearer ", "") ??
-    req.headers["x-openrouter-key"]?.toString();
+    req.headers["x-openrouter-key"]?.toString() ??
+    req.headers["x-api-key"]?.toString();
 
   try {
     const provider = createProvider(
@@ -66,6 +67,27 @@ systemRouter.get("/status", (_req, res) => {
   });
 });
 
+/** GET /state — Get current AGEM engine state snapshot. */
+systemRouter.get("/state", (_req, res) => {
+  try {
+    const state = agemBridge.getState();
+    res.json(state);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** GET /soc — Get current SOC metrics with history. */
+systemRouter.get("/soc", (_req, res) => {
+  try {
+    res.json(agemBridge.getSOCMetrics());
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});
+
 /**
  * GET /events — Server-Sent Events stream for AGEM system events.
  *
@@ -82,6 +104,25 @@ systemRouter.get("/events", (req, res) => {
 
   // Register this client for broadcasts
   agemBridge.addSSEClient(res);
+
+  // Send current state immediately so frontend hydrates on reload
+  try {
+    const currentState = agemBridge.getState();
+    if (currentState.iteration > 0) {
+      const initEvent: SystemEvent = {
+        id: "init-state",
+        type: "agem:state-update",
+        timestamp: Date.now(),
+        iteration: currentState.iteration,
+        severity: "info",
+        summary: "Initial state on connect",
+        data: { state: currentState },
+      };
+      res.write(`event: system_event\ndata: ${JSON.stringify(initEvent)}\n\n`);
+    }
+  } catch {
+    // Engine may not be initialized yet
+  }
 
   // Heartbeat every 30s to keep connection alive
   const heartbeat = setInterval(() => {

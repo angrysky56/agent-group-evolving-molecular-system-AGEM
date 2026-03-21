@@ -339,7 +339,7 @@ class OllamaProvider implements LLMProvider {
 
   /** Get embeddings via Ollama /api/embeddings endpoint. */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    let embModel = model ?? settings.getLLMConfig().embedding_model ?? "nomic-embed-text:latest";
+    let embModel = model ?? settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
     if (embModel.startsWith("ollama:")) embModel = embModel.substring(7);
     try {
       const response = await fetch(`${this.#baseUrl}/api/embeddings`, {
@@ -370,16 +370,15 @@ class OpenRouterProvider implements LLMProvider {
     this.#baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  /** Get the API key, preferring runtime header over config. */
+  /** Get the API key, preferring runtime header over provider-specific config. */
   #getApiKey(headerKey?: string): string {
-    return headerKey ?? settings.getLLMConfig().api_key;
+    return headerKey ?? settings.all.OPENROUTER_API_KEY;
   }
 
   async chat(
     options: ChatCompletionOptions & { apiKey?: string },
   ): Promise<ChatCompletionResult> {
-    const config = settings.getLLMConfig();
-    let model = options.model ?? config.model;
+    let model = options.model ?? settings.all.OPENROUTER_MODEL;
     if (model.startsWith("openrouter:")) model = model.substring(11);
     const apiKey = this.#getApiKey(options.apiKey);
 
@@ -572,7 +571,7 @@ class OpenRouterProvider implements LLMProvider {
 
   /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    let embModel = model ?? settings.getLLMConfig().embedding_model ?? "google/gemini-embedding-001";
+    let embModel = model ?? settings.all.OPENROUTER_EMBEDDING_MODEL ?? "google/gemini-embedding-001";
     if (embModel.startsWith("openrouter:")) embModel = embModel.substring(11);
     const key = this.#getApiKey();
     try {
@@ -610,9 +609,9 @@ class AnthropicProvider implements LLMProvider {
     this.#baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  /** Get the API key, preferring runtime header over config. */
+  /** Get the API key, preferring runtime header over provider-specific config. */
   #getApiKey(headerKey?: string): string {
-    return headerKey ?? settings.getLLMConfig().api_key;
+    return headerKey ?? settings.all.ANTHROPIC_API_KEY;
   }
 
   async chat(
@@ -800,18 +799,21 @@ class AnthropicProvider implements LLMProvider {
 /** Create the appropriate LLM provider based on configuration. */
 export function createProvider(type?: LLMProviderType): LLMProvider {
   const providerType = type ?? settings.getLLMConfig().provider;
-  const config = settings.getLLMConfig();
+  const allConfig = settings.all;
 
+  // Use provider-specific config, not just the active provider's config
   switch (providerType) {
     case "ollama":
-      return new OllamaProvider(config.base_url || "http://localhost:11434");
+      return new OllamaProvider(
+        allConfig.OLLAMA_BASE_URL || "http://localhost:11434",
+      );
     case "openrouter":
       return new OpenRouterProvider(
-        config.base_url || "https://openrouter.ai/api/v1",
+        allConfig.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
       );
     case "anthropic":
       return new AnthropicProvider(
-        config.base_url || "https://api.anthropic.com/v1",
+        allConfig.ANTHROPIC_BASE_URL || "https://api.anthropic.com/v1",
       );
     default:
       throw new Error(`Unknown LLM provider: ${providerType}`);

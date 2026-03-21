@@ -40,5 +40,8 @@ knowledge_base/outputs/*
 knowledge_base/sessions/
 interface/backend/knowledge_base/
 
+# Engine state persistence
+state/
+
 # MCP configuration
 mcp.json

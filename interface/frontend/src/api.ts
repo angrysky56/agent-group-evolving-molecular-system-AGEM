@@ -109,6 +109,7 @@ export function streamChat(
     "Content-Type": "application/json",
   };
   if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
     headers["x-api-key"] = apiKey;
   }
 
@@ -227,6 +228,7 @@ export async function listModels(
   const params = provider ? `?provider=${provider}` : "";
   const headers: Record<string, string> = {};
   if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
     headers["x-api-key"] = apiKey;
   }
 
@@ -253,4 +255,15 @@ export async function readKnowledge(filePath: string): Promise<string> {
   if (!res.ok) throw new Error(`API ${res.status}`);
   const data = (await res.json()) as { content: string };
   return data.content;
+}
+
+
+/* ─── AGEM Engine State ─── */
+
+export async function getAgemState(): Promise<any> {
+  return json(`${BASE}/system/state`);
+}
+
+export async function getAgemSOC(): Promise<any> {
+  return json(`${BASE}/system/soc`);
 }

@@ -591,6 +591,30 @@ export class Orchestrator {
   }
 
   /**
+   * setIterationCount — restore the iteration counter from a saved state.
+   * Used by the persistence layer when loading a previously saved session.
+   */
+  setIterationCount(count: number): void {
+    this.#iterationCounter = count;
+  }
+
+  /**
+   * getNodeEmbeddings — returns the cached node embedding map.
+   * Used by the persistence layer for state serialization.
+   */
+  getNodeEmbeddings(): ReadonlyMap<string, Float64Array> {
+    return this.#nodeEmbeddings;
+  }
+
+  /**
+   * setNodeEmbeddings — restore node embeddings from a saved state.
+   * Used by the persistence layer when loading a previously saved session.
+   */
+  setNodeEmbeddings(embeddings: Map<string, Float64Array>): void {
+    this.#nodeEmbeddings = embeddings;
+  }
+
+  /**
    * getState — returns the current operational state (NORMAL/OBSTRUCTED/CRITICAL).
    */
   getState(): OrchestratorState {

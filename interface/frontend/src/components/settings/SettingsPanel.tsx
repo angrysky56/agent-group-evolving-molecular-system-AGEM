@@ -57,18 +57,38 @@ export function SettingsPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Switch provider and immediately fetch models for it. */
+  /** Switch provider and immediately sync to backend + fetch models. */
   const handleProviderChange = (p: LLMProviderType) => {
     settings.setProvider(p);
+    // Sync to backend so getLLMConfig() returns the right provider
+    fetch("/api/v1/system/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ LLM_PROVIDER: p }),
+    }).catch(() => { /* silent */ });
     const key = p === "openrouter" ? draftKey : undefined;
     settings.fetchModels(p, key || undefined);
   };
 
-  /** Save the draft API key to the store then re-fetch. */
+  /** Save the draft API key to the store, persist to backend, then re-fetch. */
   const handleKeyBlur = () => {
     settings.setApiKey(draftKey);
+    // Persist to backend config so it survives server restarts
+    if (draftKey) {
+      const configKey = settings.provider === "openrouter"
+        ? "OPENROUTER_API_KEY"
+        : "ANTHROPIC_API_KEY";
+      fetch("/api/v1/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [configKey]: draftKey }),
+      }).catch(() => { /* silent */ });
+    }
     if (settings.provider === "openrouter" && draftKey) {
       settings.fetchModels("openrouter", draftKey);
+    }
+    if (settings.provider === "anthropic" && draftKey) {
+      settings.fetchModels("anthropic", draftKey);
     }
   };
 
@@ -153,6 +173,7 @@ export function SettingsPanel({ onClose }: Props) {
                   value={draftKey}
                   onChange={(e) => setDraftKey(e.target.value)}
                   onBlur={handleKeyBlur}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleKeyBlur(); }}
                   placeholder={
                     settings.provider === "anthropic" ? "sk-ant-..." : "sk-or-..."
                   }
@@ -165,7 +186,7 @@ export function SettingsPanel({ onClose }: Props) {
                       marginTop: "0.25rem",
                     }}
                   >
-                    Tab/blur the key field to auto-fetch models.
+                    Press Enter or click away to save and fetch models.
                   </p>
                 )}
               </div>
