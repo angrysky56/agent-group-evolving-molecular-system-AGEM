@@ -76,11 +76,14 @@ chatRouter.post("/completions", async (req, res) => {
     const session = sessionStore.get(sessionId);
     const historyMessages = [];
 
-    // Inject system prompt with skills summary
-    const agemSkill = skillRegistry.getSkill("agem-expert");
-    const skillContent = agemSkill
-      ? `\n\n--- AGEM EXPERT SKILL ---\n${agemSkill.content}\n--- END SKILL ---`
-      : "";
+    // Inject system prompt with all loaded skills
+    const allSkills = Array.from(
+      ["agem-expert", "value-guardian"]
+        .map((name) => skillRegistry.getSkill(name))
+        .filter(Boolean)
+        .map((s) => `\n--- ${s!.name.toUpperCase()} SKILL ---\n${s!.content}\n--- END ---`)
+    ).join("\n");
+    const skillContent = allSkills || "";
 
     historyMessages.push({
       role: "system",

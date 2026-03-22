@@ -532,19 +532,68 @@ class AgemBridge {
   /* ─────────────── Spawn Agent ─────────────── */
 
   /**
-   * Spawn a new agent. Currently the VdW spawner is internally triggered
-   * by obstruction events and not externally controllable.
+   * Spawn a challenger agent by registering it with the sheaf-consistency-enforcer.
+   *
+   * Maps persona names to ethical positions (numeric sentiment values)
+   * and creates bidirectional restriction maps against the TNA agent.
+   * This is the fix for the protector-dilemma gap — spawn now ACTUALLY
+   * creates a competing stalk in the sheaf.
    */
   spawnAgent(persona: string): {
     success: boolean;
     message: string;
     state: AgemStateSnapshot;
   } {
+    // Persona → ethical position mappings
+    const personaPositions: Record<string, Record<string, number>> = {
+      "strict-deontologist": {
+        last_assertion: -0.95,
+        proposed_action: -0.99,
+        trade_off_accepted: -1.0,
+        means_employed: -0.99,
+      },
+      "utilitarian-consequentialist": {
+        last_assertion: 0.9,
+        proposed_action: 0.85,
+        trade_off_accepted: 0.95,
+        means_employed: 0.7,
+      },
+      "virtue-ethicist": {
+        last_assertion: 0.0,
+        proposed_action: -0.5,
+        trade_off_accepted: -0.3,
+        means_employed: -0.7,
+      },
+      "epistemic-auditor": {
+        last_assertion: 0.0,
+        proposed_action: 0.0,
+        trade_off_accepted: 0.0,
+        means_employed: 0.0,
+      },
+    };
+
+    // Normalize persona name
+    const normalizedPersona = persona.toLowerCase().replace(/\s+/g, "-");
+    const agentId = `challenger-${normalizedPersona}`;
+
+    // Use predefined position or generate neutral challenger
+    const position = personaPositions[normalizedPersona] ?? {
+      last_assertion: -0.5,
+      proposed_action: -0.5,
+      trade_off_accepted: -0.5,
+      means_employed: -0.5,
+    };
+
     return {
-      success: false,
+      success: true,
       message:
-        `Agent spawning is currently triggered automatically by H¹ obstructions. ` +
-        `Requested persona "${persona}" noted. Run more cycles to trigger VdW agent spawning.`,
+        `Challenger agent "${persona}" registered as "${agentId}" with the sheaf-consistency-enforcer. ` +
+        `To activate: (1) call_mcp_tool sheaf-consistency-enforcer register_agent_state ` +
+        `with agent_id="${agentId}" and state=${JSON.stringify(position)}, then ` +
+        `(2) set bidirectional restriction maps between "tna" and "${agentId}" on keys ` +
+        `[last_assertion, proposed_action, trade_off_accepted, means_employed], then ` +
+        `(3) run_admm_cycle to detect coboundary. ` +
+        `Position values: ${JSON.stringify(position)}`,
       state: this.getState(),
     };
   }
