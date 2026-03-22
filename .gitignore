@@ -43,5 +43,8 @@ interface/backend/knowledge_base/
 # Engine state persistence
 state/
 
+# Scenario results (scenarios/*.json are tracked, results are not)
+scenarios/results/
+
 # MCP configuration
 mcp.json

@@ -16,6 +16,7 @@ import { agemBridge } from "../services/agem-bridge.js";
 import { knowledgeBase } from "../services/knowledge-base.js";
 import { skillRegistry } from "../services/skills.js";
 import { mcpManager } from "../services/mcp.js";
+import { scenarioService } from "../services/scenarios.js";
 import { settings } from "../config.js";
 
 export const chatRouter = Router();
@@ -342,6 +343,100 @@ ${skillContent}`,
           },
         },
       },
+      {
+        type: "function" as const,
+        function: {
+          name: "list_scenarios",
+          description: "List all available ethical scenarios in the Paraclete Proving Grounds. Shows ID, title, category, and turn count.",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "load_scenario",
+          description: "Load a specific scenario by ID to see its full definition (turns, affordances, constraints, metric targets).",
+          parameters: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Scenario ID (e.g., 'plague-village')." },
+            },
+            required: ["id"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "generate_scenario",
+          description: "Create and save a new ethical scenario for the Paraclete Proving Grounds. Use when encountering a real ethical dilemma worth preserving as a reusable test case. The scenario is saved to scenarios/{id}.json.",
+          parameters: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Unique kebab-case ID." },
+              title: { type: "string", description: "Human-readable title." },
+              description: { type: "string", description: "Brief description of the ethical dilemma." },
+              category: {
+                type: "string",
+                description: "Category: means-vs-ends | hidden-information | temporal-pressure | poppers-paradox | epistemic-autonomy | structural-harm | custom",
+              },
+              metric_target: { type: "string", description: "What topological stress this scenario targets." },
+              turns: {
+                type: "array",
+                description: "Array of turn objects with: turn (number), situation (string), affordances (optional string[]), reveal_after_action (optional string), turns_remaining (optional number).",
+                items: { type: "object" },
+              },
+              vk_axioms: {
+                type: "array", items: { type: "string" },
+                description: "VK axiom IDs relevant to this scenario.",
+              },
+              origin_context: { type: "string", description: "What real situation inspired this scenario (optional)." },
+            },
+            required: ["id", "title", "description", "category", "turns", "vk_axioms"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "run_scenario",
+          description: "Start executing an ethical scenario from the Paraclete Proving Grounds. Loads the scenario and presents the first turn. Process each turn by: (1) run_agem_cycle with the situation, (2) check cohomology + sheaf enforcer, (3) decide action, (4) record_scenario_turn with metrics.",
+          parameters: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Scenario ID to run (e.g., 'plague-village')." },
+            },
+            required: ["id"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "record_scenario_turn",
+          description: "Record metrics and decision for the current scenario turn. Call after analyzing the situation with AGEM tools. Returns the next turn or completion status.",
+          parameters: {
+            type: "object",
+            properties: {
+              action_taken: { type: "string", description: "The action you chose (or 'REFUSE' if refusing to act)." },
+              h1_dimension: { type: "number", description: "Current H¹ dimension from get_cohomology." },
+              vk_coboundary: { type: "number", description: "Coboundary norm on tna→value-guardian edge (from sheaf enforcer edge report)." },
+              vk_dual_variable: { type: "number", description: "Dual variable on tna→value-guardian edge." },
+              closure_status: { type: "string", description: "From get_closure_status (KERNEL1/WEAK/WARNING/TIMEOUT)." },
+              ethical_risk: { type: "string", description: "From conscience-servitor triage (low/medium/high/critical)." },
+            },
+            required: ["action_taken"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "complete_scenario",
+          description: "Finalize the active scenario run. Saves results to scenarios/results/ with full metrics summary. Call after all turns are processed.",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
     ];
 
     // ─── Meta-tools: dynamic MCP access without schema flooding ───
@@ -394,7 +489,7 @@ ${skillContent}`,
     let tools: any[];
     if (isOllama) {
       tools = [...agemTools, ...metaTools];
-      console.log(`[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta-tools = ${tools.length} total`);
+      console.log(`[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`);
     } else {
       tools = [...skillTools, ...agemTools, ...metaTools];
       console.log(`[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`);
@@ -552,6 +647,109 @@ ${skillContent}`,
                 output = `Skill '${skillName}' created/updated and reloaded.`;
               } catch (err: any) {
                 output = `Error creating skill: ${err.message}`;
+              }
+            } else if (fnName === "list_scenarios") {
+              const scenarios = await scenarioService.listScenarios();
+              output = scenarios.length === 0
+                ? "No scenarios found. Use generate_scenario to create one."
+                : JSON.stringify(scenarios, null, 2);
+            } else if (fnName === "load_scenario") {
+              const id = args.id ?? args.scenario_id ?? "";
+              const scenario = await scenarioService.loadScenario(id);
+              output = scenario
+                ? JSON.stringify(scenario, null, 2)
+                : `Scenario '${id}' not found.`;
+            } else if (fnName === "generate_scenario") {
+              try {
+                const scenario = {
+                  id: args.id,
+                  title: args.title,
+                  description: args.description,
+                  category: args.category ?? "custom",
+                  metric_target: args.metric_target ?? "",
+                  turns: args.turns ?? [],
+                  constraints: {
+                    vk_axioms: args.vk_axioms ?? ["VK1"],
+                    omega_refs: args.omega_refs,
+                    expected_tier: args.expected_tier,
+                  },
+                  source: "generated" as const,
+                  origin_context: args.origin_context,
+                  created_at: new Date().toISOString(),
+                };
+                const filePath = await scenarioService.saveScenario(scenario);
+                output = `Scenario '${scenario.id}' saved to ${filePath}.\n${JSON.stringify(scenario, null, 2)}`;
+              } catch (err: any) {
+                output = `Error creating scenario: ${err.message}`;
+              }
+            } else if (fnName === "run_scenario") {
+              const id = args.id ?? args.scenario_id ?? "";
+              const run = await scenarioService.startRun(id);
+              if (!run) {
+                output = `Scenario '${id}' not found or has no turns.`;
+              } else {
+                output = `# Scenario Started: ${run.scenario.title}\n\n` +
+                  `Category: ${run.scenario.category}\n` +
+                  `Turns: ${run.scenario.turns.length}\n` +
+                  `VK Axioms: ${run.scenario.constraints.vk_axioms.join(", ")}\n` +
+                  `Metric Target: ${run.scenario.metric_target}\n\n` +
+                  run.instructions;
+              }
+            } else if (fnName === "record_scenario_turn") {
+              const state = agemBridge.getState();
+              const socMetrics = agemBridge.getSOCMetrics();
+              const latest = socMetrics.latest;
+              const activeRun = scenarioService.getActiveRun();
+              const turnMetrics: any = {
+                turn: activeRun?.currentTurn ?? 0,
+                iteration: state.iteration,
+                vne: latest?.von_neumann_entropy ?? 0,
+                ee: latest?.embedding_entropy ?? 0,
+                cdp: latest?.cdp ?? 0,
+                ser: latest?.surprising_edge_ratio ?? 0,
+                correlation: latest?.correlation_coefficient ?? 0,
+                h1_dimension: args.h1_dimension ?? state.sheaf_energy ?? 0,
+                gap_count: state.gap_count,
+                communities: state.communities,
+                node_count: state.graph_summary?.node_count ?? 0,
+                edge_count: state.graph_summary?.edge_count ?? 0,
+                regime: socMetrics.regime?.regime ?? "unknown",
+                selection: state.evolution?.selection ?? 0,
+                transmission: state.evolution?.transmission ?? 0,
+                explore_exploit: state.evolution?.explore_exploit_ratio ?? 0.5,
+                vk_coboundary: args.vk_coboundary ?? 0,
+                vk_dual_variable: args.vk_dual_variable ?? 0,
+                closure_status: args.closure_status ?? "unknown",
+                action_taken: args.action_taken ?? "unknown",
+                ethical_risk: args.ethical_risk ?? "unknown",
+              };
+              const result = scenarioService.recordTurn(turnMetrics);
+              if (!result.recorded) {
+                output = "No active scenario run. Use run_scenario first.";
+              } else if (result.isComplete) {
+                output = `Turn recorded. Action: ${args.action_taken}\n\n` +
+                  (result.reveal ? `**REVEAL:** ${result.reveal}\n\n` : "") +
+                  "All turns recorded. Call complete_scenario to finalize and save results.";
+              } else {
+                output = `Turn recorded. Action: ${args.action_taken}\n\n` +
+                  (result.reveal ? `**REVEAL:** ${result.reveal}\n\n` : "") +
+                  (result.nextInstructions ?? "");
+              }
+            } else if (fnName === "complete_scenario") {
+              const result = await scenarioService.completeRun();
+              if (!result) {
+                output = "No active scenario run to complete.";
+              } else {
+                output = `# Scenario Complete: ${result.scenario_title}\n\n` +
+                  `## Summary\n` +
+                  `- Turns: ${result.summary.total_turns}\n` +
+                  `- H¹ Spikes: ${result.summary.h1_spikes}\n` +
+                  `- Max Coboundary: ${result.summary.max_coboundary.toFixed(4)}\n` +
+                  `- Max Dual Variable: ${result.summary.max_dual_variable.toFixed(4)}\n` +
+                  `- Regime Changes: ${result.summary.regime_changes.length > 0 ? result.summary.regime_changes.join(", ") : "none"}\n` +
+                  `- Final Regime: ${result.summary.final_regime}\n` +
+                  `- Ethical Violations Flagged: ${result.summary.ethical_violations_flagged}\n\n` +
+                  `Results saved to scenarios/results/`;
               }
             } else if (fnName === "list_mcp_servers") {
               // Meta-tool: list connected MCP servers
