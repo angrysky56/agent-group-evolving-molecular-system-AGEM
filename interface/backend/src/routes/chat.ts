@@ -502,12 +502,23 @@ ${skillContent}`,
     let turnCount = 0;
     const maxTurns = 15;
     let lastResult: any = null;
+    const requestStartTime = Date.now();
+    const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minute overall timeout
 
     while (!isDone && turnCount < maxTurns) {
+      // Check overall request timeout
+      if (Date.now() - requestStartTime > REQUEST_TIMEOUT_MS) {
+        console.warn(`[Chat] Request timeout after ${turnCount} turns (${Math.round((Date.now() - requestStartTime) / 1000)}s)`);
+        sendEvent("error", { message: "Request timed out after 5 minutes. Try a simpler query or fewer tool calls." });
+        break;
+      }
+
       turnCount++;
+      console.log(`[Chat] Turn ${turnCount}/${maxTurns} — sending to ${resolvedProvider}/${model}`);
+
       const result = await llmProvider.chat({
         messages: historyMessages,
-        model, // Use the model from the request body
+        model,
         tools,
         apiKey,
         onToken: (t) => {
@@ -581,6 +592,7 @@ ${skillContent}`,
           let output = "";
 
           sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
+          const toolStart = Date.now();
 
           try {
             if (fnName === "read_skill") {
@@ -794,6 +806,13 @@ ${skillContent}`,
             }
           } catch (err: any) {
             output = `Error executing tool: ${err.message}`;
+            console.error(`[Chat] Tool ${fnName} failed: ${err.message}`);
+          }
+
+          const toolElapsed = Date.now() - toolStart;
+          console.log(`[Chat] Tool ${fnName} completed in ${toolElapsed}ms (${output.length} chars)`);
+          if (toolElapsed > 10000) {
+            console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
           }
 
           // Format tool result per provider spec
@@ -819,6 +838,14 @@ ${skillContent}`,
         isDone = true;
       }
     }
+
+    if (turnCount >= maxTurns && !isDone) {
+      console.warn(`[Chat] Hit max turns (${maxTurns}) — forcing completion`);
+      sendEvent("system", { content: "\n[Max tool iterations reached. Finalizing response.]\n" });
+    }
+
+    const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
+    console.log(`[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`);
 
     // Send usage
     if (lastResult?.usage) {
@@ -852,6 +879,10 @@ ${skillContent}`,
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+    console.error(`[Chat] Error: ${errorMessage}`);
+    if (error instanceof Error && error.stack) {
+      console.error(`[Chat] Stack: ${error.stack.split("\n").slice(0, 3).join(" | ")}`);
+    }
     sendEvent("error", { message: errorMessage });
   } finally {
     res.end();

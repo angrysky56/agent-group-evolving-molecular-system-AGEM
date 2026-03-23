@@ -421,8 +421,20 @@ class OpenRouterProvider implements LLMProvider {
     let toolCallsMap: Record<number, any> = {};
     let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
+    // Read timeout: if no data arrives for 60s, abort the stream
+    const READ_TIMEOUT_MS = 60_000;
+
     while (true) {
-      const { value, done } = await reader.read();
+      const readPromise = reader.read();
+      const timeoutPromise = new Promise<{ value: undefined; done: true }>((resolve) =>
+        setTimeout(() => {
+          console.warn("[LLM] OpenRouter read timeout after 60s — aborting stream");
+          reader.cancel().catch(() => {});
+          resolve({ value: undefined, done: true });
+        }, READ_TIMEOUT_MS),
+      );
+
+      const { value, done } = await Promise.race([readPromise, timeoutPromise]);
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
@@ -442,7 +454,18 @@ class OpenRouterProvider implements LLMProvider {
               };
             }>;
             usage?: any;
+            error?: { message?: string; code?: number; type?: string };
           };
+
+          // Handle OpenRouter error responses embedded in stream
+          if (parsed.error) {
+            const errMsg = parsed.error.message ?? "Unknown stream error";
+            console.error(`[LLM] OpenRouter stream error: ${errMsg} (code: ${parsed.error.code})`);
+            if (errMsg.includes("rate limit") || parsed.error.code === 429) {
+              throw new Error(`OpenRouter rate limited: ${errMsg}`);
+            }
+            throw new Error(`OpenRouter stream error: ${errMsg}`);
+          }
 
           const delta = parsed.choices?.[0]?.delta;
           if (delta?.content) {
