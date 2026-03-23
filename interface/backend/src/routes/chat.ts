@@ -842,6 +842,15 @@ ${skillContent}`,
             console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
           }
 
+          // Stream a brief tool output summary to the frontend
+          // so the user can see what happened between narration turns
+          const outputPreview = output.length > 500
+            ? output.slice(0, 500) + "...(truncated)"
+            : output;
+          sendEvent("token", {
+            content: `\n\n**[${fnName}]** *(${toolElapsed}ms)*\n\`\`\`\n${outputPreview}\n\`\`\`\n\n`,
+          });
+
           // Format tool result per provider spec
           if (isOllama) {
             // Ollama: {role: "tool", tool_name: "...", content: "..."}

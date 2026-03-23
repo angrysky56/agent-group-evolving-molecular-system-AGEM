@@ -386,6 +386,7 @@ class OpenRouterProvider implements LLMProvider {
       model,
       messages: options.messages,
       stream: true,
+      max_tokens: 4096,
     };
     if (options.tools && options.tools.length > 0) {
       bodyObj.tools = options.tools;
@@ -507,6 +508,12 @@ class OpenRouterProvider implements LLMProvider {
               completion_tokens: parsed.usage.completion_tokens ?? 0,
               total_tokens: parsed.usage.total_tokens ?? 0,
             };
+          }
+
+          // Detect truncation or completion
+          const finishReason = parsed.choices?.[0]?.finish_reason;
+          if (finishReason === "length") {
+            console.warn(`[LLM] OpenRouter response truncated (finish_reason=length). Increase max_tokens.`);
           }
         } catch {
           // Skip malformed data
