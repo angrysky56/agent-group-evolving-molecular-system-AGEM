@@ -421,21 +421,30 @@ class OpenRouterProvider implements LLMProvider {
     let toolCallsMap: Record<number, any> = {};
     let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
-    // Read timeout: if no data arrives for 60s, abort the stream
-    const READ_TIMEOUT_MS = 60_000;
+    // Read timeout: if no data arrives for 90s, abort the stream
+    const READ_TIMEOUT_MS = 90_000;
+    let lastDataTime = Date.now();
 
     while (true) {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
       const readPromise = reader.read();
-      const timeoutPromise = new Promise<{ value: undefined; done: true }>((resolve) =>
-        setTimeout(() => {
-          console.warn("[LLM] OpenRouter read timeout after 60s — aborting stream");
+      const timeoutPromise = new Promise<{ value: undefined; done: true }>((resolve) => {
+        timeoutId = setTimeout(() => {
+          const silenceMs = Date.now() - lastDataTime;
+          console.warn(`[LLM] OpenRouter read timeout after ${Math.round(silenceMs / 1000)}s silence — aborting stream`);
           reader.cancel().catch(() => {});
           resolve({ value: undefined, done: true });
-        }, READ_TIMEOUT_MS),
-      );
+        }, READ_TIMEOUT_MS);
+      });
 
       const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+
+      // CRITICAL: clear the timeout so it doesn't fire later and kill a future read
+      if (timeoutId !== null) clearTimeout(timeoutId);
+
       if (done) break;
+      lastDataTime = Date.now();
 
       const chunk = decoder.decode(value, { stream: true });
       const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
