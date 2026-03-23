@@ -189,6 +189,22 @@ Key tools: `diagram_create`, `navigate_guided`, `explore_reasoning_space`, `patt
 | Regime: critical | At the edge — maximum productive tension | — |
 | Regime: stable | Settled — exploit mode | May need perturbation |
 
+## Concept Communities (CommunitySummarizer)
+
+The TNA graph contains individual lemmatized words as nodes. The CommunitySummarizer aggregates
+these into named concept communities for both the LLM and the dashboard visualization.
+
+- `get_graph_topology` returns concept-level by default (community names, sizes, bridges)
+- `get_graph_topology(detail='words')` returns full word-level graph
+- `get_agem_state` includes concept graph summary automatically
+- Dashboard graph view has a **Concepts/Words toggle** in the top-right corner
+
+Each community is labeled by its top-3 nodes (by centrality + TF-IDF), e.g.:
+`"algorithm · exploitation · engagement" (15 nodes, internal_w=42.3)`
+
+Inter-community edges show bridge strength between concept clusters:
+`"algorithm · exploitation" ↔ "fear · rage · seeking" (8 links, w=12.5)`
+
 ## Important Caveats
 
 1. **H¹ = 0 does NOT mean "correct"** — it means internal agreement. The entire population could agree on something wrong.

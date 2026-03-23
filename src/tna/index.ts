@@ -42,6 +42,14 @@ export { CatalystQuestionGenerator } from "./CatalystQuestionGenerator.js";
 // Phase 6: Layout computation (TNA-08)
 export { LayoutComputer } from "./LayoutComputer.js";
 
+// Phase 7: Community summarization
+export { CommunitySummarizer } from "./CommunitySummarizer.js";
+export type {
+  ConceptCommunity,
+  ConceptEdge,
+  ConceptGraph,
+} from "./CommunitySummarizer.js";
+
 // Phase 6: Extended types (TNA-07, TNA-08, TNA-09)
 export type {
   CatalystQuestion,

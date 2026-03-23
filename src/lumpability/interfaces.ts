@@ -144,4 +144,72 @@ export interface AuditResult {
   readonly classification: LumpabilityClassification;
   /** Unix timestamp (ms) when audit completed. */
   readonly timestamp: number;
+
+  /** Value Kernel constraint check result (if VK checker was provided). */
+  readonly vkCheck?: VKCheckResult;
+}
+
+// ---------------------------------------------------------------------------
+// Value Kernel Constraint Preservation
+// ---------------------------------------------------------------------------
+
+/**
+ * IValueKernelChecker — interface for checking VK axiom preservation
+ * across LCM compaction boundaries.
+ *
+ * The entropy-based audit catches INFORMATION loss (distributional).
+ * This catches AXIOM loss (categorical) — a compression can preserve
+ * entropy while dropping specific ethical constraints.
+ *
+ * Implementations:
+ *   Phase 1: EmbeddingVKChecker — cosine similarity between axiom embeddings
+ *            and summary embedding. Practical, works with existing infrastructure.
+ *   Phase 2: SheafVKChecker — project into C⁰ state space, compute Dirichlet
+ *            energy. Requires content-aware sheaf (not yet built).
+ */
+export interface IValueKernelChecker {
+  /**
+   * Verify that all VK-relevant constraints present in source texts
+   * survive compression into the summary.
+   *
+   * @param summaryText - The compressed summary text.
+   * @param sourceTexts - The original source texts before compression.
+   * @returns Check result with validity status and any lost axioms.
+   */
+  verifyConstraints(summaryText: string, sourceTexts: string[]): Promise<VKCheckResult>;
+}
+
+/** Result of a VK constraint preservation check. */
+export interface VKCheckResult {
+  /** Whether all detected axioms were preserved. */
+  readonly isValid: boolean;
+  /** Axiom IDs that were present in sources but missing from summary. */
+  readonly lostAxioms: string[];
+  /** Per-axiom similarity scores (axiomId → similarity to summary). */
+  readonly axiomScores: Record<string, number>;
+  /** Overall constraint preservation score (0-1). */
+  readonly preservationScore: number;
+}
+
+/**
+ * AxiomLossError — thrown when VK axioms are lost during compaction.
+ *
+ * The ObstructionHandler catches this and triggers lcm_expand recovery,
+ * explicitly injecting the lost axioms into the re-summarization prompt.
+ */
+export class AxiomLossError extends Error {
+  readonly summaryNodeId: string;
+  readonly lostAxioms: string[];
+  readonly preservationScore: number;
+
+  constructor(summaryNodeId: string, lostAxioms: string[], preservationScore: number) {
+    super(
+      `Axiom loss detected in compaction of ${summaryNodeId}: ` +
+      `lost [${lostAxioms.join(", ")}] (preservation=${preservationScore.toFixed(3)})`,
+    );
+    this.name = "AxiomLossError";
+    this.summaryNodeId = summaryNodeId;
+    this.lostAxioms = lostAxioms;
+    this.preservationScore = preservationScore;
+  }
 }

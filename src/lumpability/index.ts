@@ -15,9 +15,11 @@ export type {
   EntropyProfile,
   AuditResult,
   LumpabilityClassification,
+  IValueKernelChecker,
+  VKCheckResult,
 } from "./interfaces.js";
 
-export { DEFAULT_LUMPABILITY_CONFIG } from "./interfaces.js";
+export { DEFAULT_LUMPABILITY_CONFIG, AxiomLossError } from "./interfaces.js";
 
 // Entropy profile computation
 export {
@@ -27,6 +29,9 @@ export {
 
 // Core auditor
 export { LumpabilityAuditor } from "./LumpabilityAuditor.js";
+
+// Value Kernel axiom preservation checker (Phase 1: embedding-based)
+export { EmbeddingVKChecker } from "./EmbeddingVKChecker.js";
 
 // MCP bridge for cross-session coordination
 export { MCPBridge } from "./MCPBridge.js";

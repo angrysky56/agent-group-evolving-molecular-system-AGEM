@@ -186,6 +186,8 @@ export interface GraphSummary {
   edge_count: number;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** Concept-level graph — communities as super-nodes. */
+  concept_graph?: ConceptGraphSummary;
 }
 
 export interface GraphNode {
@@ -201,6 +203,37 @@ export interface GraphEdge {
   source: string;
   target: string;
   weight?: number;
+}
+
+/** A named concept community (aggregated from word-level TNA nodes). */
+export interface ConceptCommunitySummary {
+  id: number;
+  label: string;
+  top_nodes: string[];
+  members: string[];
+  size: number;
+  internal_weight: number;
+  avg_tfidf: number;
+  max_centrality: number;
+}
+
+/** An edge between two concept communities (aggregated inter-community links). */
+export interface ConceptEdgeSummary {
+  source: number;
+  target: number;
+  edge_count: number;
+  total_weight: number;
+  avg_weight: number;
+}
+
+/** Concept-level graph summary — communities as super-nodes. */
+export interface ConceptGraphSummary {
+  communities: ConceptCommunitySummary[];
+  edges: ConceptEdgeSummary[];
+  modularity: number;
+  total_nodes: number;
+  total_edges: number;
+  text_summary: string;
 }
 
 /* ─── SSE Event Types ─── */

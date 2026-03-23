@@ -44,7 +44,7 @@ import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel } from "../lcm/i
 // ---------------------------------------------------------------------------
 // Lumpability module imports
 // ---------------------------------------------------------------------------
-import { LumpabilityAuditor } from "../lumpability/index.js";
+import { LumpabilityAuditor, EmbeddingVKChecker } from "../lumpability/index.js";
 
 // ---------------------------------------------------------------------------
 // Evolution module imports
@@ -62,6 +62,7 @@ import {
   GapDetector,
   CatalystQuestionGenerator,
   LayoutComputer,
+  CommunitySummarizer,
 } from "../tna/index.js";
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,9 @@ export class Orchestrator {
 
   /** TNA layout computer: ForceAtlas2 visualization layout for semantic graph (Phase 6, TNA-08). */
   readonly tnaLayout!: LayoutComputer;
+
+  /** Community summarizer: aggregates word-level nodes into named concept communities. */
+  readonly tnaSummarizer!: CommunitySummarizer;
 
   /** SOC tracker: computes all five SOC metrics and detects phase transitions. */
   readonly socTracker!: SOCTracker;
@@ -316,6 +320,16 @@ export class Orchestrator {
 
     this.lumpabilityAuditor.on("lumpability:weak-compression", (event: AnyEvent) => {
       void this.eventBus.emit(event);
+    });
+
+    // VK axiom loss — critical event. Forward to EventBus for logging
+    // and ObstructionHandler recovery. The AxiomLossError thrown by the
+    // auditor halts compaction; this event provides diagnostic data.
+    this.lumpabilityAuditor.on("lumpability:axiom-loss", (event: AnyEvent) => {
+      void this.eventBus.emit(event);
+      console.warn(
+        `[ORCH] AXIOM LOSS detected in compaction: ${JSON.stringify(event)}`,
+      );
     });
   }
 
@@ -631,13 +645,16 @@ export class Orchestrator {
    * Events emitted via EventBus:
    *   - 'lumpability:audit-complete' (every audit)
    *   - 'lumpability:weak-compression' (only when classification = 'weak')
+   *   - 'lumpability:axiom-loss' (when VK axioms are lost — AxiomLossError thrown)
    *
-   * In Phase 5: available for explicit invocation.
-   * In Phase 6+: auto-triggered when the LCM engine compacts context.
+   * When AxiomLossError is caught, the method re-throws to halt compaction.
+   * The caller (EscalationProtocol or orchestrator) MUST catch this and
+   * trigger recovery — e.g., re-summarize with lost axioms injected.
    *
    * @param summaryNode    - The SummaryNode produced by compaction.
    * @param sourceEntries  - The original LCMEntries that were compacted.
    * @param escalationLevel - Which level produced this summary (1, 2, or 3).
+   * @throws AxiomLossError if VK constraints were lost during compression.
    */
   async auditCompaction(
     summaryNode: SummaryNode,
@@ -649,6 +666,7 @@ export class Orchestrator {
       sourceEntries,
       escalationLevel,
     );
+    // AxiomLossError propagates naturally — caller must handle recovery.
   }
 
   // -------------------------------------------------------------------------
@@ -682,6 +700,11 @@ export class Orchestrator {
       this.tnaCentrality,
     );
     (this as any).tnaLayout = new LayoutComputer(this.tnaGraph);
+    (this as any).tnaSummarizer = new CommunitySummarizer(
+      this.tnaGraph,
+      this.tnaLouvain,
+      this.tnaCentrality,
+    );
   }
 
   #initSoc(): void {
@@ -694,6 +717,10 @@ export class Orchestrator {
       embedder,
       tokenCounter,
     );
+
+    // Wire VK axiom preservation checker (Phase 1: embedding-based)
+    const vkChecker = new EmbeddingVKChecker(embedder);
+    this.lumpabilityAuditor.setVKChecker(vkChecker);
   }
 
   #initEvolution(): void {

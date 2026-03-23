@@ -33,7 +33,9 @@ chatRouter.post("/completions", async (req, res) => {
   const { message, model, provider: providerType } = body;
   let sessionId = body.session_id;
 
-  console.log(`[Chat] Request: model=${model}, provider=${providerType}, msg="${message?.slice(0, 60)}..."`);
+  console.log(
+    `[Chat] Request: model=${model}, provider=${providerType}, msg="${message?.slice(0, 60)}..."`,
+  );
 
   if (!message?.trim()) {
     res.status(400).json({ error: "Message is required" });
@@ -82,7 +84,10 @@ chatRouter.post("/completions", async (req, res) => {
       ["agem-expert", "value-guardian"]
         .map((name) => skillRegistry.getSkill(name))
         .filter(Boolean)
-        .map((s) => `\n--- ${s!.name.toUpperCase()} SKILL ---\n${s!.content}\n--- END ---`)
+        .map(
+          (s) =>
+            `\n--- ${s!.name.toUpperCase()} SKILL ---\n${s!.content}\n--- END ---`,
+        ),
     ).join("\n");
     const skillContent = allSkills || "";
 
@@ -191,10 +196,16 @@ ${skillContent}`,
         function: {
           name: "get_graph_topology",
           description:
-            "Return the full TNA graph for visualisation: all nodes with labels, community IDs, and sizes; all edges with weights.",
+            "Return the TNA graph topology. Default mode returns concept-level communities (named clusters with top nodes, sizes, and inter-community bridges). Use detail='words' for full word-level nodes.",
           parameters: {
             type: "object",
-            properties: {},
+            properties: {
+              detail: {
+                type: "string",
+                description:
+                  "Level of detail: 'concepts' (default, community-level summary) or 'words' (full word-level graph).",
+              },
+            },
             required: [],
           },
         },
@@ -328,7 +339,8 @@ ${skillContent}`,
             properties: {
               name: {
                 type: "string",
-                description: "Skill folder name (e.g., 'value-guardian'). Will be created under skills/.",
+                description:
+                  "Skill folder name (e.g., 'value-guardian'). Will be created under skills/.",
               },
               description: {
                 type: "string",
@@ -336,7 +348,8 @@ ${skillContent}`,
               },
               content: {
                 type: "string",
-                description: "Full markdown body of the skill (everything after the frontmatter).",
+                description:
+                  "Full markdown body of the skill (everything after the frontmatter).",
               },
             },
             required: ["name", "description", "content"],
@@ -347,7 +360,8 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "list_scenarios",
-          description: "List all available ethical scenarios in the Paraclete Proving Grounds. Shows ID, title, category, and turn count.",
+          description:
+            "List all available ethical scenarios in the Paraclete Proving Grounds. Shows ID, title, category, and turn count.",
           parameters: { type: "object", properties: {}, required: [] },
         },
       },
@@ -355,11 +369,15 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "load_scenario",
-          description: "Load a specific scenario by ID to see its full definition (turns, affordances, constraints, metric targets).",
+          description:
+            "Load a specific scenario by ID to see its full definition (turns, affordances, constraints, metric targets).",
           parameters: {
             type: "object",
             properties: {
-              id: { type: "string", description: "Scenario ID (e.g., 'plague-village')." },
+              id: {
+                type: "string",
+                description: "Scenario ID (e.g., 'plague-village').",
+              },
             },
             required: ["id"],
           },
@@ -369,30 +387,51 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "generate_scenario",
-          description: "Create and save a new ethical scenario for the Paraclete Proving Grounds. Use when encountering a real ethical dilemma worth preserving as a reusable test case. The scenario is saved to scenarios/{id}.json.",
+          description:
+            "Create and save a new ethical scenario for the Paraclete Proving Grounds. Use when encountering a real ethical dilemma worth preserving as a reusable test case. The scenario is saved to scenarios/{id}.json.",
           parameters: {
             type: "object",
             properties: {
               id: { type: "string", description: "Unique kebab-case ID." },
               title: { type: "string", description: "Human-readable title." },
-              description: { type: "string", description: "Brief description of the ethical dilemma." },
+              description: {
+                type: "string",
+                description: "Brief description of the ethical dilemma.",
+              },
               category: {
                 type: "string",
-                description: "Category: means-vs-ends | hidden-information | temporal-pressure | poppers-paradox | epistemic-autonomy | structural-harm | custom",
+                description:
+                  "Category: means-vs-ends | hidden-information | temporal-pressure | poppers-paradox | epistemic-autonomy | structural-harm | custom",
               },
-              metric_target: { type: "string", description: "What topological stress this scenario targets." },
+              metric_target: {
+                type: "string",
+                description: "What topological stress this scenario targets.",
+              },
               turns: {
                 type: "array",
-                description: "Array of turn objects with: turn (number), situation (string), affordances (optional string[]), reveal_after_action (optional string), turns_remaining (optional number).",
+                description:
+                  "Array of turn objects with: turn (number), situation (string), affordances (optional string[]), reveal_after_action (optional string), turns_remaining (optional number).",
                 items: { type: "object" },
               },
               vk_axioms: {
-                type: "array", items: { type: "string" },
+                type: "array",
+                items: { type: "string" },
                 description: "VK axiom IDs relevant to this scenario.",
               },
-              origin_context: { type: "string", description: "What real situation inspired this scenario (optional)." },
+              origin_context: {
+                type: "string",
+                description:
+                  "What real situation inspired this scenario (optional).",
+              },
             },
-            required: ["id", "title", "description", "category", "turns", "vk_axioms"],
+            required: [
+              "id",
+              "title",
+              "description",
+              "category",
+              "turns",
+              "vk_axioms",
+            ],
           },
         },
       },
@@ -400,11 +439,15 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "run_scenario",
-          description: "Start executing an ethical scenario from the Paraclete Proving Grounds. Loads the scenario and presents the first turn. Process each turn by: (1) run_agem_cycle with the situation, (2) check cohomology + sheaf enforcer, (3) decide action, (4) record_scenario_turn with metrics.",
+          description:
+            "Start executing an ethical scenario from the Paraclete Proving Grounds. Loads the scenario and presents the first turn. Process each turn by: (1) run_agem_cycle with the situation, (2) check cohomology + sheaf enforcer, (3) decide action, (4) record_scenario_turn with metrics.",
           parameters: {
             type: "object",
             properties: {
-              id: { type: "string", description: "Scenario ID to run (e.g., 'plague-village')." },
+              id: {
+                type: "string",
+                description: "Scenario ID to run (e.g., 'plague-village').",
+              },
             },
             required: ["id"],
           },
@@ -414,16 +457,39 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "record_scenario_turn",
-          description: "Record metrics and decision for the current scenario turn. Call after analyzing the situation with AGEM tools. Returns the next turn or completion status.",
+          description:
+            "Record metrics and decision for the current scenario turn. Call after analyzing the situation with AGEM tools. Returns the next turn or completion status.",
           parameters: {
             type: "object",
             properties: {
-              action_taken: { type: "string", description: "The action you chose (or 'REFUSE' if refusing to act)." },
-              h1_dimension: { type: "number", description: "Current H¹ dimension from get_cohomology." },
-              vk_coboundary: { type: "number", description: "Coboundary norm on tna→value-guardian edge (from sheaf enforcer edge report)." },
-              vk_dual_variable: { type: "number", description: "Dual variable on tna→value-guardian edge." },
-              closure_status: { type: "string", description: "From get_closure_status (KERNEL1/WEAK/WARNING/TIMEOUT)." },
-              ethical_risk: { type: "string", description: "From conscience-servitor triage (low/medium/high/critical)." },
+              action_taken: {
+                type: "string",
+                description:
+                  "The action you chose (or 'REFUSE' if refusing to act).",
+              },
+              h1_dimension: {
+                type: "number",
+                description: "Current H¹ dimension from get_cohomology.",
+              },
+              vk_coboundary: {
+                type: "number",
+                description:
+                  "Coboundary norm on tna→value-guardian edge (from sheaf enforcer edge report).",
+              },
+              vk_dual_variable: {
+                type: "number",
+                description: "Dual variable on tna→value-guardian edge.",
+              },
+              closure_status: {
+                type: "string",
+                description:
+                  "From get_closure_status (KERNEL1/WEAK/WARNING/TIMEOUT).",
+              },
+              ethical_risk: {
+                type: "string",
+                description:
+                  "From conscience-servitor triage (low/medium/high/critical).",
+              },
             },
             required: ["action_taken"],
           },
@@ -433,7 +499,8 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "complete_scenario",
-          description: "Finalize the active scenario run. Saves results to scenarios/results/ with full metrics summary. Call after all turns are processed.",
+          description:
+            "Finalize the active scenario run. Saves results to scenarios/results/ with full metrics summary. Call after all turns are processed.",
           parameters: { type: "object", properties: {}, required: [] },
         },
       },
@@ -448,7 +515,8 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "list_mcp_servers",
-          description: "List all connected MCP servers and how many tools each has. Call this first to see what external capabilities are available (reasoning, ethics, logic, knowledge graphs, etc).",
+          description:
+            "List all connected MCP servers and how many tools each has. Call this first to see what external capabilities are available (reasoning, ethics, logic, knowledge graphs, etc).",
           parameters: { type: "object", properties: {}, required: [] },
         },
       },
@@ -456,11 +524,15 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "list_server_tools",
-          description: "List all tools available on a specific MCP server with their descriptions. Use this to discover what a server can do before calling its tools.",
+          description:
+            "List all tools available on a specific MCP server with their descriptions. Use this to discover what a server can do before calling its tools.",
           parameters: {
             type: "object",
             properties: {
-              server_name: { type: "string", description: "Name of the MCP server (from list_mcp_servers)" },
+              server_name: {
+                type: "string",
+                description: "Name of the MCP server (from list_mcp_servers)",
+              },
             },
             required: ["server_name"],
           },
@@ -470,13 +542,20 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "call_mcp_tool",
-          description: "Call any tool on any connected MCP server. Use list_server_tools first to see required arguments. Supports servers like: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, and more.",
+          description:
+            "Call any tool on any connected MCP server. Use list_server_tools first to see required arguments. Supports servers like: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, and more.",
           parameters: {
             type: "object",
             properties: {
               server_name: { type: "string", description: "MCP server name" },
-              tool_name: { type: "string", description: "Tool name on that server" },
-              arguments: { type: "object", description: "Tool arguments as key-value pairs" },
+              tool_name: {
+                type: "string",
+                description: "Tool name on that server",
+              },
+              arguments: {
+                type: "object",
+                description: "Tool arguments as key-value pairs",
+              },
             },
             required: ["server_name", "tool_name"],
           },
@@ -489,10 +568,14 @@ ${skillContent}`,
     let tools: any[];
     if (isOllama) {
       tools = [...agemTools, ...metaTools];
-      console.log(`[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`);
+      console.log(
+        `[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`,
+      );
     } else {
       tools = [...skillTools, ...agemTools, ...metaTools];
-      console.log(`[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`);
+      console.log(
+        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`,
+      );
     }
 
     // Create provider instance
@@ -508,13 +591,20 @@ ${skillContent}`,
     while (!isDone && turnCount < maxTurns) {
       // Check overall request timeout
       if (Date.now() - requestStartTime > REQUEST_TIMEOUT_MS) {
-        console.warn(`[Chat] Request timeout after ${turnCount} turns (${Math.round((Date.now() - requestStartTime) / 1000)}s)`);
-        sendEvent("error", { message: "Request timed out after 5 minutes. Try a simpler query or fewer tool calls." });
+        console.warn(
+          `[Chat] Request timeout after ${turnCount} turns (${Math.round((Date.now() - requestStartTime) / 1000)}s)`,
+        );
+        sendEvent("error", {
+          message:
+            "Request timed out after 5 minutes. Try a simpler query or fewer tool calls.",
+        });
         break;
       }
 
       turnCount++;
-      console.log(`[Chat] Turn ${turnCount}/${maxTurns} — sending to ${resolvedProvider}/${model}`);
+      console.log(
+        `[Chat] Turn ${turnCount}/${maxTurns} — sending to ${resolvedProvider}/${model}`,
+      );
 
       const result = await llmProvider.chat({
         messages: historyMessages,
@@ -540,7 +630,8 @@ ${skillContent}`,
       // (nemotron bug) vs legitimate text. Only clear if it looks like raw tool-call JSON.
       if (result.tool_calls && result.tool_calls.length > 0) {
         const trimmed = (result.content ?? "").trim();
-        const looksLikeRawJson = trimmed.startsWith("{") || trimmed.startsWith("[");
+        const looksLikeRawJson =
+          trimmed.startsWith("{") || trimmed.startsWith("[");
         if (looksLikeRawJson && trimmed.length < 2000) {
           sendEvent("clear_stream", {});
         }
@@ -555,16 +646,19 @@ ${skillContent}`,
       if (result.tool_calls) {
         if (isOllama) {
           // Ollama expects: tool_calls with type, function.index, and arguments as OBJECT
-          assistantMessage.tool_calls = result.tool_calls.map((tc: any, i: number) => ({
-            type: "function",
-            function: {
-              index: i,
-              name: tc.function.name,
-              arguments: typeof tc.function.arguments === "string"
-                ? JSON.parse(tc.function.arguments || "{}")
-                : tc.function.arguments,
-            },
-          }));
+          assistantMessage.tool_calls = result.tool_calls.map(
+            (tc: any, i: number) => ({
+              type: "function",
+              function: {
+                index: i,
+                name: tc.function.name,
+                arguments:
+                  typeof tc.function.arguments === "string"
+                    ? JSON.parse(tc.function.arguments || "{}")
+                    : tc.function.arguments,
+              },
+            }),
+          );
         } else {
           // OpenRouter: standard OpenAI format with arguments as STRING
           assistantMessage.tool_calls = result.tool_calls.map((tc: any) => ({
@@ -572,9 +666,10 @@ ${skillContent}`,
             type: tc.type ?? "function",
             function: {
               name: tc.function.name,
-              arguments: typeof tc.function.arguments === "string"
-                ? tc.function.arguments
-                : JSON.stringify(tc.function.arguments ?? {}),
+              arguments:
+                typeof tc.function.arguments === "string"
+                  ? tc.function.arguments
+                  : JSON.stringify(tc.function.arguments ?? {}),
             },
           }));
         }
@@ -592,7 +687,9 @@ ${skillContent}`,
               args = JSON.parse(rawArgs);
             } catch (parseErr) {
               // Attempt common JSON repairs (trailing text, unquoted keys, etc.)
-              console.warn(`[Chat] Malformed tool args for ${fnName}, attempting repair: ${(parseErr as Error).message}`);
+              console.warn(
+                `[Chat] Malformed tool args for ${fnName}, attempting repair: ${(parseErr as Error).message}`,
+              );
               try {
                 // Try fixing: truncate at last valid closing brace/bracket
                 const lastBrace = rawArgs.lastIndexOf("}");
@@ -602,11 +699,15 @@ ${skillContent}`,
                   args = JSON.parse(rawArgs.slice(0, cutPoint + 1));
                   console.log(`[Chat] JSON repair succeeded for ${fnName}`);
                 } else {
-                  console.error(`[Chat] JSON repair failed for ${fnName}, using empty args`);
+                  console.error(
+                    `[Chat] JSON repair failed for ${fnName}, using empty args`,
+                  );
                   args = {};
                 }
               } catch {
-                console.error(`[Chat] JSON repair also failed for ${fnName}: ${rawArgs.slice(0, 200)}`);
+                console.error(
+                  `[Chat] JSON repair also failed for ${fnName}: ${rawArgs.slice(0, 200)}`,
+                );
                 args = {};
               }
             }
@@ -625,14 +726,39 @@ ${skillContent}`,
             if (fnName === "read_skill") {
               output = skillRegistry.executeTool(fnName, args);
             } else if (fnName === "get_agem_state") {
-              output = JSON.stringify(agemBridge.getState(), null, 2);
+              const state = agemBridge.getState();
+              // Trim verbose graph data for LLM context efficiency
+              // Full graph available via get_graph_topology(detail='words')
+              const trimmed = {
+                ...state,
+                graph_summary: state.graph_summary
+                  ? {
+                      node_count: state.graph_summary.node_count,
+                      edge_count: state.graph_summary.edge_count,
+                      concept_graph: state.graph_summary.concept_graph
+                        ? {
+                            communities:
+                              state.graph_summary.concept_graph.communities,
+                            edges: state.graph_summary.concept_graph.edges,
+                            modularity:
+                              state.graph_summary.concept_graph.modularity,
+                            text_summary:
+                              state.graph_summary.concept_graph.text_summary,
+                          }
+                        : undefined,
+                    }
+                  : undefined,
+              };
+              output = JSON.stringify(trimmed, null, 2);
             } else if (fnName === "run_agem_cycle") {
               // Accept common parameter name variations from different models
-              const prompt = args.prompt ?? args.conversation_topic ?? args.topic ?? args.message ?? message;
-              const runResult = await agemBridge.runCycle(
-                prompt,
-                sendEvent,
-              );
+              const prompt =
+                args.prompt ??
+                args.conversation_topic ??
+                args.topic ??
+                args.message ??
+                message;
+              const runResult = await agemBridge.runCycle(prompt, sendEvent);
               output = `Cycle completed. State:\n${JSON.stringify(runResult.state, null, 2)}`;
               // Emit AGEM state and artifacts as SSE events
               sendEvent("agem_state", runResult.state);
@@ -647,7 +773,33 @@ ${skillContent}`,
             } else if (fnName === "get_cohomology") {
               output = JSON.stringify(agemBridge.getCohomology(), null, 2);
             } else if (fnName === "get_graph_topology") {
-              output = JSON.stringify(agemBridge.getGraphSummary(), null, 2);
+              const detail = args.detail ?? args.level ?? "concepts";
+              const full = agemBridge.getGraphSummary();
+              if (detail === "words") {
+                output = JSON.stringify(full, null, 2);
+              } else {
+                // Concept-level: just communities + bridges + summary stats
+                const cg = full.concept_graph;
+                output = cg
+                  ? JSON.stringify(
+                      {
+                        ...cg,
+                        total_nodes: full.node_count,
+                        total_edges: full.edge_count,
+                      },
+                      null,
+                      2,
+                    )
+                  : JSON.stringify(
+                      {
+                        total_nodes: full.node_count,
+                        total_edges: full.edge_count,
+                        note: "No communities computed yet. Run an AGEM cycle first.",
+                      },
+                      null,
+                      2,
+                    );
+              }
             } else if (fnName === "get_soc_metrics") {
               output = JSON.stringify(agemBridge.getSOCMetrics(), null, 2);
             } else if (fnName === "detect_gaps") {
@@ -667,7 +819,8 @@ ${skillContent}`,
               );
               output = JSON.stringify(results, null, 2);
             } else if (fnName === "spawn_agem_agent") {
-              const persona = args.persona ?? args.agent_persona ?? args.role ?? "General";
+              const persona =
+                args.persona ?? args.agent_persona ?? args.role ?? "General";
               const spawnResult = agemBridge.spawnAgent(persona);
               output = spawnResult.message;
             } else if (fnName === "reset_agem_engine") {
@@ -678,10 +831,20 @@ ${skillContent}`,
               const desc = args.description ?? "No description.";
               const body = args.content ?? "";
               try {
-                const skillDir = path.resolve(process.cwd(), "..", "..", "skills", skillName);
+                const skillDir = path.resolve(
+                  process.cwd(),
+                  "..",
+                  "..",
+                  "skills",
+                  skillName,
+                );
                 await fs.mkdir(skillDir, { recursive: true });
                 const frontmatter = `---\nname: "${skillName}"\ndescription: "${desc}"\n---\n\n`;
-                await fs.writeFile(path.join(skillDir, "SKILL.md"), frontmatter + body, "utf8");
+                await fs.writeFile(
+                  path.join(skillDir, "SKILL.md"),
+                  frontmatter + body,
+                  "utf8",
+                );
                 await skillRegistry.initialize();
                 output = `Skill '${skillName}' created/updated and reloaded.`;
               } catch (err: any) {
@@ -689,9 +852,10 @@ ${skillContent}`,
               }
             } else if (fnName === "list_scenarios") {
               const scenarios = await scenarioService.listScenarios();
-              output = scenarios.length === 0
-                ? "No scenarios found. Use generate_scenario to create one."
-                : JSON.stringify(scenarios, null, 2);
+              output =
+                scenarios.length === 0
+                  ? "No scenarios found. Use generate_scenario to create one."
+                  : JSON.stringify(scenarios, null, 2);
             } else if (fnName === "load_scenario") {
               const id = args.id ?? args.scenario_id ?? "";
               const scenario = await scenarioService.loadScenario(id);
@@ -727,7 +891,8 @@ ${skillContent}`,
               if (!run) {
                 output = `Scenario '${id}' not found or has no turns.`;
               } else {
-                output = `# Scenario Started: ${run.scenario.title}\n\n` +
+                output =
+                  `# Scenario Started: ${run.scenario.title}\n\n` +
                   `Category: ${run.scenario.category}\n` +
                   `Turns: ${run.scenario.turns.length}\n` +
                   `VK Axioms: ${run.scenario.constraints.vk_axioms.join(", ")}\n` +
@@ -766,11 +931,13 @@ ${skillContent}`,
               if (!result.recorded) {
                 output = "No active scenario run. Use run_scenario first.";
               } else if (result.isComplete) {
-                output = `Turn recorded. Action: ${args.action_taken}\n\n` +
+                output =
+                  `Turn recorded. Action: ${args.action_taken}\n\n` +
                   (result.reveal ? `**REVEAL:** ${result.reveal}\n\n` : "") +
                   "All turns recorded. Call complete_scenario to finalize and save results.";
               } else {
-                output = `Turn recorded. Action: ${args.action_taken}\n\n` +
+                output =
+                  `Turn recorded. Action: ${args.action_taken}\n\n` +
                   (result.reveal ? `**REVEAL:** ${result.reveal}\n\n` : "") +
                   (result.nextInstructions ?? "");
               }
@@ -779,7 +946,8 @@ ${skillContent}`,
               if (!result) {
                 output = "No active scenario run to complete.";
               } else {
-                output = `# Scenario Complete: ${result.scenario_title}\n\n` +
+                output =
+                  `# Scenario Complete: ${result.scenario_title}\n\n` +
                   `## Summary\n` +
                   `- Turns: ${result.summary.total_turns}\n` +
                   `- H¹ Spikes: ${result.summary.h1_spikes}\n` +
@@ -797,7 +965,11 @@ ${skillContent}`,
                 serverNames.map(async (name: string) => {
                   try {
                     const tools = await mcpManager.getServerTools(name);
-                    return { name, tool_count: tools.length, status: "connected" };
+                    return {
+                      name,
+                      tool_count: tools.length,
+                      status: "connected",
+                    };
                   } catch {
                     return { name, tool_count: 0, status: "error" };
                   }
@@ -837,16 +1009,19 @@ ${skillContent}`,
           }
 
           const toolElapsed = Date.now() - toolStart;
-          console.log(`[Chat] Tool ${fnName} completed in ${toolElapsed}ms (${output.length} chars)`);
+          console.log(
+            `[Chat] Tool ${fnName} completed in ${toolElapsed}ms (${output.length} chars)`,
+          );
           if (toolElapsed > 10000) {
             console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
           }
 
           // Stream a brief tool output summary to the frontend
           // so the user can see what happened between narration turns
-          const outputPreview = output.length > 500
-            ? output.slice(0, 500) + "...(truncated)"
-            : output;
+          const outputPreview =
+            output.length > 500
+              ? output.slice(0, 500) + "...(truncated)"
+              : output;
           sendEvent("token", {
             content: `\n\n**[${fnName}]** *(${toolElapsed}ms)*\n\`\`\`\n${outputPreview}\n\`\`\`\n\n`,
           });
@@ -877,11 +1052,15 @@ ${skillContent}`,
 
     if (turnCount >= maxTurns && !isDone) {
       console.warn(`[Chat] Hit max turns (${maxTurns}) — forcing completion`);
-      sendEvent("system", { content: "\n[Max tool iterations reached. Finalizing response.]\n" });
+      sendEvent("system", {
+        content: "\n[Max tool iterations reached. Finalizing response.]\n",
+      });
     }
 
     const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
-    console.log(`[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`);
+    console.log(
+      `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
+    );
 
     // Send usage
     if (lastResult?.usage) {
@@ -917,7 +1096,9 @@ ${skillContent}`,
       error instanceof Error ? error.message : "Unknown error";
     console.error(`[Chat] Error: ${errorMessage}`);
     if (error instanceof Error && error.stack) {
-      console.error(`[Chat] Stack: ${error.stack.split("\n").slice(0, 3).join(" | ")}`);
+      console.error(
+        `[Chat] Stack: ${error.stack.split("\n").slice(0, 3).join(" | ")}`,
+      );
     }
     sendEvent("error", { message: errorMessage });
   } finally {

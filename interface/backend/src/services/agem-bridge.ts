@@ -231,9 +231,10 @@ class AgemBridge {
     }
   }
 
-  /** Get the full graph for visualisation. */
+  /** Get the full graph for visualisation (word-level + concept-level). */
   getGraphSummary(): GraphSummary {
-    const graph = this.#orchestrator.tnaGraph.getGraph();
+    const orch = this.#orchestrator;
+    const graph = orch.tnaGraph.getGraph();
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
 
@@ -255,7 +256,40 @@ class AgemBridge {
       });
     });
 
-    return { node_count: nodes.length, edge_count: edges.length, nodes, edges };
+    // Build concept-level summary if communities exist
+    let concept_graph = undefined;
+    try {
+      if (graph.order > 0 && orch.tnaLouvain.getCommunityCount() > 0) {
+        const cg = orch.tnaSummarizer.summarize();
+        concept_graph = {
+          communities: cg.communities.map((c) => ({
+            id: c.id,
+            label: c.label,
+            top_nodes: [...c.topNodes],
+            members: [...c.members],
+            size: c.size,
+            internal_weight: c.internalWeight,
+            avg_tfidf: c.avgTfidfWeight,
+            max_centrality: c.maxCentrality,
+          })),
+          edges: cg.edges.map((e) => ({
+            source: e.source,
+            target: e.target,
+            edge_count: e.edgeCount,
+            total_weight: e.totalWeight,
+            avg_weight: e.avgWeight,
+          })),
+          modularity: cg.modularity,
+          total_nodes: cg.totalNodes,
+          total_edges: cg.totalEdges,
+          text_summary: orch.tnaSummarizer.toTextSummary(cg),
+        };
+      }
+    } catch {
+      // Summarizer may fail if Louvain hasn't run yet
+    }
+
+    return { node_count: nodes.length, edge_count: edges.length, nodes, edges, concept_graph };
   }
 
   /* ─────────────── Run Cycle ─────────────── */
@@ -308,6 +342,9 @@ class AgemBridge {
                 `- Phase Transition: ${latestSOC.isPhaseTransition ? "YES" : "No"}`,
               ].join("\n")
             : "- No SOC metrics computed yet.",
+          "",
+          "### Concept Communities",
+          state.graph_summary?.concept_graph?.text_summary ?? "- No communities computed yet.",
         ].join("\n"),
       },
     ];

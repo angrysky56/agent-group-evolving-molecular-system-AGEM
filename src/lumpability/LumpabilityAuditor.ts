@@ -23,8 +23,8 @@
 
 import { EventEmitter } from "node:events";
 import type { IEmbedder, ITokenCounter, SummaryNode, LCMEntry, EscalationLevel } from "../lcm/interfaces.js";
-import type { LumpabilityConfig, AuditResult, LumpabilityClassification } from "./interfaces.js";
-import { DEFAULT_LUMPABILITY_CONFIG } from "./interfaces.js";
+import type { LumpabilityConfig, AuditResult, LumpabilityClassification, IValueKernelChecker, VKCheckResult } from "./interfaces.js";
+import { DEFAULT_LUMPABILITY_CONFIG, AxiomLossError } from "./interfaces.js";
 import { computeEntropyProfile, computeCentroidSimilarity } from "./entropyProfile.js";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,7 @@ export class LumpabilityAuditor extends EventEmitter {
   readonly #embedder: IEmbedder;
   readonly #tokenCounter: ITokenCounter;
   readonly #config: LumpabilityConfig;
+  #vkChecker: IValueKernelChecker | null = null;
 
   /** Rolling history of audit results for trend analysis. */
   readonly #history: AuditResult[] = [];
@@ -62,6 +63,14 @@ export class LumpabilityAuditor extends EventEmitter {
     this.#embedder = embedder;
     this.#tokenCounter = tokenCounter;
     this.#config = { ...DEFAULT_LUMPABILITY_CONFIG, ...config };
+  }
+
+  /**
+   * setVKChecker — attach a Value Kernel checker for axiom preservation auditing.
+   * Called after construction since the checker may need dependencies not available at init.
+   */
+  setVKChecker(checker: IValueKernelChecker): void {
+    this.#vkChecker = checker;
   }
 
   // -------------------------------------------------------------------------
@@ -94,6 +103,30 @@ export class LumpabilityAuditor extends EventEmitter {
   ): Promise<AuditResult> {
     // Step 1: Extract source texts.
     const sourceTexts = sourceEntries.map((e) => e.content);
+
+    // Step 1.5: Value Kernel constraint check (FAIL-FAST).
+    // Runs BEFORE entropy computation — if axioms are lost, no point computing entropy.
+    let vkCheck: VKCheckResult | undefined;
+    if (this.#vkChecker) {
+      vkCheck = await this.#vkChecker.verifyConstraints(summaryNode.content, sourceTexts);
+
+      if (!vkCheck.isValid) {
+        this.emit("lumpability:axiom-loss", {
+          summaryNodeId: summaryNode.id,
+          lostAxioms: vkCheck.lostAxioms,
+          axiomScores: vkCheck.axiomScores,
+          preservationScore: vkCheck.preservationScore,
+        });
+
+        // Throw AxiomLossError — ObstructionHandler catches this and triggers
+        // lcm_expand recovery with the lost axioms injected into the retry prompt.
+        throw new AxiomLossError(
+          summaryNode.id,
+          vkCheck.lostAxioms,
+          vkCheck.preservationScore,
+        );
+      }
+    }
 
     // Step 2: Compute source entropy profile.
     const sourceProfile = await computeEntropyProfile(
@@ -144,6 +177,7 @@ export class LumpabilityAuditor extends EventEmitter {
       threshold,
       classification,
       timestamp: Date.now(),
+      vkCheck,
     };
 
     // Step 9: Emit events.

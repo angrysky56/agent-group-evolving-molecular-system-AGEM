@@ -214,4 +214,13 @@ export class LouvainDetector {
   getModularity(): number {
     return this.#modularity;
   }
+
+  /**
+   * getAssignments — returns the full node→community assignment map.
+   *
+   * Used by CommunitySummarizer to group all nodes by community.
+   */
+  getAssignments(): ReadonlyMap<string, number> {
+    return this.#assignments;
+  }
 }
