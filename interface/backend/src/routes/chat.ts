@@ -587,7 +587,29 @@ ${skillContent}`,
           const fnName = tc.function.name;
           let args: any = {};
           if (typeof tc.function.arguments === "string") {
-            args = JSON.parse(tc.function.arguments || "{}");
+            const rawArgs = tc.function.arguments || "{}";
+            try {
+              args = JSON.parse(rawArgs);
+            } catch (parseErr) {
+              // Attempt common JSON repairs (trailing text, unquoted keys, etc.)
+              console.warn(`[Chat] Malformed tool args for ${fnName}, attempting repair: ${(parseErr as Error).message}`);
+              try {
+                // Try fixing: truncate at last valid closing brace/bracket
+                const lastBrace = rawArgs.lastIndexOf("}");
+                const lastBracket = rawArgs.lastIndexOf("]");
+                const cutPoint = Math.max(lastBrace, lastBracket);
+                if (cutPoint > 0) {
+                  args = JSON.parse(rawArgs.slice(0, cutPoint + 1));
+                  console.log(`[Chat] JSON repair succeeded for ${fnName}`);
+                } else {
+                  console.error(`[Chat] JSON repair failed for ${fnName}, using empty args`);
+                  args = {};
+                }
+              } catch {
+                console.error(`[Chat] JSON repair also failed for ${fnName}: ${rawArgs.slice(0, 200)}`);
+                args = {};
+              }
+            }
           } else if (
             typeof tc.function.arguments === "object" &&
             tc.function.arguments !== null

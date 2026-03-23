@@ -114,11 +114,14 @@ export function ChatPanel() {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");
             chat.setAbortController(null);
-            // Add error as system message
+            // Preserve accumulated text and append the error
+            const errorSuffix = `\n\n⚠️ Error: ${error}`;
             chat.addMessage({
               id: crypto.randomUUID(),
               role: "assistant",
-              content: `⚠️ Error: ${error}`,
+              content: assistantText
+                ? assistantText + errorSuffix
+                : errorSuffix.trim(),
               timestamp: Date.now(),
             });
           },
