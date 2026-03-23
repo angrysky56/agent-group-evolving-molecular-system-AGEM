@@ -92,13 +92,21 @@ export function ChatPanel() {
             }
           },
           onClearStream: () => {
-            // Model output a tool call as text — clear the displayed JSON
-            assistantText = "";
-            chat.setStreamingContent("");
+            // Only clear if the text looks like raw JSON (nemotron tool-call-as-text bug)
+            // Preserve legitimate narration between tool-calling turns
+            const current = assistantText.trim();
+            if (current.startsWith("{") || current.startsWith("[")) {
+              assistantText = "";
+              chat.setStreamingContent("");
+            }
           },
           onDone: (message) => {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");
+            // Use accumulated text if it's richer than the final turn's content
+            if (assistantText.length > (message.content?.length ?? 0)) {
+              message = { ...message, content: assistantText };
+            }
             chat.addMessage(message);
             chat.setAbortController(null);
           },

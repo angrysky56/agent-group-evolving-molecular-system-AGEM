@@ -189,7 +189,11 @@ export function QuickActions() {
             });
           }
         },
-        onClearStream: () => setStreamingContent(""),
+        onClearStream: () => {
+          // Backend now only sends clear_stream for raw JSON (nemotron bug)
+          // So trust it when received
+          setStreamingContent("");
+        },
         onDone: (message) => {
           addMessage(message);
           setIsStreaming(false);

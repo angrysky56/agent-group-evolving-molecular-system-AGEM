@@ -536,10 +536,15 @@ ${skillContent}`,
       });
       lastResult = result;
 
-      // If the model returned tool calls, clear any streamed content
-      // (models that output tool calls as text will have already streamed JSON)
+      // If the model returned tool calls, check if the streamed text was just raw JSON
+      // (nemotron bug) vs legitimate text. Only clear if it looks like raw tool-call JSON.
       if (result.tool_calls && result.tool_calls.length > 0) {
-        sendEvent("clear_stream", {});
+        const trimmed = (result.content ?? "").trim();
+        const looksLikeRawJson = trimmed.startsWith("{") || trimmed.startsWith("[");
+        if (looksLikeRawJson && trimmed.length < 2000) {
+          sendEvent("clear_stream", {});
+        }
+        // Otherwise keep the text — it's legitimate narration between tool calls
       }
 
       // Append assistant response to history
