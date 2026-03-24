@@ -800,6 +800,7 @@ ${skillContent}`,
             args = tc.function.arguments;
           }
           let output = "";
+          let toolLabel = fnName; // Descriptive label for tool_result event
 
           sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
           const toolStart = Date.now();
@@ -1130,6 +1131,7 @@ ${skillContent}`,
               // Rather than letting them fail and waste a turn, normalize here.
               tArgs = normalizeMcpToolArgs(sName, tName, tArgs);
 
+              toolLabel = `${sName}/${tName}`;
               try {
                 output = await mcpManager.executeTool(sName, tName, tArgs);
               } catch (e: any) {
@@ -1139,6 +1141,7 @@ ${skillContent}`,
               const parts = fnName.split("__");
               const serverName = parts[1];
               const toolName = parts.slice(2).join("__");
+              toolLabel = `${serverName}/${toolName}`;
               output = await mcpManager.executeTool(serverName, toolName, args);
             } else {
               output = `Error: Unknown tool ${fnName}`;
@@ -1156,14 +1159,12 @@ ${skillContent}`,
             console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
           }
 
-          // Stream a brief tool output summary to the frontend
-          // so the user can see what happened between narration turns
-          const outputPreview =
-            output.length > 500
-              ? output.slice(0, 500) + "...(truncated)"
-              : output;
-          sendEvent("token", {
-            content: `\n\n**[${fnName}]** *(${toolElapsed}ms)*\n\`\`\`\n${outputPreview}\n\`\`\`\n\n`,
+          // Stream structured tool result to frontend
+          // Frontend renders as collapsible accordion with server/tool label
+          sendEvent("tool_result", {
+            tool: toolLabel,
+            elapsed_ms: toolElapsed,
+            output,
           });
 
           // Format tool result per provider spec

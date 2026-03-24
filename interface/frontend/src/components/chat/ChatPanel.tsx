@@ -69,8 +69,14 @@ export function ChatPanel() {
             chat.appendStreamingContent(text);
           },
           onThinking: (text) => {
-            // Could show thinking state
             console.log("[thinking]", text);
+          },
+          onToolResult: (tool, elapsedMs, output) => {
+            // Render tool result as collapsible HTML section
+            const summary = `🔧 ${tool} (${elapsedMs}ms)`;
+            const block = `\n\n<details>\n<summary><strong>${summary}</strong></summary>\n\n\`\`\`\n${output}\n\`\`\`\n\n</details>\n\n`;
+            assistantText += block;
+            chat.appendStreamingContent(block);
           },
           onAgemState: (data) => {
             chat.setAgemState(data as never);

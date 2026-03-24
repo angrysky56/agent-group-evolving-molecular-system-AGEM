@@ -89,6 +89,7 @@ export interface StreamCallbacks {
   onThinking?: (text: string) => void;
   onArtifact?: (data: Record<string, unknown>) => void;
   onAgemState?: (data: Record<string, unknown>) => void;
+  onToolResult?: (tool: string, elapsedMs: number, output: string) => void;
   onClearStream?: () => void;
   onDone: (message: ChatMessage) => void;
   onError: (error: string) => void;
@@ -176,6 +177,13 @@ export function streamChat(
                 break;
               case "clear_stream":
                 callbacks.onClearStream?.();
+                break;
+              case "tool_result":
+                callbacks.onToolResult?.(
+                  data.tool ?? "unknown",
+                  data.elapsed_ms ?? 0,
+                  data.output ?? "",
+                );
                 break;
               case "system":
                 // Tool execution progress — could display but skip for now
