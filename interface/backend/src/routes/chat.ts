@@ -21,6 +21,82 @@ import { settings } from "../config.js";
 
 export const chatRouter = Router();
 
+// ─── MCP Tool Parameter Normalization ───
+// Models using call_mcp_tool frequently guess wrong parameter names.
+// This maps common mistakes to correct names for known MCP tools.
+function normalizeMcpToolArgs(server: string, tool: string, args: Record<string, unknown>): Record<string, unknown> {
+  const s = server.replace(/^:/, ""); // strip leading colon if present
+  const key = `${s}/${tool}`;
+  const original = JSON.stringify(args);
+  let normalized = false;
+
+  switch (key) {
+    // hipai-montague
+    case "hipai-montague/add_belief":
+      if (!args.text && (args.belief || args.statement || args.content)) {
+        args.text = args.belief ?? args.statement ?? args.content;
+        delete args.belief; delete args.statement; delete args.content;
+        normalized = true;
+      }
+      break;
+    case "hipai-montague/evaluate_hypothesis":
+      if (!args.hypothesis && (args.claim || args.text || args.statement)) {
+        args.hypothesis = args.claim ?? args.text ?? args.statement;
+        delete args.claim; delete args.text; delete args.statement;
+        normalized = true;
+      }
+      break;
+
+    // conscience-servitor
+    case "conscience-servitor/triage":
+      if (!args.content && (args.text || args.prompt || args.message)) {
+        args.content = args.text ?? args.prompt ?? args.message;
+        delete args.text; delete args.prompt; delete args.message;
+        normalized = true;
+      }
+      break;
+    case "conscience-servitor/evaluate":
+      delete args.context;
+      if (args.claims && typeof args.claims === "string") {
+        args.claims = [args.claims as string];
+        normalized = true;
+      }
+      break;
+
+    case "aseke-compass/analyze_behavior":
+      if (!args.description && (args.behavior || args.text || args.pattern)) {
+        args.description = args.behavior ?? args.text ?? args.pattern;
+        delete args.behavior; delete args.text; delete args.pattern;
+        normalized = true;
+      }
+      break;
+
+    case "advanced-reasoning/advanced_reasoning":
+      if (!args.thought && (args.text || args.reasoning || args.content)) {
+        args.thought = args.text ?? args.reasoning ?? args.content;
+        delete args.text; delete args.reasoning; delete args.content;
+        normalized = true;
+      }
+      if (!args.thoughtNumber) { args.thoughtNumber = 1; normalized = true; }
+      if (!args.totalThoughts) { args.totalThoughts = 1; normalized = true; }
+      if (args.nextThoughtNeeded === undefined) { args.nextThoughtNeeded = false; normalized = true; }
+      break;
+
+    case "mcp-logic/prove":
+      if (!args.conclusion && args.goal) {
+        args.conclusion = args.goal;
+        delete args.goal;
+        normalized = true;
+      }
+      break;
+  }
+
+  if (normalized) {
+    console.log(`[Chat] Normalized MCP args for ${key}: ${original} → ${JSON.stringify(args)}`);
+  }
+
+  return args;
+}
 /**
  * POST /chat/completions
  *
@@ -759,7 +835,28 @@ ${skillContent}`,
                 args.message ??
                 message;
               const runResult = await agemBridge.runCycle(prompt, sendEvent);
-              output = `Cycle completed. State:\n${JSON.stringify(runResult.state, null, 2)}`;
+              // Trim state for LLM context — strip word-level nodes/edges, keep concept graph
+              const st = runResult.state;
+              const trimmedState = {
+                iteration: st.iteration,
+                communities: st.communities,
+                operational_state: st.operational_state,
+                sheaf_energy: st.sheaf_energy,
+                gap_count: st.gap_count,
+                agent_count: st.agent_count,
+                graph_summary: st.graph_summary ? {
+                  node_count: st.graph_summary.node_count,
+                  edge_count: st.graph_summary.edge_count,
+                  concept_graph: st.graph_summary.concept_graph
+                    ? { text_summary: st.graph_summary.concept_graph.text_summary,
+                        modularity: st.graph_summary.concept_graph.modularity,
+                        communities: st.graph_summary.concept_graph.communities }
+                    : undefined,
+                } : undefined,
+                soc: st.soc,
+                evolution: st.evolution,
+              };
+              output = `Cycle completed. State:\n${JSON.stringify(trimmedState, null, 2)}`;
               // Emit AGEM state and artifacts as SSE events
               sendEvent("agem_state", runResult.state);
               for (const artifact of runResult.artifacts) {
@@ -978,7 +1075,7 @@ ${skillContent}`,
               output = JSON.stringify(serverList, null, 2);
             } else if (fnName === "list_server_tools") {
               // Meta-tool: list tools on a specific server
-              const sName = args.server_name ?? args.server ?? "";
+              const sName = (args.server_name ?? args.server ?? "").toString().replace(/^:/, "");
               try {
                 const serverTools = await mcpManager.getServerTools(sName);
                 output = JSON.stringify(serverTools, null, 2);
@@ -987,9 +1084,16 @@ ${skillContent}`,
               }
             } else if (fnName === "call_mcp_tool") {
               // Meta-tool: call any tool on any server
-              const sName = args.server_name ?? args.server ?? "";
+              // Strip leading colon — models sometimes send ":server-name" instead of "server-name"
+              const sName = (args.server_name ?? args.server ?? "").toString().replace(/^:/, "");
               const tName = args.tool_name ?? args.tool ?? "";
-              const tArgs = args.arguments ?? args.args ?? {};
+              let tArgs = args.arguments ?? args.args ?? {};
+
+              // ─── Parameter normalization for common MCP tool mistakes ───
+              // Models frequently guess wrong parameter names for MCP tools.
+              // Rather than letting them fail and waste a turn, normalize here.
+              tArgs = normalizeMcpToolArgs(sName, tName, tArgs);
+
               try {
                 output = await mcpManager.executeTool(sName, tName, tArgs);
               } catch (e: any) {
