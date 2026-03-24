@@ -102,16 +102,31 @@ export class MCPManager {
   }
 
   /** Get tools for a specific server with name + description (for meta-tool discovery). */
-  async getServerTools(serverName: string): Promise<Array<{ name: string; description: string }>> {
+  async getServerTools(serverName: string): Promise<Array<{ name: string; description: string; parameters?: Record<string, unknown> }>> {
     const client = this.clients.get(serverName);
     if (!client) {
       throw new Error(`MCP Server '${serverName}' not connected.`);
     }
     const response: any = await client.listTools();
-    return (response.tools || []).map((t: any) => ({
-      name: t.name,
-      description: t.description ?? "",
-    }));
+    return (response.tools || []).map((t: any) => {
+      const tool: { name: string; description: string; parameters?: Record<string, unknown> } = {
+        name: t.name,
+        description: t.description ?? "",
+      };
+      // Include input schema so the model knows what arguments to pass
+      if (t.inputSchema?.properties) {
+        const props = t.inputSchema.properties;
+        const required = t.inputSchema.required ?? [];
+        const params: Record<string, string> = {};
+        for (const [key, val] of Object.entries(props)) {
+          const v = val as { type?: string; description?: string };
+          const req = required.includes(key) ? " (required)" : "";
+          params[key] = `${v.type ?? "any"}${req}${v.description ? " — " + v.description : ""}`;
+        }
+        tool.parameters = params;
+      }
+      return tool;
+    });
   }
 
   async executeTool(serverName: string, toolName: string, args: any) {

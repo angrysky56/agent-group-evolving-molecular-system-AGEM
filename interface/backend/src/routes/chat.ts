@@ -182,8 +182,14 @@ CORE TOOLS (use directly):
 
 MCP SERVER ACCESS (use the 3 meta-tools to discover and call):
 1. list_mcp_servers → see available servers
-2. list_server_tools(server_name) → see tools on that server
+2. list_server_tools(server_name) → see tools on that server  
 3. call_mcp_tool(server_name, tool_name, arguments) → invoke any tool
+
+CRITICAL: When calling call_mcp_tool, pass tool arguments INSIDE the "arguments" object:
+  call_mcp_tool(server_name="hipai-montague", tool_name="add_belief", arguments={"text": "Socrates is mortal"})
+  call_mcp_tool(server_name="conscience-servitor", tool_name="triage", arguments={"content": "claim to evaluate"})
+  call_mcp_tool(server_name="conscience-servitor", tool_name="evaluate", arguments={"claims": ["claim1", "claim2"]})
+  call_mcp_tool(server_name="aseke-compass", tool_name="analyze_behavior", arguments={"description": "behavior pattern"})
 
 KEY MCP SERVERS:
 - advanced-reasoning: Deep multi-step reasoning with memory
@@ -619,7 +625,7 @@ ${skillContent}`,
         function: {
           name: "call_mcp_tool",
           description:
-            "Call any tool on any connected MCP server. Use list_server_tools first to see required arguments. Supports servers like: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, and more.",
+            'Call any tool on any connected MCP server. Use list_server_tools first to see required arguments. IMPORTANT: Pass tool arguments inside the "arguments" object, e.g.: arguments: {"text": "Socrates is mortal"} for hipai-montague/add_belief. Servers: advanced-reasoning, sheaf-consistency-enforcer, hipai-montague, verifier-graph, conscience-servitor, mcp-logic, aseke-compass.',
           parameters: {
             type: "object",
             properties: {
@@ -1086,8 +1092,38 @@ ${skillContent}`,
               // Meta-tool: call any tool on any server
               // Strip leading colon — models sometimes send ":server-name" instead of "server-name"
               const sName = (args.server_name ?? args.server ?? "").toString().replace(/^:/, "");
-              const tName = args.tool_name ?? args.tool ?? "";
+              const tName = (args.tool_name ?? args.tool ?? "").toString();
               let tArgs = args.arguments ?? args.args ?? {};
+
+              // If tArgs is empty but there are extra keys in args beyond the
+              // meta-tool params, the model put tool args at the top level.
+              // Extract them into tArgs.
+              if (typeof tArgs === "object" && Object.keys(tArgs as object).length === 0) {
+                const metaKeys = new Set([
+                  "server_name", "server", "tool_name", "tool", "arguments", "args",
+                ]);
+                const extracted: Record<string, unknown> = {};
+                for (const [k, v] of Object.entries(args)) {
+                  if (!metaKeys.has(k)) {
+                    extracted[k] = v;
+                  }
+                }
+                if (Object.keys(extracted).length > 0) {
+                  tArgs = extracted;
+                  console.log(`[Chat] Extracted top-level MCP args for ${sName}/${tName}: ${JSON.stringify(extracted)}`);
+                }
+              }
+
+              // If tArgs is a JSON string, parse it
+              if (typeof tArgs === "string") {
+                try {
+                  tArgs = JSON.parse(tArgs);
+                } catch {
+                  // Might be a plain text value — wrap it based on known tool signatures
+                  tArgs = { text: tArgs };
+                  console.log(`[Chat] Wrapped string MCP arg as {text: ...} for ${sName}/${tName}`);
+                }
+              }
 
               // ─── Parameter normalization for common MCP tool mistakes ───
               // Models frequently guess wrong parameter names for MCP tools.
