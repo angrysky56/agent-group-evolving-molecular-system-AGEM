@@ -1,12 +1,23 @@
 # Agent Group Evolving Molecular System (AGEM)
 
-RLM-LCM Molecular-CoT Group Evolving Agents — Sheaf-theoretic multi-agent coordination with lumpability-audited context management and self-healing cognitive architecture.
+> [!TIP]
+> **TL;DR**: AGEM is a multi-agent framework that uses mathematical sheaf theory and molecular metaphors to manage group-evolving agent reasoning. It detects inconsistencies (cohomology), prevents context loss (lumpability), and ensures innovation through self-organized criticality (SOC).
 
-**Documentation**:
+## Quick-Start Card
+
+| Goal | Action | Target |
+| :--- | :--- | :--- |
+| **Launch System** | `./start.sh` | Full-stack UI + Backend |
+| **Run Analysis** | Open `localhost:5173` | Interactive Chat Dashboard |
+| **Configure MCP** | Edit `mcp.json` | EFHF Server Integration |
+| **Add Knowledge** | Drop `.md` in `skills/` | Agent Skill Loading |
+| **Run Tests** | `npm test` | Core Engine Validation |
+
+## Documentation
 - [Original Project Specification](docs/RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md) — technical deep-dive into the core architecture
-- [Emergent Constraints & Development Plan](docs/emergent-constraints-and-development-plan.md) — theoretical foundation (memory bottlenecks as syntax engines, C-Induction via sheaf cohomology, Price equation for CoT evolution) and development roadmap
+- [Emergent Constraints & Development Plan](docs/emergent-constraints-and-development-plan.md) — theoretical foundation and development roadmap
 
-AGEM is a multi-agent orchestration framework that uses molecular biological metaphors and advanced mathematical structures to manage group-evolving agent behaviors. Instead of programming rules into agents, it creates computational pressures — memory bottlenecks, coordination requirements, topology constraints — and lets the rules emerge. It leverages cellular sheaves for agent stalk tracking, cohomology for structural obstruction detection, information-theoretic auditing to detect when context compression loses critical reasoning variables, and real-time SOC metrics with an interactive dashboard.
+AGEM is a multi-agent orchestration framework...
 
 ---
 
