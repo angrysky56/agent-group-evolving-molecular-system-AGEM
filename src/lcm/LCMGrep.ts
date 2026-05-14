@@ -89,12 +89,12 @@ export class LCMGrep {
    * @param options - Optional parameters (maxResults, minSimilarity).
    * @returns Promise<GrepResult[]> sorted by similarity descending.
    */
-  async grep(query: string, options?: GrepOptions): Promise<GrepResult[]> {
+  async grep(query: string, options?: GrepOptions, signal?: AbortSignal): Promise<GrepResult[]> {
     const minSimilarity = options?.minSimilarity ?? -1;
     const maxResults = options?.maxResults;
 
     // Step 1: embed the query — one call per grep invocation (queries are not cached)
-    const queryVec = await this.#embedder.embed(query);
+    const queryVec = await this.#embedder.embed(query, signal);
 
     // Step 2 & 3: get/compute embeddings, compute similarities
     const entries = this.#store.getAll();
@@ -104,7 +104,8 @@ export class LCMGrep {
       // Hybrid caching: use cached embedding or compute on-demand
       let entryVec = this.#cache.getEmbedding(entry.id);
       if (entryVec === undefined) {
-        await this.#cache.cacheEntry(entry.id, entry.content);
+        if (signal?.aborted) throw new Error("Aborted");
+        await this.#cache.cacheEntry(entry.id, entry.content, signal);
         entryVec = this.#cache.getEmbedding(entry.id)!;
       }
 
@@ -132,11 +133,12 @@ export class LCMGrep {
    * Called during initialization or manually before running many grep queries.
    * Entries already cached are skipped (hybrid strategy — no redundant re-embedding).
    */
-  async cacheAllEntries(): Promise<void> {
+  async cacheAllEntries(signal?: AbortSignal): Promise<void> {
     const entries = this.#store.getAll();
     for (const entry of entries) {
+      if (signal?.aborted) throw new Error("Aborted");
       if (!this.#cache.has(entry.id)) {
-        await this.#cache.cacheEntry(entry.id, entry.content);
+        await this.#cache.cacheEntry(entry.id, entry.content, signal);
       }
     }
   }

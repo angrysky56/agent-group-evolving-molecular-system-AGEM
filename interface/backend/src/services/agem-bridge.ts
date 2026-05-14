@@ -306,11 +306,12 @@ class AgemBridge {
    */
   async runCycle(
     userMessage: string,
-    _onProgress?: (event: string, data: unknown) => void,
+    onProgress?: (event: string, data: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<{ artifacts: Artifact[]; state: AgemStateSnapshot }> {
     this.#emitEvent("agem:state-update", "info", `Starting cycle: ${userMessage.slice(0, 80)}`);
 
-    await this.#orchestrator.runReasoning(userMessage);
+    await this.#orchestrator.runReasoning(userMessage, signal);
 
     const state = this.getState();
     const latestSOC = this.#orchestrator.socTracker.getLatestMetrics();
@@ -556,11 +557,12 @@ class AgemBridge {
   async searchContext(
     query: string,
     maxResults?: number,
+    signal?: AbortSignal,
   ): Promise<ContextSearchResult[]> {
     const grepResults = await this.#grep.grep(query, {
       maxResults: maxResults ?? 10,
       minSimilarity: 0.0,
-    });
+    }, signal);
     return grepResults.map((r) => ({
       entry_id: r.entry.id,
       content: r.entry.content.slice(0, 500),

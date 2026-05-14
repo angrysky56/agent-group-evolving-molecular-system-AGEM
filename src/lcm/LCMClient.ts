@@ -45,13 +45,13 @@ export class LCMClient {
    *
    * Embedding is cached at append time so lcm_grep never needs lazy embedding.
    */
-  async append(content: string): Promise<string> {
+  async append(content: string, signal?: AbortSignal): Promise<string> {
     // Step 1: synchronous store append (ImmutableStore has no async operations).
     const entry = this.#store.append(content);
 
     // Step 2: cache embedding immediately — the embedding concern stays in EmbeddingCache,
     // the storage concern stays in ImmutableStore, and LCMClient wires both.
-    await this.#cache.cacheEntry(entry.id, content);
+    await this.#cache.cacheEntry(entry.id, content, signal);
 
     // Step 3: return the entry ID for caller reference.
     return entry.id;

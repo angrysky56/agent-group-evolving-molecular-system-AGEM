@@ -129,7 +129,7 @@ export interface SummaryNode {
  * Tests: MockEmbedder (deterministic, no model loading).
  */
 export interface IEmbedder {
-  embed(text: string): Promise<Float64Array>;
+  embed(text: string, signal?: AbortSignal): Promise<Float64Array>;
 }
 
 /**
@@ -173,7 +173,8 @@ export class GptTokenCounter implements ITokenCounter {
  * No model loading, no async I/O, fully deterministic.
  */
 export class MockEmbedder implements IEmbedder {
-  async embed(text: string): Promise<Float64Array> {
+  async embed(text: string, signal?: AbortSignal): Promise<Float64Array> {
+    if (signal?.aborted) throw new Error("Aborted");
     // Derive a numeric seed from the text content via SHA-256.
     const hashHex = createHash("sha256").update(text, "utf8").digest("hex");
     const seed = parseInt(hashHex.slice(0, 8), 16);

@@ -460,7 +460,8 @@ export class Orchestrator {
    *
    * @param prompt - Text input for this reasoning iteration.
    */
-  async runReasoning(prompt: string): Promise<void> {
+  async runReasoning(prompt: string, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw new Error("Aborted");
     // Step 1: Increment iteration counter
     this.#iterationCounter++;
 
@@ -497,7 +498,8 @@ export class Orchestrator {
     }
 
     // Step 5: Append prompt to LCM
-    const entryId = await this.lcmClient.append(prompt);
+    const entryId = await this.lcmClient.append(prompt, signal);
+    if (signal?.aborted) throw new Error("Aborted");
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`,
     );
@@ -538,7 +540,8 @@ export class Orchestrator {
     });
 
     // Build node embeddings for SOC (cache new nodes only)
-    await this.#updateNodeEmbeddings(graphInstance);
+    await this.#updateNodeEmbeddings(graphInstance, signal);
+    if (signal?.aborted) throw new Error("Aborted");
 
     const socInputs: SOCInputs = {
       nodeCount: this.tnaGraph.order,
@@ -660,7 +663,9 @@ export class Orchestrator {
     summaryNode: SummaryNode,
     sourceEntries: readonly LCMEntry[],
     escalationLevel: EscalationLevel,
+    signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) throw new Error("Aborted");
     await this.lumpabilityAuditor.audit(
       summaryNode,
       sourceEntries,
@@ -742,7 +747,10 @@ export class Orchestrator {
   // -------------------------------------------------------------------------
 
   /** Embed any TNA graph nodes not yet in the cache. */
-  async #updateNodeEmbeddings(graph: ReturnType<CooccurrenceGraph["getGraph"]>): Promise<void> {
+  async #updateNodeEmbeddings(
+    graph: ReturnType<CooccurrenceGraph["getGraph"]>,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const nodesToEmbed: string[] = [];
     graph.forEachNode((nodeId) => {
       if (!this.#nodeEmbeddings.has(nodeId)) {
@@ -758,7 +766,8 @@ export class Orchestrator {
       const batch = nodesToEmbed.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (nodeId) => {
-          const embedding = await this.#embedder.embed(nodeId);
+          if (signal?.aborted) throw new Error("Aborted");
+          const embedding = await this.#embedder.embed(nodeId, signal);
           return { nodeId, embedding };
         }),
       );

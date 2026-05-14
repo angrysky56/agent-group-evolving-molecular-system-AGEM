@@ -48,8 +48,8 @@ export class EmbeddingCache {
    * @param entryId - The UUIDv7 ID of the LCMEntry.
    * @param content - The text content to embed.
    */
-  async cacheEntry(entryId: string, content: string): Promise<void> {
-    const embedding = await this.#embedder.embed(content);
+  async cacheEntry(entryId: string, content: string, signal?: AbortSignal): Promise<void> {
+    const embedding = await this.#embedder.embed(content, signal);
     this.#cache.set(entryId, embedding);
   }
 
@@ -72,8 +72,8 @@ export class EmbeddingCache {
    * @param entryId - The UUIDv7 ID of the LCMEntry.
    * @param content - The text content to re-embed.
    */
-  async refreshEntry(entryId: string, content: string): Promise<void> {
-    const embedding = await this.#embedder.embed(content);
+  async refreshEntry(entryId: string, content: string, signal?: AbortSignal): Promise<void> {
+    const embedding = await this.#embedder.embed(content, signal);
     this.#cache.set(entryId, embedding);
   }
 

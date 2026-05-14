@@ -125,6 +125,14 @@ chatRouter.post("/completions", async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
+  const abortController = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      console.log("[Chat] Client disconnected, aborting request...");
+      abortController.abort();
+    }
+  });
+
   /** Helper to send an SSE event. */
   const sendEvent = (event: string, data: unknown): void => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -716,7 +724,7 @@ ${skillContent}`,
               `event: thinking\ndata: ${JSON.stringify({ content: t })}\n\n`,
             );
         },
-        signal: req.app.locals.abortController?.signal,
+        signal: abortController.signal,
       });
       lastResult = result;
 
@@ -853,7 +861,7 @@ ${skillContent}`,
                 args.topic ??
                 args.message ??
                 message;
-              const runResult = await agemBridge.runCycle(prompt, sendEvent);
+              const runResult = await agemBridge.runCycle(prompt, sendEvent, abortController.signal);
               // Trim state for LLM context — strip word-level nodes/edges, keep concept graph
               const st = runResult.state;
               const trimmedState = {
@@ -932,6 +940,7 @@ ${skillContent}`,
               const results = await agemBridge.searchContext(
                 query,
                 args.max_results,
+                abortController.signal,
               );
               output = JSON.stringify(results, null, 2);
             } else if (fnName === "spawn_agem_agent") {

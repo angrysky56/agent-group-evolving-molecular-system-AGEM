@@ -53,7 +53,7 @@ interface LLMProvider {
   readonly type: LLMProviderType;
   chat(options: ChatCompletionOptions): Promise<ChatCompletionResult>;
   listModels(apiKey?: string): Promise<ModelInfo[]>;
-  getEmbedding(text: string, model?: string): Promise<number[]>;
+  getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]>;
 }
 
 /* ─── Ollama Provider ─── */
@@ -361,7 +361,7 @@ class OllamaProvider implements LLMProvider {
   }
 
   /** Get embeddings via Ollama /api/embeddings endpoint. */
-  async getEmbedding(text: string, model?: string): Promise<number[]> {
+  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
     let embModel =
       model ?? settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
     if (embModel.startsWith("ollama:")) embModel = embModel.substring(7);
@@ -370,6 +370,7 @@ class OllamaProvider implements LLMProvider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: embModel, prompt: text }),
+        signal,
       });
       if (!response.ok) {
         console.error(`[LLM] Ollama embedding failed: ${response.status}`);
@@ -647,7 +648,7 @@ class OpenRouterProvider implements LLMProvider {
   }
 
   /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
-  async getEmbedding(text: string, model?: string): Promise<number[]> {
+  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
     let embModel =
       model ??
       settings.all.OPENROUTER_EMBEDDING_MODEL ??
@@ -663,6 +664,7 @@ class OpenRouterProvider implements LLMProvider {
           "HTTP-Referer": "https://agem.local",
         },
         body: JSON.stringify({ model: embModel, input: text }),
+        signal,
       });
       if (!response.ok) {
         console.error(`[LLM] OpenRouter embedding failed: ${response.status}`);
@@ -909,7 +911,7 @@ class AnthropicProvider implements LLMProvider {
     ];
   }
 
-  async getEmbedding(_text: string, _model?: string): Promise<number[]> {
+  async getEmbedding(_text: string, _model?: string, _signal?: AbortSignal): Promise<number[]> {
     console.warn("[LLM] Anthropic does not provide an embedding API.");
     return [];
   }
@@ -1157,7 +1159,7 @@ class MinimaxProvider implements LLMProvider {
     ];
   }
 
-  async getEmbedding(text: string, model?: string): Promise<number[]> {
+  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
     const apiKey = this.#getApiKey();
     let embModel = model ?? settings.all.MINIMAX_EMBEDDING_MODEL ?? "embo-01";
     if (embModel.startsWith("minimax:")) embModel = embModel.substring(8);
@@ -1179,6 +1181,7 @@ class MinimaxProvider implements LLMProvider {
           texts: [text],
           type: "db",
         }),
+        signal,
       });
       if (!response.ok) {
         console.error(`[LLM] MiniMax embedding failed: ${response.status}`);

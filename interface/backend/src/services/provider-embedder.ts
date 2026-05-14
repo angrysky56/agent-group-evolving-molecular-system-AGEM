@@ -19,7 +19,9 @@ export class ProviderEmbedder implements IEmbedder {
   /** Tracks the dimension of real embeddings so fallback matches. */
   #knownDim: number = EMBEDDING_DIM;
 
-  async embed(text: string): Promise<Float64Array> {
+  async embed(text: string, signal?: AbortSignal): Promise<Float64Array> {
+    if (signal?.aborted) return this.#mockFallback(text);
+
     if (this.#failCount >= this.#maxFails) {
       return this.#mockFallback(text);
     }
@@ -27,7 +29,7 @@ export class ProviderEmbedder implements IEmbedder {
     try {
       const config = settings.all;
       const provider = createProvider(config.EMBEDDING_PROVIDER);
-      const embedding = await provider.getEmbedding(text);
+      const embedding = await provider.getEmbedding(text, undefined, signal);
 
       if (!embedding || embedding.length === 0) {
         this.#failCount++;
