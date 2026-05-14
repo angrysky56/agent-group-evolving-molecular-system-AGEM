@@ -143,6 +143,20 @@ export function MetricsPanel() {
         </div>
       </div>
 
+      <div className="metrics-panel__section">
+        <div className="metrics-panel__title">Telemetry</div>
+        <div className="metrics-panel__grid">
+          <Sparkline
+            data={useAgemStore((s) => s.usageHistory.map((u) => u.total))}
+            color="var(--accent-primary)"
+            label="Tokens per Turn"
+            currentValue={
+              useAgemStore((s) => s.usageHistory[s.usageHistory.length - 1]?.total.toString()) ?? "—"
+            }
+          />
+        </div>
+      </div>
+
       {state?.lumpability && (
         <div className="metrics-panel__section">
           <div className="metrics-panel__title">Lumpability Auditing</div>

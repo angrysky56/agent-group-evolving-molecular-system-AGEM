@@ -21,6 +21,7 @@ import type {
   CatalystQuestionResult,
   ContextSearchResult,
   SystemEvent,
+  SystemEventType,
 } from "../../../shared/types.js";
 
 import { Orchestrator } from "#agem/orchestrator/index.js";
@@ -67,10 +68,103 @@ class AgemBridge {
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
     const embType = settings.all.EMBEDDING_PROVIDER ?? config.provider;
-    console.log(`[AgemBridge] Using ProviderEmbedder (real embeddings from ${embType})`);
+    console.log(
+      `[AgemBridge] Using ProviderEmbedder (real embeddings from ${embType})`,
+    );
+
+    // Wire orchestrator events to dashboard SSE clients
+    this.#wireOrchestratorEvents();
 
     // Attempt to load saved state (async, non-blocking)
     void this.loadSession("default");
+  }
+
+  /**
+   * Wire orchestrator events to the system event bus for dashboard telemetry.
+   *
+   * This bridges the Phase 5 Orchestrator's internal EventBus with the
+   * AgemBridge's SSE client pool, allowing real-time observability of
+   * SOC metrics, cohomology obstructions, and sub-agent lifecycle events.
+   */
+  #wireOrchestratorEvents(): void {
+    const eventTypes: SystemEventType[] = [
+      "soc:metrics",
+      "phase:transition",
+      "regime:classification",
+      "sheaf:consensus-reached",
+      "sheaf:h1-obstruction-detected",
+      "lumpability:audit-complete",
+      "lumpability:weak-compression",
+      "soc:system1-early-convergence",
+      "orch:vdw-agent-spawned",
+      "orch:vdw-agent-complete",
+      "tna:catalyst-questions-generated",
+      "evolution:price-decomposition",
+    ];
+
+    for (const type of eventTypes) {
+      this.#orchestrator.eventBus.subscribe(type, (event: any) => {
+        this.broadcastEvent(this.#mapToSystemEvent(event));
+      });
+    }
+  }
+
+  /**
+   * Map an internal orchestrator event to a serialisable SystemEvent for the UI.
+   *
+   * Provides human-readable summaries and assigns severity levels based on
+   * the event type and its contents (e.g., critical for H1 obstructions).
+   */
+  #mapToSystemEvent(event: any): SystemEvent {
+    const type = event.type as SystemEventType;
+    let severity: SystemEvent["severity"] = "info";
+    let summary = `Event: ${type}`;
+
+    // Specific mappings to make events user-friendly in the dashboard
+    switch (type) {
+      case "soc:metrics":
+        summary = `SOC Metrics: CDP=${(event.cdp ?? 0).toFixed(3)}, VNE=${(event.vonNeumannEntropy ?? 0).toFixed(3)}`;
+        break;
+      case "phase:transition":
+        severity = "warning";
+        summary = `Phase transition detected (correlation=${(event.correlationCoefficient ?? 0).toFixed(3)})`;
+        break;
+      case "sheaf:h1-obstruction-detected":
+        severity = "critical";
+        summary = `H¹ obstruction detected (dimension=${event.h1Dimension ?? "?"})`;
+        break;
+      case "sheaf:consensus-reached":
+        severity = "success";
+        summary = `Consensus reached (h⁰=${event.h0Dimension ?? "?"})`;
+        break;
+      case "orch:vdw-agent-spawned":
+        summary = `VdW Agent spawned for gap ${event.gapId}`;
+        break;
+      case "orch:vdw-agent-complete":
+        severity = event.success ? "success" : "warning";
+        summary = `VdW Agent ${event.agentId} complete (${event.stepsExecuted ?? 0} steps)`;
+        break;
+      case "regime:classification":
+        summary = `System regime identified: ${event.regime}`;
+        break;
+      case "lumpability:weak-compression":
+        severity = "warning";
+        summary = `Information loss in LCM compaction (ratio=${(event.entropyPreservationRatio ?? 0).toFixed(3)})`;
+        break;
+      case "evolution:price-decomposition":
+        summary = `Price evolution: selection=${(event.selection ?? 0).toFixed(4)}, transmission=${(event.transmission ?? 0).toFixed(4)}`;
+        break;
+    }
+
+    return {
+      id: `evt-${++this.#eventCounter}`,
+      type,
+      timestamp: Date.now(),
+      iteration: event.iteration ?? this.#orchestrator.getIterationCount(),
+      severity,
+      summary,
+      data: event,
+    };
   }
 
   /* ─────────────── SSE Client Management ─────────────── */
@@ -180,7 +274,8 @@ class AgemBridge {
 
   /** Map orchestrator state string to dashboard operational state. */
   #mapOperationalState(state: string): "NORMAL" | "OBSTRUCTED" | "CRITICAL" {
-    if (state === "OBSTRUCTED" || state === "H1_OBSTRUCTION") return "OBSTRUCTED";
+    if (state === "OBSTRUCTED" || state === "H1_OBSTRUCTION")
+      return "OBSTRUCTED";
     if (state === "CRITICAL" || state === "ERROR") return "CRITICAL";
     return "NORMAL";
   }
@@ -292,7 +387,13 @@ class AgemBridge {
       // Summarizer may fail if Louvain hasn't run yet
     }
 
-    return { node_count: nodes.length, edge_count: edges.length, nodes, edges, concept_graph };
+    return {
+      node_count: nodes.length,
+      edge_count: edges.length,
+      nodes,
+      edges,
+      concept_graph,
+    };
   }
 
   /* ─────────────── Run Cycle ─────────────── */
@@ -309,7 +410,11 @@ class AgemBridge {
     onProgress?: (event: string, data: unknown) => void,
     signal?: AbortSignal,
   ): Promise<{ artifacts: Artifact[]; state: AgemStateSnapshot }> {
-    this.#emitEvent("agem:state-update", "info", `Starting cycle: ${userMessage.slice(0, 80)}`);
+    this.#emitEvent(
+      "agem:state-update",
+      "info",
+      `Starting cycle: ${userMessage.slice(0, 80)}`,
+    );
 
     await this.#orchestrator.runReasoning(userMessage, signal);
 
@@ -348,19 +453,24 @@ class AgemBridge {
             : "- No SOC metrics computed yet.",
           "",
           "### Concept Communities",
-          state.graph_summary?.concept_graph?.text_summary ?? "- No communities computed yet.",
+          state.graph_summary?.concept_graph?.text_summary ??
+            "- No communities computed yet.",
         ].join("\n"),
       },
     ];
 
     // Broadcast post-cycle events to SSE clients
-    this.#emitEvent("agem:state-update", "success",
+    this.#emitEvent(
+      "agem:state-update",
+      "success",
       `Cycle ${state.iteration} complete — ${state.graph_summary?.node_count ?? 0} nodes, ${state.communities} communities`,
       { state },
     );
 
     if (latestSOC) {
-      this.#emitEvent("soc:metrics", "info",
+      this.#emitEvent(
+        "soc:metrics",
+        "info",
         `VNE=${latestSOC.vonNeumannEntropy.toFixed(3)} EE=${latestSOC.embeddingEntropy.toFixed(3)} CDP=${latestSOC.cdp.toFixed(3)}`,
         {
           vne: latestSOC.vonNeumannEntropy,
@@ -373,28 +483,36 @@ class AgemBridge {
       );
 
       if (latestSOC.isPhaseTransition) {
-        this.#emitEvent("phase:transition", "warning",
+        this.#emitEvent(
+          "phase:transition",
+          "warning",
           `Phase transition detected at iteration ${latestSOC.iteration}`,
         );
       }
     }
 
     if (state.sheaf_energy > 0) {
-      this.#emitEvent("sheaf:h1-obstruction-detected", "warning",
+      this.#emitEvent(
+        "sheaf:h1-obstruction-detected",
+        "warning",
         `H¹ obstruction: dimension ${state.sheaf_energy}`,
         { h1_dimension: state.sheaf_energy },
       );
     }
 
     if (state.regime) {
-      this.#emitEvent("regime:classification", "info",
+      this.#emitEvent(
+        "regime:classification",
+        "info",
         `Regime: ${state.regime.regime} (persistence: ${state.regime.persistence_iterations})`,
         state.regime as unknown as Record<string, unknown>,
       );
     }
 
     if (state.evolution) {
-      this.#emitEvent("evolution:price-decomposition", "info",
+      this.#emitEvent(
+        "evolution:price-decomposition",
+        "info",
         `Selection=${state.evolution.selection.toFixed(4)} Transmission=${state.evolution.transmission.toFixed(4)} E/E=${state.evolution.explore_exploit_ratio.toFixed(2)}`,
         state.evolution as unknown as Record<string, unknown>,
       );
@@ -559,10 +677,14 @@ class AgemBridge {
     maxResults?: number,
     signal?: AbortSignal,
   ): Promise<ContextSearchResult[]> {
-    const grepResults = await this.#grep.grep(query, {
-      maxResults: maxResults ?? 10,
-      minSimilarity: 0.0,
-    }, signal);
+    const grepResults = await this.#grep.grep(
+      query,
+      {
+        maxResults: maxResults ?? 10,
+        minSimilarity: 0.0,
+      },
+      signal,
+    );
     return grepResults.map((r) => ({
       entry_id: r.entry.id,
       content: r.entry.content.slice(0, 500),
@@ -673,18 +795,26 @@ class AgemBridge {
 
     // LCM entries
     const lcmEntries = [...orch.lcmClient.store.getAll()].map((e) => ({
-      id: e.id, content: e.content, tokenCount: e.tokenCount,
-      hash: e.hash, timestamp: e.timestamp, sequenceNumber: e.sequenceNumber,
+      id: e.id,
+      content: e.content,
+      tokenCount: e.tokenCount,
+      hash: e.hash,
+      timestamp: e.timestamp,
+      sequenceNumber: e.sequenceNumber,
     }));
 
     // Price evolver history
     const evolver = (orch as any).priceEvolver;
-    const evolutionHistory = evolver?.getHistory?.()?.map((h: any) => ({
-      iteration: h.iteration, selection: h.selection,
-      transmission: h.transmission, totalChange: h.totalChange,
-      meanFitness: h.meanFitness, populationSize: h.populationSize,
-      regime: h.regime,
-    })) ?? [];
+    const evolutionHistory =
+      evolver?.getHistory?.()?.map((h: any) => ({
+        iteration: h.iteration,
+        selection: h.selection,
+        transmission: h.transmission,
+        totalChange: h.totalChange,
+        meanFitness: h.meanFitness,
+        populationSize: h.populationSize,
+        regime: h.regime,
+      })) ?? [];
 
     // Node embeddings
     const nodeEmbeddings: Record<string, number[]> = {};
@@ -699,7 +829,10 @@ class AgemBridge {
       graph: { nodes, edges },
       socHistory: socHistory.length > 0 ? socHistory : this.#restoredSocHistory,
       lcmEntries,
-      evolutionHistory: evolutionHistory.length > 0 ? evolutionHistory : this.#restoredEvolutionHistory,
+      evolutionHistory:
+        evolutionHistory.length > 0
+          ? evolutionHistory
+          : this.#restoredEvolutionHistory,
       nodeEmbeddings,
     };
   }
@@ -719,7 +852,9 @@ class AgemBridge {
       if (!graph.hasEdge(edge.source, edge.target)) {
         try {
           graph.addEdge(edge.source, edge.target, edge.attributes);
-        } catch { /* skip duplicates */ }
+        } catch {
+          /* skip duplicates */
+        }
       }
     }
 
@@ -728,7 +863,9 @@ class AgemBridge {
       try {
         orch.tnaLouvain.detect(42);
         orch.tnaCentrality.compute();
-      } catch { /* skip if graph too small */ }
+      } catch {
+        /* skip if graph too small */
+      }
     }
 
     // Restore LCM entries
@@ -744,7 +881,10 @@ class AgemBridge {
     this.#restoredEvolutionHistory = snapshot.evolutionHistory;
 
     // Restore node embeddings
-    if (snapshot.nodeEmbeddings && Object.keys(snapshot.nodeEmbeddings).length > 0) {
+    if (
+      snapshot.nodeEmbeddings &&
+      Object.keys(snapshot.nodeEmbeddings).length > 0
+    ) {
       const embMap = new Map<string, Float64Array>();
       for (const [key, arr] of Object.entries(snapshot.nodeEmbeddings)) {
         embMap.set(key, new Float64Array(arr));
@@ -754,8 +894,8 @@ class AgemBridge {
 
     console.log(
       `[AgemBridge] Restored: ${snapshot.graph.nodes.length} nodes, ` +
-      `${snapshot.graph.edges.length} edges, ${snapshot.lcmEntries.length} LCM entries, ` +
-      `${snapshot.socHistory.length} SOC points`,
+        `${snapshot.graph.edges.length} edges, ${snapshot.lcmEntries.length} LCM entries, ` +
+        `${snapshot.socHistory.length} SOC points`,
     );
   }
 

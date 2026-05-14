@@ -19,6 +19,15 @@ export interface SOCDataPoint {
   correlation: number;
 }
 
+/** Information about an active VdW sub-agent probe. */
+export interface SubAgentInfo {
+  id: string;
+  gapId: string;
+  startTime: number;
+  steps: number;
+  status: "running" | "complete" | "failed";
+}
+
 export type DashboardTab = "graph" | "metrics" | "events" | "tools";
 
 export interface AgemSystemState {
@@ -34,17 +43,24 @@ export interface AgemSystemState {
   sseConnected: boolean;
   /** Toast notifications queue */
   toasts: Array<{ id: string; event: SystemEvent; expiresAt: number }>;
+  /** Active sub-agents (VdW probes) */
+  activeSubAgents: SubAgentInfo[];
+  /** Token usage history */
+  usageHistory: { timestamp: number; total: number }[];
 
   // Actions
   updateState: (state: AgemStateSnapshot) => void;
   addSOCDataPoint: (point: SOCDataPoint) => void;
   addEvent: (event: SystemEvent) => void;
+  spawnSubAgent: (info: Omit<SubAgentInfo, "startTime" | "status" | "steps">) => void;
+  completeSubAgent: (id: string, success: boolean, steps: number) => void;
   setActiveTab: (tab: DashboardTab) => void;
   setSseConnected: (connected: boolean) => void;
   addToast: (event: SystemEvent) => void;
   removeToast: (id: string) => void;
   clearEvents: () => void;
   setSocHistory: (history: SOCDataPoint[]) => void;
+  addUsageDataPoint: (total: number) => void;
 }
 
 let toastCounter = 0;
@@ -56,6 +72,8 @@ export const useAgemStore = create<AgemSystemState>((set) => ({
   activeTab: "graph",
   sseConnected: false,
   toasts: [],
+  activeSubAgents: [],
+  usageHistory: [],
 
   updateState: (state) => set({ state }),
 
@@ -69,6 +87,23 @@ export const useAgemStore = create<AgemSystemState>((set) => ({
   addEvent: (event) =>
     set((s) => ({
       eventLog: [...s.eventLog.slice(-199), event],
+    })),
+
+  spawnSubAgent: (info) =>
+    set((s) => ({
+      activeSubAgents: [
+        ...s.activeSubAgents,
+        { ...info, startTime: Date.now(), status: "running", steps: 0 },
+      ],
+    })),
+
+  completeSubAgent: (id, success, steps) =>
+    set((s) => ({
+      activeSubAgents: s.activeSubAgents.map((a) =>
+        a.id === id
+          ? { ...a, status: success ? "complete" : ("failed" as const), steps }
+          : a,
+      ),
     })),
 
   setActiveTab: (activeTab) => set({ activeTab }),
@@ -92,4 +127,11 @@ export const useAgemStore = create<AgemSystemState>((set) => ({
     })),
 
   clearEvents: () => set({ eventLog: [] }),
+  addUsageDataPoint: (total) =>
+    set((s) => ({
+      usageHistory: [
+        ...s.usageHistory.slice(-49),
+        { timestamp: Date.now(), total },
+      ],
+    })),
 }));

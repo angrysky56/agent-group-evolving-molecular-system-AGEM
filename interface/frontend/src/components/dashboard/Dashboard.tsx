@@ -11,6 +11,7 @@ import { SystemVitals } from "./SystemVitals";
 import { MetricsPanel } from "./MetricsPanel";
 import { EventLog } from "./EventLog";
 import { QuickActions } from "./QuickActions";
+import { SubAgentStatusPanel } from "./SubAgentStatusPanel";
 import { GraphVisualization } from "../graph/GraphVisualization";
 import {
   Network,
@@ -50,6 +51,7 @@ export function Dashboard() {
       </div>
 
       <div className="dashboard__content">
+        <SubAgentStatusPanel />
         {activeTab === "graph" && <GraphVisualization />}
         {activeTab === "metrics" && <MetricsPanel />}
         {activeTab === "events" && <EventLog />}

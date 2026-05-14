@@ -53,8 +53,14 @@ export function ChatPanel() {
       chat.setStreamingContent("");
       chat.setIsStreaming(true);
 
-      // Collect all assistant text
+      // Collect all assistant text and structured metadata
       let assistantText = "";
+      const toolResults: Array<{
+        tool: string;
+        elapsed_ms: number;
+        output: string;
+      }> = [];
+      let finalUsage: any = null;
 
       const controller = streamChat(
         {
@@ -72,11 +78,18 @@ export function ChatPanel() {
             console.log("[thinking]", text);
           },
           onToolResult: (tool, elapsedMs, output) => {
-            // Render tool result as collapsible HTML section
-            const summary = `🔧 ${tool} (${elapsedMs}ms)`;
-            const block = `\n\n<details>\n<summary><strong>${summary}</strong></summary>\n\n\`\`\`\n${output}\n\`\`\`\n\n</details>\n\n`;
-            assistantText += block;
-            chat.appendStreamingContent(block);
+            toolResults.push({ tool, elapsed_ms: elapsedMs, output });
+            // For now, we still append a marker so the UI knows where tools happened
+            // but we'll render it properly in MessageBubble
+            const marker = `\n\n:::tool_result[${toolResults.length - 1}]:::\n\n`;
+            assistantText += marker;
+            chat.appendStreamingContent(marker);
+          },
+          onUsage: (usage) => {
+            finalUsage = usage;
+            if (usage.total_tokens) {
+              useAgemStore.getState().addUsageDataPoint(usage.total_tokens);
+            }
           },
           onAgemState: (data) => {
             chat.setAgemState(data as never);
@@ -98,8 +111,6 @@ export function ChatPanel() {
             }
           },
           onClearStream: () => {
-            // Only clear if the text looks like raw JSON (nemotron tool-call-as-text bug)
-            // Preserve legitimate narration between tool-calling turns
             const current = assistantText.trim();
             if (current.startsWith("{") || current.startsWith("[")) {
               assistantText = "";
@@ -109,7 +120,12 @@ export function ChatPanel() {
           onDone: (message) => {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");
-            // Use accumulated text if it's richer than the final turn's content
+            // Attach accumulated metadata
+            message.metadata = {
+              ...message.metadata,
+              tool_results: toolResults,
+              usage: finalUsage,
+            };
             if (assistantText.length > (message.content?.length ?? 0)) {
               message = { ...message, content: assistantText };
             }

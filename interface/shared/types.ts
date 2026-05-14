@@ -42,6 +42,16 @@ export interface MessageMetadata {
   model?: string;
   provider?: LLMProviderType;
   tokens_used?: number;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  tool_results?: Array<{
+    tool: string;
+    elapsed_ms: number;
+    output: string;
+  }>;
   thinking?: string;
   artifacts?: Artifact[];
   agem_state?: AgemStateSnapshot;

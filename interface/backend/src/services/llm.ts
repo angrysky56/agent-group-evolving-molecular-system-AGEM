@@ -31,6 +31,7 @@ export interface ChatCompletionOptions {
   apiKey?: string;
   onToken?: StreamCallback;
   onThinking?: ThinkingCallback;
+  onUsage?: (usage: ChatCompletionResult["usage"]) => void;
   signal?: AbortSignal;
 }
 
@@ -53,7 +54,11 @@ interface LLMProvider {
   readonly type: LLMProviderType;
   chat(options: ChatCompletionOptions): Promise<ChatCompletionResult>;
   listModels(apiKey?: string): Promise<ModelInfo[]>;
-  getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]>;
+  getEmbedding(
+    text: string,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[]>;
 }
 
 /* ─── Ollama Provider ─── */
@@ -175,6 +180,11 @@ class OllamaProvider implements LLMProvider {
           if (parsed.done) {
             promptTokens = parsed.prompt_eval_count ?? 0;
             completionTokens = parsed.eval_count ?? 0;
+            options.onUsage?.({
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: promptTokens + completionTokens,
+            });
           }
         } catch {
           // Skip malformed JSON lines
@@ -361,7 +371,11 @@ class OllamaProvider implements LLMProvider {
   }
 
   /** Get embeddings via Ollama /api/embeddings endpoint. */
-  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
+  async getEmbedding(
+    text: string,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[]> {
     let embModel =
       model ?? settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
     if (embModel.startsWith("ollama:")) embModel = embModel.substring(7);
@@ -540,6 +554,7 @@ class OpenRouterProvider implements LLMProvider {
               completion_tokens: parsed.usage.completion_tokens ?? 0,
               total_tokens: parsed.usage.total_tokens ?? 0,
             };
+            options.onUsage?.(usage);
           }
 
           // Detect truncation or completion
@@ -648,7 +663,11 @@ class OpenRouterProvider implements LLMProvider {
   }
 
   /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
-  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
+  async getEmbedding(
+    text: string,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[]> {
     let embModel =
       model ??
       settings.all.OPENROUTER_EMBEDDING_MODEL ??
@@ -732,6 +751,12 @@ class AnthropicProvider implements LLMProvider {
       const isTool = m.role === "tool" || !!m.tool_call_id;
 
       if (isTool) {
+        if (!m.tool_call_id) {
+          console.warn(
+            `[LLM] Skipping tool result for role 'tool' with missing tool_call_id in Anthropic payload`,
+          );
+          continue;
+        }
         pendingToolResults.push({
           type: "tool_result",
           tool_use_id: m.tool_call_id,
@@ -885,8 +910,17 @@ class AnthropicProvider implements LLMProvider {
             evt.type === "content_block_start" &&
             evt.content_block.type === "tool_use"
           ) {
+            // Robust ID capture: check content_block.id, then top-level id, then fallback
+            const toolId =
+              evt.content_block.id ||
+              evt.id ||
+              `call_${Math.random().toString(36).substring(2, 11)}`;
+            console.log(
+              `[LLM] Anthropic/MiniMax tool_use start: idx=${evt.index}, id=${toolId}, name=${evt.content_block.name}`,
+            );
+
             toolCalls[evt.index] = {
-              id: evt.content_block.id,
+              id: toolId,
               type: "function",
               function: {
                 name: evt.content_block.name,
@@ -897,12 +931,14 @@ class AnthropicProvider implements LLMProvider {
             evt.type === "content_block_delta" &&
             evt.delta.type === "input_json_delta"
           ) {
-            toolCalls[evt.index].function.arguments += evt.delta.partial_json;
+            if (toolCalls[evt.index]) {
+              toolCalls[evt.index].function.arguments += evt.delta.partial_json;
+            }
           } else if (evt.type === "message_delta") {
             usage.completion_tokens = evt.usage.output_tokens;
           }
-        } catch {
-          // Ignore incomplete/malformed chunks
+        } catch (err) {
+          console.error(`[LLM] Failed to parse Anthropic stream chunk: ${err}`);
         }
       }
     }
@@ -937,7 +973,11 @@ class AnthropicProvider implements LLMProvider {
     ];
   }
 
-  async getEmbedding(_text: string, _model?: string, _signal?: AbortSignal): Promise<number[]> {
+  async getEmbedding(
+    _text: string,
+    _model?: string,
+    _signal?: AbortSignal,
+  ): Promise<number[]> {
     console.warn("[LLM] Anthropic does not provide an embedding API.");
     return [];
   }
@@ -1185,7 +1225,11 @@ class MinimaxProvider implements LLMProvider {
     ];
   }
 
-  async getEmbedding(text: string, model?: string, signal?: AbortSignal): Promise<number[]> {
+  async getEmbedding(
+    text: string,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[]> {
     const apiKey = this.#getApiKey();
     let embModel = model ?? settings.all.MINIMAX_EMBEDDING_MODEL ?? "embo-01";
     if (embModel.startsWith("minimax:")) embModel = embModel.substring(8);

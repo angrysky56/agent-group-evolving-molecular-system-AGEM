@@ -74,6 +74,20 @@ export function useSystemEvents() {
           // Always add to event log
           store.addEvent(event);
 
+          // Track sub-agent lifecycle for status dashboard
+          if (event.type === "orch:vdw-agent-spawned" && event.data) {
+            store.spawnSubAgent({
+              id: (event.data.agentId as string) || `agent-${Date.now()}`,
+              gapId: (event.data.gapId as string) || "unknown",
+            });
+          } else if (event.type === "orch:vdw-agent-complete" && event.data) {
+            store.completeSubAgent(
+              (event.data.agentId as string) || "unknown",
+              (event.data.success as boolean) ?? true,
+              (event.data.stepsExecuted as number) ?? 0,
+            );
+          }
+
           // Route by event type
           if (event.type === "agem:state-update" && event.data?.state) {
             const state = event.data.state as any;

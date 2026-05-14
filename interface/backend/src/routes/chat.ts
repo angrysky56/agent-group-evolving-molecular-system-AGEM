@@ -688,6 +688,7 @@ ${skillContent}`,
     const maxTurns = 15;
     let lastResult: any = null;
     const requestStartTime = Date.now();
+    const allTurnToolResults: any[] = [];
     const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
 
     while (!isDone && turnCount < maxTurns) {
@@ -723,6 +724,9 @@ ${skillContent}`,
             res.write(
               `event: thinking\ndata: ${JSON.stringify({ content: t })}\n\n`,
             );
+        },
+        onUsage: (u) => {
+          res.write(`event: usage\ndata: ${JSON.stringify(u)}\n\n`);
         },
         signal: abortController.signal,
       });
@@ -824,6 +828,7 @@ ${skillContent}`,
 
           sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
           const toolStart = Date.now();
+          console.log(`[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`, JSON.stringify(args));
 
           try {
             if (fnName === "read_skill") {
@@ -1182,11 +1187,13 @@ ${skillContent}`,
 
           // Stream structured tool result to frontend
           // Frontend renders as collapsible accordion with server/tool label
-          sendEvent("tool_result", {
+          const toolResult = {
             tool: toolLabel,
             elapsed_ms: toolElapsed,
             output,
-          });
+          };
+          allTurnToolResults.push(toolResult);
+          sendEvent("tool_result", toolResult);
 
           // Format tool result per provider spec
           if (isOllama) {
@@ -1230,15 +1237,16 @@ ${skillContent}`,
     }
 
     // Attach metadata to the final assistant message
-    const finalAssistantMessage = historyMessages[historyMessages.length - 1];
-    if (finalAssistantMessage.role === "assistant") {
+    const finalAssistantMessage = [...historyMessages].reverse().find(m => m.role === "assistant");
+    if (finalAssistantMessage) {
       finalAssistantMessage.id = uuidv4();
       finalAssistantMessage.timestamp = Date.now();
       finalAssistantMessage.metadata = {
         model,
         provider: providerType,
-        tokens_used: lastResult?.usage?.total_tokens,
+        usage: lastResult?.usage,
         thinking: lastResult?.thinking,
+        tool_results: allTurnToolResults,
       };
     }
 
