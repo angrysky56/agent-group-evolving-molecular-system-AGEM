@@ -638,6 +638,11 @@ body {
   color: var(--text-primary);
 }
 
+.btn--active {
+  background: var(--bg-active) !important;
+  color: var(--accent-primary) !important;
+}
+
 /* ─── Settings Panel (Drawer) ─── */
 .settings-overlay {
   position: fixed;

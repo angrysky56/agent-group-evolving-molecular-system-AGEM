@@ -18,6 +18,7 @@ import "./index.css";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(true);
 
   // Connect to AGEM system events SSE on mount
   useSystemEvents();
@@ -35,24 +36,30 @@ export default function App() {
           overflow: "hidden",
         }}
       >
-        <Header onOpenSettings={() => setSettingsOpen(true)} />
+        <Header
+          onOpenSettings={() => setSettingsOpen(true)}
+          onToggleDashboard={() => setDashboardOpen(!dashboardOpen)}
+          dashboardOpen={dashboardOpen}
+        />
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
           <ErrorBoundary>
             <ChatPanel />
           </ErrorBoundary>
-          <div
-            style={{
-              flex: 1,
-              borderLeft: "1px solid var(--border-default)",
-              display: "flex",
-              flexDirection: "column",
-              background: "var(--surface-sunken)",
-            }}
-          >
-            <ErrorBoundary>
-              <Dashboard />
-            </ErrorBoundary>
-          </div>
+          {dashboardOpen && (
+            <div
+              style={{
+                width: "400px",
+                borderLeft: "1px solid var(--border-default)",
+                display: "flex",
+                flexDirection: "column",
+                background: "var(--surface-sunken)",
+              }}
+            >
+              <ErrorBoundary>
+                <Dashboard />
+              </ErrorBoundary>
+            </div>
+          )}
         </div>
       </div>
       <ToastNotifications />

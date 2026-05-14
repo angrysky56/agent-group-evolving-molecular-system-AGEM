@@ -99,6 +99,9 @@ export function MetricsPanel() {
   const state = useAgemStore((s) => s.state);
   const latest = socHistory[socHistory.length - 1];
 
+  const usageHistory = useAgemStore((s) => s.usageHistory);
+  const usageData = usageHistory.map((u) => u.total);
+
   const vneData = socHistory.map((p) => p.vne);
   const eeData = socHistory.map((p) => p.ee);
   const cdpData = socHistory.map((p) => p.cdp);
@@ -147,11 +150,11 @@ export function MetricsPanel() {
         <div className="metrics-panel__title">Telemetry</div>
         <div className="metrics-panel__grid">
           <Sparkline
-            data={useAgemStore((s) => s.usageHistory.map((u) => u.total))}
+            data={usageData}
             color="var(--accent-primary)"
             label="Tokens per Turn"
             currentValue={
-              useAgemStore((s) => s.usageHistory[s.usageHistory.length - 1]?.total.toString()) ?? "—"
+              usageHistory[usageHistory.length - 1]?.total.toString() ?? "—"
             }
           />
         </div>

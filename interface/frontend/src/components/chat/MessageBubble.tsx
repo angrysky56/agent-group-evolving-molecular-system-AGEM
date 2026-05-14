@@ -46,16 +46,23 @@ export function MessageBubble({ message }: Props) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p({ children }) {
-                // Check if this paragraph is a tool result marker
-                const content = String(children);
-                const match = /:::tool_result\[(\d+)\]:::/.exec(content);
+              p({ children, ...props }) {
+                // Check if this paragraph contains a tool result marker
+                // We handle both string children and array of children (e.g. if some parts were already parsed)
+                const text = Array.isArray(children)
+                  ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+                  : typeof children === "string"
+                    ? children
+                    : "";
+
+                const match = /:::tool_result\[(\d+)\]:::/.exec(text);
                 if (match) {
                   const idx = parseInt(match[1], 10);
                   const result = toolResults[idx];
                   if (result) {
                     return (
                       <ToolResultBubble
+                        key={`tool-${idx}`}
                         tool={result.tool}
                         elapsedMs={result.elapsed_ms}
                         output={result.output}
@@ -63,7 +70,7 @@ export function MessageBubble({ message }: Props) {
                     );
                   }
                 }
-                return <p>{children}</p>;
+                return <p {...props}>{children}</p>;
               },
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className ?? "");

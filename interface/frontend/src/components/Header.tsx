@@ -3,15 +3,21 @@
  */
 
 import { useEffect } from "react";
-import { Settings } from "lucide-react";
+import { Settings, LayoutPanelLeft } from "lucide-react";
 import { useSettingsStore } from "../stores/settings";
 import * as api from "../api";
 
 interface Props {
   onOpenSettings: () => void;
+  onToggleDashboard: () => void;
+  dashboardOpen: boolean;
 }
 
-export function Header({ onOpenSettings }: Props) {
+export function Header({
+  onOpenSettings,
+  onToggleDashboard,
+  dashboardOpen,
+}: Props) {
   const provider = useSettingsStore((s) => s.provider);
   const chatModel = useSettingsStore((s) => s.chatModel);
   const setChatModel = useSettingsStore((s) => s.setChatModel);
@@ -67,6 +73,14 @@ export function Header({ onOpenSettings }: Props) {
       </div>
 
       <div className="header__actions">
+        <button
+          className={`btn--icon ${dashboardOpen ? "btn--active" : ""}`}
+          onClick={onToggleDashboard}
+          aria-label="Toggle dashboard"
+          title="Toggle dashboard"
+        >
+          <LayoutPanelLeft size={18} />
+        </button>
         <button
           className="btn--icon"
           onClick={onOpenSettings}
