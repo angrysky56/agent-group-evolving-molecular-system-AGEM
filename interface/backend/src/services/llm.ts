@@ -1075,8 +1075,7 @@ class MinimaxProvider implements LLMProvider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(bodyObj),
         signal: options.signal,
