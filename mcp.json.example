@@ -97,7 +97,10 @@
         "hipai.mcp_server"
       ],
       "env": {
-        "PYTHONPATH": "src"
+        "PYTHONPATH": "src",
+        "HIPAI_CLIENT_ID": "agem",
+        "PYTHONUNBUFFERED": "1",
+        "HF_HUB_DISABLE_PROGRESS_BARS": "1"
       }
     },
     "sheaf-consistency-enforcer": {
