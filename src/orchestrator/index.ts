@@ -66,6 +66,11 @@ export type { WorkerInboundMessage, WorkerOutboundMessage } from "./llm_map.js";
 export { VdWAgentSpawner, VdWAgent } from "./VdWAgentSpawner.js";
 export type { VdWSpawnParams, VdWSpawnerConfig } from "./VdWAgentSpawner.js";
 
+// Phase 7: Meta-Orchestrator (Agentic Design Picker)
+export { MetaOrchestrator } from "./meta/MetaOrchestrator.js";
+export { AgenticDesignPicker } from "./meta/AgenticDesignPicker.js";
+export type { PickerConstraints } from "./meta/AgenticDesignPicker.js";
+
 // ---------------------------------------------------------------------------
 // Types and interfaces
 // ---------------------------------------------------------------------------
@@ -77,6 +82,8 @@ export type {
   TaskResult,
   AnyEvent,
   EventSubscriber,
+  TopologicalType,
+  TopologicalManifest,
 } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------

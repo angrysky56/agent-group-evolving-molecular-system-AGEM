@@ -24,7 +24,8 @@ import type {
   SystemEventType,
 } from "../../../shared/types.js";
 
-import { Orchestrator } from "#agem/orchestrator/index.js";
+import { Orchestrator, MetaOrchestrator } from "#agem/orchestrator/index.js";
+import { createProvider } from "./llm.js";
 import { computeCohomology } from "#agem/sheaf/CohomologyAnalyzer.js";
 import {
   GptTokenCounter,
@@ -49,6 +50,7 @@ import { settings } from "../config.js";
  */
 class AgemBridge {
   #orchestrator: Orchestrator;
+  #metaOrchestrator: MetaOrchestrator;
   #grep: LCMGrep;
   #eventCounter = 0;
   #activeSessionId = "default";
@@ -67,6 +69,9 @@ class AgemBridge {
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
+    const metaLlm = createProvider(config.provider);
+    this.#metaOrchestrator = new MetaOrchestrator(metaLlm, this.#orchestrator);
+
     const embType = settings.all.EMBEDDING_PROVIDER ?? config.provider;
     console.log(
       `[AgemBridge] Using ProviderEmbedder (real embeddings from ${embType})`,
@@ -416,7 +421,11 @@ class AgemBridge {
       `Starting cycle: ${userMessage.slice(0, 80)}`,
     );
 
-    await this.#orchestrator.runReasoning(userMessage, signal);
+    const metaResult = await this.#metaOrchestrator.execute(
+      userMessage,
+      { accuracyRequirement: "standard" },
+      signal,
+    );
 
     const state = this.getState();
     const latestSOC = this.#orchestrator.socTracker.getLatestMetrics();
@@ -430,6 +439,12 @@ class AgemBridge {
           `## Cycle ${state.iteration}`,
           "",
           `**Input**: ${userMessage.slice(0, 200)}`,
+          "",
+          "### Meta-Orchestrator Routing",
+          `- **Topology**: \`${metaResult.manifest.topologyType}\``,
+          `- **Reflection**: ${metaResult.manifest.reflectionEnabled ? "Enabled" : "Disabled"}`,
+          `- **Max Iterations**: ${metaResult.manifest.maxIterations}`,
+          `- **Rationale**: ${metaResult.manifest.rationale}`,
           "",
           "### Engine Status",
           `- Iteration: ${state.iteration}`,
