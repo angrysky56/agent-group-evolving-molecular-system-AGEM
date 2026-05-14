@@ -24,7 +24,11 @@ export const chatRouter = Router();
 // ─── MCP Tool Parameter Normalization ───
 // Models using call_mcp_tool frequently guess wrong parameter names.
 // This maps common mistakes to correct names for known MCP tools.
-function normalizeMcpToolArgs(server: string, tool: string, args: Record<string, unknown>): Record<string, unknown> {
+function normalizeMcpToolArgs(
+  server: string,
+  tool: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
   const s = server.replace(/^:/, ""); // strip leading colon if present
   const key = `${s}/${tool}`;
   const original = JSON.stringify(args);
@@ -35,14 +39,18 @@ function normalizeMcpToolArgs(server: string, tool: string, args: Record<string,
     case "hipai-montague/add_belief":
       if (!args.text && (args.belief || args.statement || args.content)) {
         args.text = args.belief ?? args.statement ?? args.content;
-        delete args.belief; delete args.statement; delete args.content;
+        delete args.belief;
+        delete args.statement;
+        delete args.content;
         normalized = true;
       }
       break;
     case "hipai-montague/evaluate_hypothesis":
       if (!args.hypothesis && (args.claim || args.text || args.statement)) {
         args.hypothesis = args.claim ?? args.text ?? args.statement;
-        delete args.claim; delete args.text; delete args.statement;
+        delete args.claim;
+        delete args.text;
+        delete args.statement;
         normalized = true;
       }
       break;
@@ -51,7 +59,9 @@ function normalizeMcpToolArgs(server: string, tool: string, args: Record<string,
     case "conscience-servitor/triage":
       if (!args.content && (args.text || args.prompt || args.message)) {
         args.content = args.text ?? args.prompt ?? args.message;
-        delete args.text; delete args.prompt; delete args.message;
+        delete args.text;
+        delete args.prompt;
+        delete args.message;
         normalized = true;
       }
       break;
@@ -66,7 +76,9 @@ function normalizeMcpToolArgs(server: string, tool: string, args: Record<string,
     case "aseke-compass/analyze_behavior":
       if (!args.description && (args.behavior || args.text || args.pattern)) {
         args.description = args.behavior ?? args.text ?? args.pattern;
-        delete args.behavior; delete args.text; delete args.pattern;
+        delete args.behavior;
+        delete args.text;
+        delete args.pattern;
         normalized = true;
       }
       break;
@@ -74,12 +86,23 @@ function normalizeMcpToolArgs(server: string, tool: string, args: Record<string,
     case "advanced-reasoning/advanced_reasoning":
       if (!args.thought && (args.text || args.reasoning || args.content)) {
         args.thought = args.text ?? args.reasoning ?? args.content;
-        delete args.text; delete args.reasoning; delete args.content;
+        delete args.text;
+        delete args.reasoning;
+        delete args.content;
         normalized = true;
       }
-      if (!args.thoughtNumber) { args.thoughtNumber = 1; normalized = true; }
-      if (!args.totalThoughts) { args.totalThoughts = 1; normalized = true; }
-      if (args.nextThoughtNeeded === undefined) { args.nextThoughtNeeded = false; normalized = true; }
+      if (!args.thoughtNumber) {
+        args.thoughtNumber = 1;
+        normalized = true;
+      }
+      if (!args.totalThoughts) {
+        args.totalThoughts = 1;
+        normalized = true;
+      }
+      if (args.nextThoughtNeeded === undefined) {
+        args.nextThoughtNeeded = false;
+        normalized = true;
+      }
       break;
 
     case "mcp-logic/prove":
@@ -92,7 +115,9 @@ function normalizeMcpToolArgs(server: string, tool: string, args: Record<string,
   }
 
   if (normalized) {
-    console.log(`[Chat] Normalized MCP args for ${key}: ${original} → ${JSON.stringify(args)}`);
+    console.log(
+      `[Chat] Normalized MCP args for ${key}: ${original} → ${JSON.stringify(args)}`,
+    );
   }
 
   return args;
@@ -172,7 +197,9 @@ chatRouter.post("/completions", async (req, res) => {
       else if (model.startsWith("minimax:")) resolvedProvider = "minimax";
     }
 
-    const isCacheSupported = ["anthropic", "minimax"].includes(resolvedProvider ?? "");
+    const isCacheSupported = ["anthropic", "minimax"].includes(
+      resolvedProvider ?? "",
+    );
 
     // Inject system prompt with all loaded skills
     const allSkills = Array.from(
@@ -201,7 +228,7 @@ CORE TOOLS (use directly):
 
 MCP SERVER ACCESS (use the 3 meta-tools to discover and call):
 1. list_mcp_servers → see available servers
-2. list_server_tools(server_name) → see tools on that server  
+2. list_server_tools(server_name) → see tools on that server
 3. call_mcp_tool(server_name, tool_name, arguments) → invoke any tool
 
 CRITICAL: When calling call_mcp_tool, pass tool arguments INSIDE the "arguments" object:
@@ -222,14 +249,22 @@ ${skillContent}`,
       cache_control: isCacheSupported ? { type: "ephemeral" } : undefined,
     } as any);
 
-    const messages = (session?.messages ?? [userMessage]);
-    messages.forEach((m, idx) => {
+    const messages = session?.messages ?? [userMessage];
+    messages.forEach((m: any, idx) => {
       const msg: any = {
         role: m.role,
         content: m.content,
       };
+      if (m.tool_calls) msg.tool_calls = m.tool_calls;
+      if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+      if (m.name) msg.name = m.name;
+
       // Mark the 2nd to last message for caching if history is significant
-      if (isCacheSupported && idx === messages.length - 2 && messages.length > 5) {
+      if (
+        isCacheSupported &&
+        idx === messages.length - 2 &&
+        messages.length > 5
+      ) {
         msg.cache_control = { type: "ephemeral" };
       }
       historyMessages.push(msg);
@@ -744,6 +779,14 @@ ${skillContent}`,
         // Otherwise keep the text — it's legitimate narration between tool calls
       }
 
+      // Ensure all tool calls have unique IDs for history reconstruction and UI tracking
+      if (result.tool_calls && result.tool_calls.length > 0) {
+        result.tool_calls = result.tool_calls.map((tc: any, i: number) => ({
+          ...tc,
+          id: tc.id || `call_${Date.now()}_${i}`,
+        }));
+      }
+
       // Append assistant response to history
       const assistantMessage: any = {
         role: "assistant",
@@ -752,21 +795,20 @@ ${skillContent}`,
       if (result.tool_calls) {
         if (isOllama) {
           // Ollama expects: tool_calls with type, function.index, and arguments as OBJECT
-          assistantMessage.tool_calls = result.tool_calls.map(
-            (tc: any, i: number) => ({
-              type: "function",
-              function: {
-                index: i,
-                name: tc.function.name,
-                arguments:
-                  typeof tc.function.arguments === "string"
-                    ? JSON.parse(tc.function.arguments || "{}")
-                    : tc.function.arguments,
-              },
-            }),
-          );
+          // We include the ID for cross-provider stability (e.g. switching to Anthropic)
+          assistantMessage.tool_calls = result.tool_calls.map((tc: any) => ({
+            id: tc.id,
+            type: "function",
+            function: {
+              name: tc.function.name,
+              arguments:
+                typeof tc.function.arguments === "string"
+                  ? JSON.parse(tc.function.arguments || "{}")
+                  : tc.function.arguments,
+            },
+          }));
         } else {
-          // OpenRouter: standard OpenAI format with arguments as STRING
+          // OpenRouter/MiniMax/Anthropic: standard OpenAI format with arguments as STRING
           assistantMessage.tool_calls = result.tool_calls.map((tc: any) => ({
             id: tc.id,
             type: tc.type ?? "function",
@@ -828,7 +870,10 @@ ${skillContent}`,
 
           sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
           const toolStart = Date.now();
-          console.log(`[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`, JSON.stringify(args));
+          console.log(
+            `[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`,
+            JSON.stringify(args),
+          );
 
           try {
             if (fnName === "read_skill") {
@@ -866,7 +911,11 @@ ${skillContent}`,
                 args.topic ??
                 args.message ??
                 message;
-              const runResult = await agemBridge.runCycle(prompt, sendEvent, abortController.signal);
+              const runResult = await agemBridge.runCycle(
+                prompt,
+                sendEvent,
+                abortController.signal,
+              );
               // Trim state for LLM context — strip word-level nodes/edges, keep concept graph
               const st = runResult.state;
               const trimmedState = {
@@ -876,15 +925,22 @@ ${skillContent}`,
                 sheaf_energy: st.sheaf_energy,
                 gap_count: st.gap_count,
                 agent_count: st.agent_count,
-                graph_summary: st.graph_summary ? {
-                  node_count: st.graph_summary.node_count,
-                  edge_count: st.graph_summary.edge_count,
-                  concept_graph: st.graph_summary.concept_graph
-                    ? { text_summary: st.graph_summary.concept_graph.text_summary,
-                        modularity: st.graph_summary.concept_graph.modularity,
-                        communities: st.graph_summary.concept_graph.communities }
-                    : undefined,
-                } : undefined,
+                graph_summary: st.graph_summary
+                  ? {
+                      node_count: st.graph_summary.node_count,
+                      edge_count: st.graph_summary.edge_count,
+                      concept_graph: st.graph_summary.concept_graph
+                        ? {
+                            text_summary:
+                              st.graph_summary.concept_graph.text_summary,
+                            modularity:
+                              st.graph_summary.concept_graph.modularity,
+                            communities:
+                              st.graph_summary.concept_graph.communities,
+                          }
+                        : undefined,
+                    }
+                  : undefined,
                 soc: st.soc,
                 evolution: st.evolution,
               };
@@ -1108,7 +1164,9 @@ ${skillContent}`,
               output = JSON.stringify(serverList, null, 2);
             } else if (fnName === "list_server_tools") {
               // Meta-tool: list tools on a specific server
-              const sName = (args.server_name ?? args.server ?? "").toString().replace(/^:/, "");
+              const sName = (args.server_name ?? args.server ?? "")
+                .toString()
+                .replace(/^:/, "");
               try {
                 const serverTools = await mcpManager.getServerTools(sName);
                 output = JSON.stringify(serverTools, null, 2);
@@ -1118,16 +1176,26 @@ ${skillContent}`,
             } else if (fnName === "call_mcp_tool") {
               // Meta-tool: call any tool on any server
               // Strip leading colon — models sometimes send ":server-name" instead of "server-name"
-              const sName = (args.server_name ?? args.server ?? "").toString().replace(/^:/, "");
+              const sName = (args.server_name ?? args.server ?? "")
+                .toString()
+                .replace(/^:/, "");
               const tName = (args.tool_name ?? args.tool ?? "").toString();
               let tArgs = args.arguments ?? args.args ?? {};
 
               // If tArgs is empty but there are extra keys in args beyond the
               // meta-tool params, the model put tool args at the top level.
               // Extract them into tArgs.
-              if (typeof tArgs === "object" && Object.keys(tArgs as object).length === 0) {
+              if (
+                typeof tArgs === "object" &&
+                Object.keys(tArgs as object).length === 0
+              ) {
                 const metaKeys = new Set([
-                  "server_name", "server", "tool_name", "tool", "arguments", "args",
+                  "server_name",
+                  "server",
+                  "tool_name",
+                  "tool",
+                  "arguments",
+                  "args",
                 ]);
                 const extracted: Record<string, unknown> = {};
                 for (const [k, v] of Object.entries(args)) {
@@ -1137,7 +1205,9 @@ ${skillContent}`,
                 }
                 if (Object.keys(extracted).length > 0) {
                   tArgs = extracted;
-                  console.log(`[Chat] Extracted top-level MCP args for ${sName}/${tName}: ${JSON.stringify(extracted)}`);
+                  console.log(
+                    `[Chat] Extracted top-level MCP args for ${sName}/${tName}: ${JSON.stringify(extracted)}`,
+                  );
                 }
               }
 
@@ -1148,7 +1218,9 @@ ${skillContent}`,
                 } catch {
                   // Might be a plain text value — wrap it based on known tool signatures
                   tArgs = { text: tArgs };
-                  console.log(`[Chat] Wrapped string MCP arg as {text: ...} for ${sName}/${tName}`);
+                  console.log(
+                    `[Chat] Wrapped string MCP arg as {text: ...} for ${sName}/${tName}`,
+                  );
                 }
               }
 
@@ -1198,13 +1270,15 @@ ${skillContent}`,
           // Format tool result per provider spec
           if (isOllama) {
             // Ollama: {role: "tool", tool_name: "...", content: "..."}
+            // We also include tool_call_id for cross-provider session stability (e.g. switching to Anthropic)
             historyMessages.push({
               role: "tool",
+              tool_call_id: tc.id,
               tool_name: fnName,
               content: output,
             });
           } else {
-            // OpenRouter/Anthropic: {role: "tool", tool_call_id: "...", content: "..."}
+            // OpenRouter/Anthropic/MiniMax: {role: "tool", tool_call_id: "...", content: "..."}
             historyMessages.push({
               role: "tool",
               tool_call_id: tc.id,
@@ -1237,7 +1311,9 @@ ${skillContent}`,
     }
 
     // Attach metadata to the final assistant message
-    const finalAssistantMessage = [...historyMessages].reverse().find(m => m.role === "assistant");
+    const finalAssistantMessage = [...historyMessages]
+      .reverse()
+      .find((m) => m.role === "assistant");
     if (finalAssistantMessage) {
       finalAssistantMessage.id = uuidv4();
       finalAssistantMessage.timestamp = Date.now();

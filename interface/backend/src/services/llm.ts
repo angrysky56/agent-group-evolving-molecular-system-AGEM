@@ -194,7 +194,7 @@ class OllamaProvider implements LLMProvider {
 
     // Fallback: if model output tool calls as text, extract them
     if (!toolCalls && options.tools && options.tools.length > 0) {
-      const extracted = this.#extractToolCallsFromContent(fullContent);
+      const extracted = OllamaProvider.extractToolCallsFromContent(fullContent);
       if (extracted) {
         console.log(
           `[LLM] Extracted ${extracted.length} tool call(s) from content text for model '${model}'`,
@@ -217,10 +217,10 @@ class OllamaProvider implements LLMProvider {
   }
 
   /**
-   * Some Ollama models accept tools but output calls as JSON text
+   * Some models accept tools but output calls as JSON/XML text
    * instead of using the structured tool_calls field. Detect and extract.
    */
-  #extractToolCallsFromContent(content: string): any[] | undefined {
+  static extractToolCallsFromContent(content: string): any[] | undefined {
     if (!content) return undefined;
     const trimmed = content.trim();
 
@@ -236,68 +236,85 @@ class OllamaProvider implements LLMProvider {
     }
 
     // Only try parsing if it looks like JSON
-    if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) return undefined;
+    if (jsonStr.startsWith("{") || jsonStr.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(jsonStr);
 
-    try {
-      const parsed = JSON.parse(jsonStr);
-
-      // Pattern 1: nemotron style
-      if (
-        parsed.tool_name &&
-        (parsed.input || parsed.parameters || parsed.arguments)
-      ) {
-        return [
-          {
-            id: `call_${Date.now()}`,
-            type: "function",
-            function: {
-              name: parsed.tool_name,
-              arguments: JSON.stringify(
-                parsed.input ?? parsed.parameters ?? parsed.arguments ?? {},
-              ),
+        // Pattern 1: nemotron style
+        if (
+          parsed.tool_name &&
+          (parsed.input || parsed.parameters || parsed.arguments)
+        ) {
+          return [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: parsed.tool_name,
+                arguments: JSON.stringify(
+                  parsed.input ?? parsed.parameters ?? parsed.arguments ?? {},
+                ),
+              },
             },
+          ];
+        }
+
+        // Pattern 2: OpenAI-ish style
+        if (parsed.name && (parsed.arguments || parsed.parameters)) {
+          return [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: parsed.name,
+                arguments: JSON.stringify(
+                  parsed.arguments ?? parsed.parameters ?? {},
+                ),
+              },
+            },
+          ];
+        }
+
+        // Pattern 3: Array of tool calls
+        if (Array.isArray(parsed)) {
+          const calls = parsed
+            .filter((t: any) => t.tool_name || t.name || t.function?.name)
+            .map((t: any, i: number) => ({
+              id: `call_${Date.now()}_${i}`,
+              type: "function",
+              function: {
+                name: t.tool_name ?? t.name ?? t.function?.name,
+                arguments: JSON.stringify(
+                  t.input ??
+                    t.arguments ??
+                    t.parameters ??
+                    t.function?.arguments ??
+                    {},
+                ),
+              },
+            }));
+          if (calls.length > 0) return calls;
+        }
+      } catch {
+        // Not valid JSON — proceed to check for XML
+      }
+    }
+
+    // Pattern 4: MiniMax XML style <minimax:tool_call name="..." id="...">...</minimax:tool_call>
+    const xmlMatch = trimmed.match(
+      /<minimax:tool_call\s+name="([^"]+)"\s*(?:id="([^"]+)")?>(.*?)<\/minimax:tool_call>/s,
+    );
+    if (xmlMatch) {
+      return [
+        {
+          id: xmlMatch[2] || `call_${Date.now()}`,
+          type: "function",
+          function: {
+            name: xmlMatch[1],
+            arguments: xmlMatch[3].trim(),
           },
-        ];
-      }
-
-      // Pattern 2: OpenAI-ish style
-      if (parsed.name && (parsed.arguments || parsed.parameters)) {
-        return [
-          {
-            id: `call_${Date.now()}`,
-            type: "function",
-            function: {
-              name: parsed.name,
-              arguments: JSON.stringify(
-                parsed.arguments ?? parsed.parameters ?? {},
-              ),
-            },
-          },
-        ];
-      }
-
-      // Pattern 3: Array of tool calls
-      if (Array.isArray(parsed)) {
-        const calls = parsed
-          .filter((t: any) => t.tool_name || t.name || t.function?.name)
-          .map((t: any, i: number) => ({
-            id: `call_${Date.now()}_${i}`,
-            type: "function",
-            function: {
-              name: t.tool_name ?? t.name ?? t.function?.name,
-              arguments: JSON.stringify(
-                t.input ??
-                  t.arguments ??
-                  t.parameters ??
-                  t.function?.arguments ??
-                  {},
-              ),
-            },
-          }));
-        if (calls.length > 0) return calls;
-      }
-    } catch {
-      // Not valid JSON — that's fine, it's just text
+        },
+      ];
     }
 
     return undefined;
@@ -465,6 +482,7 @@ class OpenRouterProvider implements LLMProvider {
     const READ_TIMEOUT_MS = 90_000;
     let lastDataTime = Date.now();
 
+    let buffer = "";
     while (true) {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -491,9 +509,12 @@ class OpenRouterProvider implements LLMProvider {
       lastDataTime = Date.now();
 
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+      buffer += chunk;
+      const rawLines = buffer.split("\n");
+      buffer = rawLines.pop() || ""; // Save partial line for next chunk
 
-      for (const line of lines) {
+      for (const line of rawLines) {
+        if (!line.startsWith("data: ")) continue;
         const dataStr = line.slice(6).trim();
         if (dataStr === "[DONE]") continue;
 
@@ -753,7 +774,7 @@ class AnthropicProvider implements LLMProvider {
       if (isTool) {
         if (!m.tool_call_id) {
           console.warn(
-            `[LLM] Skipping tool result for role 'tool' with missing tool_call_id in Anthropic payload`,
+            `[LLM] Skipping tool result for role 'tool' with missing tool_call_id (Name: ${m.name || "unknown"}, Content: ${typeof m.content === "string" ? m.content.slice(0, 50) : "[object]"}) in Anthropic payload`,
           );
           continue;
         }
@@ -781,14 +802,36 @@ class AnthropicProvider implements LLMProvider {
         }
         if (m.tool_calls) {
           for (const tc of m.tool_calls) {
+            let input = {};
+            if (typeof tc.function.arguments === "string") {
+              try {
+                input = JSON.parse(tc.function.arguments || "{}");
+              } catch (e) {
+                console.warn(
+                  `[LLM] Failed to parse tool arguments in history for ${tc.function.name}, attempting repair...`,
+                );
+                // Attempt simple repair: find last closing brace
+                const raw = tc.function.arguments || "{}";
+                const lastBrace = raw.lastIndexOf("}");
+                if (lastBrace > 0) {
+                  try {
+                    input = JSON.parse(raw.substring(0, lastBrace + 1));
+                  } catch {
+                    input = {};
+                  }
+                } else {
+                  input = {};
+                }
+              }
+            } else {
+              input = tc.function.arguments || {};
+            }
+
             content.push({
               type: "tool_use",
               id: tc.id,
               name: tc.function.name,
-              input:
-                typeof tc.function.arguments === "string"
-                  ? JSON.parse(tc.function.arguments || "{}")
-                  : tc.function.arguments || {},
+              input,
             });
           }
         }
@@ -881,14 +924,19 @@ class AnthropicProvider implements LLMProvider {
       cache_read_input_tokens: 0,
     };
 
+    let buffer = "";
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // Save partial line for next chunk
 
-      for (const line of lines) {
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith("data: ")) continue;
         const dataStr = line.slice(6).trim();
         if (dataStr === "[DONE]") continue;
 
@@ -945,6 +993,19 @@ class AnthropicProvider implements LLMProvider {
 
     usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
     let finalToolCalls = toolCalls.filter(Boolean);
+
+    if (finalToolCalls.length === 0 && fullContent.trim()) {
+      // Fallback for models that output XML/JSON in text delta (like MiniMax M2.5)
+      const extracted = OllamaProvider.extractToolCallsFromContent(fullContent);
+      if (extracted) {
+        console.log(
+          `[LLM] Extracted ${extracted.length} tool call(s) from Anthropic text stream for model '${options.model}'`,
+        );
+        finalToolCalls = extracted;
+        fullContent = ""; // Clear narration if it was purely a tool call wrapper
+      }
+    }
+
     if (finalToolCalls.length === 0) finalToolCalls = undefined as any;
 
     return {
@@ -1077,14 +1138,18 @@ class MinimaxProvider implements LLMProvider {
       cache_read_input_tokens: 0,
     };
 
+    let buffer = "";
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+      buffer += chunk;
+      const rawLines = buffer.split("\n");
+      buffer = rawLines.pop() || ""; // Save partial line for next chunk
 
-      for (const line of lines) {
+      for (const line of rawLines) {
+        if (!line.startsWith("data: ")) continue;
         const dataStr = line.slice(6).trim();
         if (dataStr === "[DONE]") continue;
 
@@ -1109,8 +1174,8 @@ class MinimaxProvider implements LLMProvider {
               const idx = call.index ?? 0;
               if (!toolCallsMap[idx])
                 toolCallsMap[idx] = {
-                  id: call.id,
-                  type: call.type,
+                  id: call.id || `call_${Date.now()}_${idx}`,
+                  type: call.type ?? "function",
                   function: { name: "", arguments: "" },
                 };
               if (call.id) toolCallsMap[idx].id = call.id;

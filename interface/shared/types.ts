@@ -26,7 +26,7 @@ export interface ModelInfo {
 /* ─── Chat Types ─── */
 
 /** Role of a message participant. */
-export type MessageRole = "user" | "assistant" | "system";
+export type MessageRole = "user" | "assistant" | "system" | "tool";
 
 /** A single chat message. */
 export interface ChatMessage {
@@ -34,6 +34,9 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   timestamp: number;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
   metadata?: MessageMetadata;
 }
 
