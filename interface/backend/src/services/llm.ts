@@ -20,10 +20,11 @@ export type ThinkingCallback = (chunk: string) => void;
 export interface ChatCompletionOptions {
   messages: Array<{
     role: string;
-    content: string;
+    content: string | any[];
     tool_calls?: any[];
     tool_call_id?: string;
     name?: string;
+    cache_control?: { type: "ephemeral" };
   }>;
   model?: string;
   tools?: any[];
@@ -42,6 +43,8 @@ export interface ChatCompletionResult {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
   };
 }
 
@@ -84,8 +87,11 @@ class OllamaProvider implements LLMProvider {
     };
 
     const initialBody = buildBody(true);
-    const fs = await import('fs');
-    fs.writeFileSync('/tmp/ollama_req.json', JSON.stringify(initialBody, null, 2));
+    const fs = await import("fs");
+    fs.writeFileSync(
+      "/tmp/ollama_req.json",
+      JSON.stringify(initialBody, null, 2),
+    );
 
     let response = await fetch(`${this.#baseUrl}/api/chat`, {
       method: "POST",
@@ -180,7 +186,9 @@ class OllamaProvider implements LLMProvider {
     if (!toolCalls && options.tools && options.tools.length > 0) {
       const extracted = this.#extractToolCallsFromContent(fullContent);
       if (extracted) {
-        console.log(`[LLM] Extracted ${extracted.length} tool call(s) from content text for model '${model}'`);
+        console.log(
+          `[LLM] Extracted ${extracted.length} tool call(s) from content text for model '${model}'`,
+        );
         toolCalls = extracted;
         // Clear content since it was actually a tool call, not a response
         fullContent = "";
@@ -224,27 +232,38 @@ class OllamaProvider implements LLMProvider {
       const parsed = JSON.parse(jsonStr);
 
       // Pattern 1: nemotron style
-      if (parsed.tool_name && (parsed.input || parsed.parameters || parsed.arguments)) {
-        return [{
-          id: `call_${Date.now()}`,
-          type: "function",
-          function: {
-            name: parsed.tool_name,
-            arguments: JSON.stringify(parsed.input ?? parsed.parameters ?? parsed.arguments ?? {}),
+      if (
+        parsed.tool_name &&
+        (parsed.input || parsed.parameters || parsed.arguments)
+      ) {
+        return [
+          {
+            id: `call_${Date.now()}`,
+            type: "function",
+            function: {
+              name: parsed.tool_name,
+              arguments: JSON.stringify(
+                parsed.input ?? parsed.parameters ?? parsed.arguments ?? {},
+              ),
+            },
           },
-        }];
+        ];
       }
 
       // Pattern 2: OpenAI-ish style
       if (parsed.name && (parsed.arguments || parsed.parameters)) {
-        return [{
-          id: `call_${Date.now()}`,
-          type: "function",
-          function: {
-            name: parsed.name,
-            arguments: JSON.stringify(parsed.arguments ?? parsed.parameters ?? {}),
+        return [
+          {
+            id: `call_${Date.now()}`,
+            type: "function",
+            function: {
+              name: parsed.name,
+              arguments: JSON.stringify(
+                parsed.arguments ?? parsed.parameters ?? {},
+              ),
+            },
           },
-        }];
+        ];
       }
 
       // Pattern 3: Array of tool calls
@@ -257,7 +276,11 @@ class OllamaProvider implements LLMProvider {
             function: {
               name: t.tool_name ?? t.name ?? t.function?.name,
               arguments: JSON.stringify(
-                t.input ?? t.arguments ?? t.parameters ?? t.function?.arguments ?? {},
+                t.input ??
+                  t.arguments ??
+                  t.parameters ??
+                  t.function?.arguments ??
+                  {},
               ),
             },
           }));
@@ -339,7 +362,8 @@ class OllamaProvider implements LLMProvider {
 
   /** Get embeddings via Ollama /api/embeddings endpoint. */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    let embModel = model ?? settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
+    let embModel =
+      model ?? settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
     if (embModel.startsWith("ollama:")) embModel = embModel.substring(7);
     try {
       const response = await fetch(`${this.#baseUrl}/api/embeddings`, {
@@ -430,14 +454,18 @@ class OpenRouterProvider implements LLMProvider {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const readPromise = reader.read();
-      const timeoutPromise = new Promise<{ value: undefined; done: true }>((resolve) => {
-        timeoutId = setTimeout(() => {
-          const silenceMs = Date.now() - lastDataTime;
-          console.warn(`[LLM] OpenRouter read timeout after ${Math.round(silenceMs / 1000)}s silence — aborting stream`);
-          reader.cancel().catch(() => {});
-          resolve({ value: undefined, done: true });
-        }, READ_TIMEOUT_MS);
-      });
+      const timeoutPromise = new Promise<{ value: undefined; done: true }>(
+        (resolve) => {
+          timeoutId = setTimeout(() => {
+            const silenceMs = Date.now() - lastDataTime;
+            console.warn(
+              `[LLM] OpenRouter read timeout after ${Math.round(silenceMs / 1000)}s silence — aborting stream`,
+            );
+            reader.cancel().catch(() => {});
+            resolve({ value: undefined, done: true });
+          }, READ_TIMEOUT_MS);
+        },
+      );
 
       const { value, done } = await Promise.race([readPromise, timeoutPromise]);
 
@@ -462,6 +490,7 @@ class OpenRouterProvider implements LLMProvider {
                 reasoning?: string;
                 tool_calls?: any[];
               };
+              finish_reason?: string;
             }>;
             usage?: any;
             error?: { message?: string; code?: number; type?: string };
@@ -470,7 +499,9 @@ class OpenRouterProvider implements LLMProvider {
           // Handle OpenRouter error responses embedded in stream
           if (parsed.error) {
             const errMsg = parsed.error.message ?? "Unknown stream error";
-            console.error(`[LLM] OpenRouter stream error: ${errMsg} (code: ${parsed.error.code})`);
+            console.error(
+              `[LLM] OpenRouter stream error: ${errMsg} (code: ${parsed.error.code})`,
+            );
             if (errMsg.includes("rate limit") || parsed.error.code === 429) {
               throw new Error(`OpenRouter rate limited: ${errMsg}`);
             }
@@ -513,7 +544,9 @@ class OpenRouterProvider implements LLMProvider {
           // Detect truncation or completion
           const finishReason = parsed.choices?.[0]?.finish_reason;
           if (finishReason === "length") {
-            console.warn(`[LLM] OpenRouter response truncated (finish_reason=length). Increase max_tokens.`);
+            console.warn(
+              `[LLM] OpenRouter response truncated (finish_reason=length). Increase max_tokens.`,
+            );
           }
         } catch {
           // Skip malformed data
@@ -580,7 +613,12 @@ class OpenRouterProvider implements LLMProvider {
         });
         if (embResponse.ok) {
           const embData = (await embResponse.json()) as {
-            data?: Array<{ id: string; name?: string; context_length?: number; pricing?: any }>;
+            data?: Array<{
+              id: string;
+              name?: string;
+              context_length?: number;
+              pricing?: any;
+            }>;
           };
           for (const em of embData.data ?? []) {
             // Skip if already in chat models list
@@ -610,7 +648,10 @@ class OpenRouterProvider implements LLMProvider {
 
   /** Get embeddings via OpenRouter /embeddings endpoint (OpenAI format). */
   async getEmbedding(text: string, model?: string): Promise<number[]> {
-    let embModel = model ?? settings.all.OPENROUTER_EMBEDDING_MODEL ?? "google/gemini-embedding-001";
+    let embModel =
+      model ??
+      settings.all.OPENROUTER_EMBEDDING_MODEL ??
+      "google/gemini-embedding-001";
     if (embModel.startsWith("openrouter:")) embModel = embModel.substring(11);
     const key = this.#getApiKey();
     try {
@@ -653,27 +694,36 @@ class AnthropicProvider implements LLMProvider {
     return headerKey ?? settings.all.ANTHROPIC_API_KEY;
   }
 
-  async chat(
-    options: ChatCompletionOptions & { apiKey?: string },
-  ): Promise<ChatCompletionResult> {
-    const config = settings.getLLMConfig();
-    let model = options.model ?? config.model;
-    if (model.startsWith("anthropic:")) model = model.substring(10);
-    const apiKey = this.#getApiKey(options.apiKey);
-
-    // Filter out system messages since Anthropic puts it in a top-level `system` field
-    const systemMessage = options.messages.find((m) => m.role === "system");
+  /** Convert common ChatCompletionOptions to Anthropic's payload format. */
+  static toAnthropicPayload(options: ChatCompletionOptions, model: string) {
+    // Filter out system messages
+    const systemMessages = options.messages.filter((m) => m.role === "system");
     const otherMessages = options.messages.filter((m) => m.role !== "system");
 
-    // Convert OpenAI style tool calls to Anthropic's style
+    // Convert system messages to content blocks (to support caching)
+    const system =
+      systemMessages.length > 0
+        ? systemMessages
+            .map((m) => {
+              if (typeof m.content === "string") {
+                const block: any = { type: "text", text: m.content };
+                if (m.cache_control) block.cache_control = m.cache_control;
+                return block;
+              }
+              return m.content;
+            })
+            .flat()
+        : undefined;
+
+    // Convert tools
     const tools = options.tools?.map((t) => ({
       name: t.function.name,
       description: t.function.description,
       input_schema: t.function.parameters,
     }));
 
-    // Convert tool format in messages
-    const anthropicMessages = otherMessages.map((m) => {
+    // Convert other messages
+    const messages = otherMessages.map((m) => {
       if (m.role === "assistant" && m.tool_calls) {
         return {
           role: "assistant",
@@ -699,26 +749,44 @@ class AnthropicProvider implements LLMProvider {
           ],
         };
       }
+
+      let content = m.content;
+      if (typeof content === "string" && m.cache_control) {
+        content = [
+          { type: "text", text: content, cache_control: m.cache_control },
+        ];
+      }
+
       return {
         role: m.role,
-        content: m.content,
+        content,
       };
     });
 
-    const bodyObj: any = {
+    return {
       model,
-      messages: anthropicMessages,
+      messages,
+      system,
+      tools: tools && tools.length > 0 ? tools : undefined,
       max_tokens: 8192,
       stream: true,
     };
-    if (systemMessage) {
-      bodyObj.system = systemMessage.content;
-    }
-    if (tools && tools.length > 0) {
-      bodyObj.tools = tools;
-    }
+  }
 
-    const response = await fetch(`${this.#baseUrl}/messages`, {
+  async chat(
+    options: ChatCompletionOptions & { apiKey?: string },
+  ): Promise<ChatCompletionResult> {
+    const config = settings.getLLMConfig();
+    let model = options.model ?? config.model;
+    if (model.startsWith("anthropic:")) model = model.substring(10);
+    const apiKey = this.#getApiKey(options.apiKey);
+
+    const bodyObj = AnthropicProvider.toAnthropicPayload(options, model);
+    const url = this.#baseUrl.endsWith("/v1")
+      ? `${this.#baseUrl}/messages`
+      : `${this.#baseUrl}/v1/messages`;
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -736,6 +804,14 @@ class AnthropicProvider implements LLMProvider {
       );
     }
 
+    return AnthropicProvider.handleAnthropicStream(response, options);
+  }
+
+  /** Static helper to handle Anthropic's SSE stream format. */
+  static async handleAnthropicStream(
+    response: Response,
+    options: ChatCompletionOptions,
+  ): Promise<ChatCompletionResult> {
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error("Anthropic: No response body reader available");
@@ -744,7 +820,13 @@ class AnthropicProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let fullContent = "";
     let toolCalls: any[] = [];
-    let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    let usage = {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    };
 
     while (true) {
       const { value, done } = await reader.read();
@@ -761,6 +843,10 @@ class AnthropicProvider implements LLMProvider {
           const evt = JSON.parse(dataStr);
           if (evt.type === "message_start") {
             usage.prompt_tokens = evt.message.usage.input_tokens;
+            usage.cache_creation_input_tokens =
+              evt.message.usage.cache_creation_input_tokens || 0;
+            usage.cache_read_input_tokens =
+              evt.message.usage.cache_read_input_tokens || 0;
           } else if (
             evt.type === "content_block_delta" &&
             evt.delta.type === "text_delta"
@@ -771,7 +857,6 @@ class AnthropicProvider implements LLMProvider {
             evt.type === "content_block_start" &&
             evt.content_block.type === "tool_use"
           ) {
-            // Anthropic tool starts here...
             toolCalls[evt.index] = {
               id: evt.content_block.id,
               type: "function",
@@ -806,8 +891,6 @@ class AnthropicProvider implements LLMProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    // Anthropic API does not support dynamically listing models right now AFAIK.
-    // Hardcode some modern models.
     return [
       {
         id: "claude-3-5-sonnet-20241022",
@@ -826,10 +909,289 @@ class AnthropicProvider implements LLMProvider {
     ];
   }
 
-  /** Anthropic doesn't have a public embedding API — return empty. */
   async getEmbedding(_text: string, _model?: string): Promise<number[]> {
     console.warn("[LLM] Anthropic does not provide an embedding API.");
     return [];
+  }
+}
+
+/* ─── MiniMax Provider ─── */
+
+class MinimaxProvider implements LLMProvider {
+  readonly type: LLMProviderType = "minimax";
+  #baseUrl: string;
+
+  constructor(baseUrl: string) {
+    this.#baseUrl = baseUrl.replace(/\/$/, "");
+  }
+
+  /** Get the API key, preferring runtime header over provider-specific config. */
+  #getApiKey(headerKey?: string): string {
+    return headerKey ?? settings.all.MINIMAX_API_KEY;
+  }
+
+  async chat(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
+    const apiKey = this.#getApiKey(options.apiKey);
+    let model = options.model ?? settings.all.MINIMAX_MODEL;
+    if (model.startsWith("minimax:")) model = model.substring(8);
+
+    // If using Anthropic-compatible endpoint
+    if (this.#baseUrl.includes("anthropic")) {
+      const bodyObj = AnthropicProvider.toAnthropicPayload(options, model);
+      const url = this.#baseUrl.endsWith("/v1")
+        ? `${this.#baseUrl}/messages`
+        : `${this.#baseUrl}/v1/messages`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(bodyObj),
+        signal: options.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(
+          `MiniMax (Anthropic) chat failed: ${response.status} — ${errorText}`,
+        );
+      }
+
+      return AnthropicProvider.handleAnthropicStream(response, options);
+    }
+
+    // Default OpenAI-compatible endpoint
+    const bodyObj: any = {
+      model,
+      messages: options.messages,
+      stream: true,
+    };
+    if (options.tools && options.tools.length > 0) {
+      bodyObj.tools = options.tools;
+    }
+
+    const groupId = settings.all.MINIMAX_GROUP_ID;
+    const url = groupId
+      ? `${this.#baseUrl}/chat/completions?GroupId=${groupId}`
+      : `${this.#baseUrl}/chat/completions`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(bodyObj),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(`MiniMax chat failed: ${response.status} — ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("MiniMax: No response body reader available");
+    }
+
+    const decoder = new TextDecoder();
+    let fullContent = "";
+    let toolCallsMap: Record<number, any> = {};
+    let usage = {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+
+      for (const line of lines) {
+        const dataStr = line.slice(6).trim();
+        if (dataStr === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(dataStr) as {
+            choices?: Array<{
+              delta?: {
+                content?: string;
+                tool_calls?: any[];
+              };
+            }>;
+            usage?: any;
+          };
+
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.content) {
+            fullContent += delta.content;
+            options.onToken?.(delta.content);
+          }
+          if (delta?.tool_calls) {
+            for (const call of delta.tool_calls) {
+              const idx = call.index ?? 0;
+              if (!toolCallsMap[idx])
+                toolCallsMap[idx] = {
+                  id: call.id,
+                  type: call.type,
+                  function: { name: "", arguments: "" },
+                };
+              if (call.id) toolCallsMap[idx].id = call.id;
+              if (call.function?.name)
+                toolCallsMap[idx].function.name += call.function.name;
+              if (call.function?.arguments)
+                toolCallsMap[idx].function.arguments += call.function.arguments;
+            }
+          }
+          if (parsed.usage) {
+            usage.prompt_tokens = parsed.usage.prompt_tokens ?? 0;
+            usage.completion_tokens = parsed.usage.completion_tokens ?? 0;
+            usage.total_tokens = parsed.usage.total_tokens ?? 0;
+            if (parsed.usage.prompt_tokens_details?.cached_tokens) {
+              usage.cache_read_input_tokens =
+                parsed.usage.prompt_tokens_details.cached_tokens;
+            }
+          }
+        } catch {
+          // Skip malformed data
+        }
+      }
+    }
+
+    let finalToolCalls = Object.values(toolCallsMap);
+    if (finalToolCalls.length === 0) finalToolCalls = undefined as any;
+
+    return {
+      content: fullContent,
+      tool_calls: finalToolCalls,
+      usage,
+    };
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    const apiKey = this.#getApiKey();
+    try {
+      // 1. Try Anthropic-compatible models list if base URL suggests it
+      if (this.#baseUrl.includes("anthropic")) {
+        const response = await fetch(`${this.#baseUrl}/v1/models`, {
+          headers: { "x-api-key": apiKey },
+        });
+        if (response.ok) {
+          const data = (await response.json()) as any;
+          if (data.data && Array.isArray(data.data)) {
+            return data.data.map((m: any) => ({
+              id: m.id,
+              name: m.display_name ?? m.id,
+              provider: "minimax",
+              context_length: m.context_window ?? 128000,
+              type: m.type === "model" ? "chat" : m.type,
+              supports_tools: true,
+            }));
+          }
+        }
+      }
+
+      // 2. Fallback to standard V1 models list
+      const isAnthropic = this.#baseUrl.includes("anthropic");
+      const url = isAnthropic
+        ? "https://api.minimax.io/v1/models"
+        : `${this.#baseUrl}/models`;
+
+      const response = await fetch(url, {
+        headers: isAnthropic
+          ? { "x-api-key": apiKey }
+          : { Authorization: `Bearer ${apiKey}` },
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        if (data.data && Array.isArray(data.data)) {
+          return data.data.map((m: any) => ({
+            id: m.id,
+            name: m.id,
+            provider: "minimax",
+            context_length: 128000, // Default for MiniMax 6.x/M2.x
+            type: m.id.includes("embo") ? "embedding" : "chat",
+            supports_tools: !m.id.includes("embo"),
+          }));
+        }
+      }
+    } catch (error) {
+      console.warn("[LLM] MiniMax listModels failed:", error);
+    }
+
+    // 3. Last resort: Hardcoded fallback (updated)
+    return [
+      {
+        id: "MiniMax-M2.7",
+        name: "MiniMax-M2.7 (Current)",
+        provider: "minimax",
+        context_length: 128000,
+        type: "chat",
+        supports_tools: true,
+      },
+      {
+        id: "abab6.5s-chat",
+        name: "MiniMax abab6.5s",
+        provider: "minimax",
+        context_length: 128000,
+        type: "chat",
+        supports_tools: true,
+      },
+      {
+        id: "embo-01",
+        name: "MiniMax embo-01 (Embedding)",
+        provider: "minimax",
+        context_length: 4096,
+        type: "embedding",
+      },
+    ];
+  }
+
+  async getEmbedding(text: string, model?: string): Promise<number[]> {
+    const apiKey = this.#getApiKey();
+    let embModel = model ?? settings.all.MINIMAX_EMBEDDING_MODEL ?? "embo-01";
+    if (embModel.startsWith("minimax:")) embModel = embModel.substring(8);
+
+    try {
+      const groupId = settings.all.MINIMAX_GROUP_ID;
+      const url = groupId
+        ? `${this.#baseUrl}/embeddings?GroupId=${groupId}`
+        : `${this.#baseUrl}/embeddings`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: embModel,
+          texts: [text],
+          type: "db",
+        }),
+      });
+      if (!response.ok) {
+        console.error(`[LLM] MiniMax embedding failed: ${response.status}`);
+        return [];
+      }
+      const data = (await response.json()) as any;
+      if (data.data?.[0]?.embedding) return data.data[0].embedding;
+      if (data.vectors?.[0]) return data.vectors[0];
+      return [];
+    } catch (error) {
+      console.error("[LLM] MiniMax embedding error:", error);
+      return [];
+    }
   }
 }
 
@@ -853,6 +1215,10 @@ export function createProvider(type?: LLMProviderType): LLMProvider {
     case "anthropic":
       return new AnthropicProvider(
         allConfig.ANTHROPIC_BASE_URL || "https://api.anthropic.com/v1",
+      );
+    case "minimax":
+      return new MinimaxProvider(
+        allConfig.MINIMAX_BASE_URL || "https://api.minimax.chat/v1",
       );
     default:
       throw new Error(`Unknown LLM provider: ${providerType}`);

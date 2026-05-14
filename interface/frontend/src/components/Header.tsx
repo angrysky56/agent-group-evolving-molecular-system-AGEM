@@ -40,7 +40,9 @@ export function Header({ onOpenSettings }: Props) {
             ? "Ollama"
             : provider === "anthropic"
               ? "Anthropic"
-              : "OpenRouter"}
+              : provider === "minimax"
+                ? "MiniMax"
+                : "OpenRouter"}
         </span>
         <select
           className="header__select"

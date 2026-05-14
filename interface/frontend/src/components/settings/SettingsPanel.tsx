@@ -75,9 +75,12 @@ export function SettingsPanel({ onClose }: Props) {
     settings.setApiKey(draftKey);
     // Persist to backend config so it survives server restarts
     if (draftKey) {
-      const configKey = settings.provider === "openrouter"
-        ? "OPENROUTER_API_KEY"
-        : "ANTHROPIC_API_KEY";
+      const configKey =
+        settings.provider === "openrouter"
+          ? "OPENROUTER_API_KEY"
+          : settings.provider === "minimax"
+            ? "MINIMAX_API_KEY"
+            : "ANTHROPIC_API_KEY";
       fetch("/api/v1/system/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,6 +93,9 @@ export function SettingsPanel({ onClose }: Props) {
     if (settings.provider === "anthropic" && draftKey) {
       settings.fetchModels("anthropic", draftKey);
     }
+    if (settings.provider === "minimax" && draftKey) {
+      settings.fetchModels("minimax", draftKey);
+    }
   };
 
   // Chat models (non-embedding) filtered to the current provider
@@ -97,6 +103,7 @@ export function SettingsPanel({ onClose }: Props) {
     if (m.type === "embedding") return false;
     if (settings.provider === "ollama") return m.provider === "ollama";
     if (settings.provider === "anthropic") return m.provider === "anthropic";
+    if (settings.provider === "minimax") return m.provider === "minimax";
     // openrouter: everything that isn't a local provider
     return m.provider !== "ollama";
   });
@@ -122,9 +129,9 @@ export function SettingsPanel({ onClose }: Props) {
         <div className="settings-panel__body">
           {/* ── Provider Toggle ── */}
           <div className="settings-group">
-            <div className="settings-group__label">LLM Provider</div>
+            <div className="settings-group__label">LLM Provider (Chat)</div>
             <div className="provider-toggle">
-              {(["ollama", "openrouter", "anthropic"] as LLMProviderType[]).map(
+              {(["ollama", "openrouter", "anthropic", "minimax"] as LLMProviderType[]).map(
                 (p) => (
                   <button
                     key={p}
@@ -135,7 +142,9 @@ export function SettingsPanel({ onClose }: Props) {
                       ? "Ollama"
                       : p === "openrouter"
                         ? "OpenRouter"
-                        : "Anthropic"}
+                        : p === "minimax"
+                          ? "MiniMax"
+                          : "Anthropic"}
                   </button>
                 ),
               )}
@@ -158,12 +167,17 @@ export function SettingsPanel({ onClose }: Props) {
             </div>
           )}
 
-          {/* ── API Key (OpenRouter / Anthropic) ── */}
+          {/* ── API Key (OpenRouter / Anthropic / MiniMax) ── */}
           {(settings.provider === "openrouter" ||
-            settings.provider === "anthropic") && (
+            settings.provider === "anthropic" ||
+            settings.provider === "minimax") && (
             <div className="settings-group">
               <div className="settings-group__label">
-                {settings.provider === "openrouter" ? "OpenRouter" : "Anthropic"}
+                {settings.provider === "openrouter"
+                  ? "OpenRouter"
+                  : settings.provider === "minimax"
+                    ? "MiniMax"
+                    : "Anthropic"}
               </div>
               <div className="settings-field">
                 <label className="settings-field__label">API Key</label>
@@ -173,22 +187,26 @@ export function SettingsPanel({ onClose }: Props) {
                   value={draftKey}
                   onChange={(e) => setDraftKey(e.target.value)}
                   onBlur={handleKeyBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleKeyBlur(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleKeyBlur();
+                  }}
                   placeholder={
-                    settings.provider === "anthropic" ? "sk-ant-..." : "sk-or-..."
+                    settings.provider === "anthropic"
+                      ? "sk-ant-..."
+                      : settings.provider === "minimax"
+                        ? "MiniMax API Key"
+                        : "sk-or-..."
                   }
                 />
-                {settings.provider === "openrouter" && (
-                  <p
-                    style={{
-                      fontSize: "0.65rem",
-                      color: "var(--color-text-muted, #64748b)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Press Enter or click away to save and fetch models.
-                  </p>
-                )}
+                <p
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--color-text-muted, #64748b)",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Press Enter or click away to save and fetch models.
+                </p>
               </div>
             </div>
           )}
@@ -247,7 +265,9 @@ export function SettingsPanel({ onClose }: Props) {
                 >
                   {settings.provider === "openrouter" && !settings.apiKey
                     ? "Enter your OpenRouter API key above to fetch models."
-                    : "No models found. Click ↻ to refresh."}
+                    : settings.provider === "minimax" && !settings.apiKey
+                      ? "Enter your MiniMax API Key above to fetch models."
+                      : "No models found. Click ↻ to refresh."}
                 </div>
               ) : settings.modelsLoading && chatModels.length === 0 ? (
                 <div
@@ -435,6 +455,37 @@ export function SettingsPanel({ onClose }: Props) {
             </div>
           </div>
 
+          {/* ── Embedding Provider Toggle ── */}
+          <div className="settings-group">
+            <div className="settings-group__label">Embedding Provider</div>
+            <div className="provider-toggle">
+              {(["ollama", "openrouter", "minimax"] as LLMProviderType[]).map(
+                (p) => (
+                  <button
+                    key={p}
+                    className={`provider-toggle__btn ${settings.embeddingProvider === p ? "provider-toggle__btn--active" : ""}`}
+                    onClick={() => {
+                      settings.setEmbeddingProvider(p);
+                      fetch("/api/v1/system/config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ EMBEDDING_PROVIDER: p }),
+                      }).catch(() => {});
+                    }}
+                  >
+                    {p === "ollama"
+                      ? "Ollama"
+                      : p === "openrouter"
+                        ? "OpenRouter"
+                        : p === "minimax"
+                          ? "MiniMax"
+                          : "Anthropic"}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+
           {/* ── Embedding Model ── */}
           <div className="settings-group">
             <div className="settings-group__label">Embedding Model</div>
@@ -442,7 +493,12 @@ export function SettingsPanel({ onClose }: Props) {
               <input
                 className="settings-field__input settings-field__input--mono"
                 value={settings.embeddingModel}
-                onChange={(e) => settings.setEmbeddingModel(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  settings.setEmbeddingModel(val);
+                  // Optionally sync embedding model to backend too
+                  // fetch("/api/v1/system/config", { ... })
+                }}
                 placeholder="nomic-embed-text"
               />
             </div>

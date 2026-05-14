@@ -27,8 +27,11 @@ const ConfigSchema = z.object({
 
   // Active Provider
   LLM_PROVIDER: z
-    .enum(["ollama", "openrouter", "anthropic"])
+    .enum(["ollama", "openrouter", "anthropic", "minimax"])
     .default("ollama") as z.ZodType<LLMProviderType>,
+  EMBEDDING_PROVIDER: z
+    .enum(["ollama", "openrouter", "anthropic", "minimax"])
+    .optional() as z.ZodType<LLMProviderType | undefined>,
 
   // Ollama
   OLLAMA_BASE_URL: z.string().default("http://localhost:11434"),
@@ -46,6 +49,13 @@ const ConfigSchema = z.object({
   ANTHROPIC_BASE_URL: z.string().default("https://api.anthropic.com/v1"),
   ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
   ANTHROPIC_EMBEDDING_MODEL: z.string().default(""),
+
+  // MiniMax
+  MINIMAX_API_KEY: z.string().default(""),
+  MINIMAX_GROUP_ID: z.string().default(""),
+  MINIMAX_BASE_URL: z.string().default("https://api.minimax.chat/v1"),
+  MINIMAX_MODEL: z.string().default("abab6.5s-chat"),
+  MINIMAX_EMBEDDING_MODEL: z.string().default("embo-01"),
 
   // Knowledge Base
   KNOWLEDGE_BASE_PATH: z
@@ -72,15 +82,15 @@ class ConfigService {
     return this.#config;
   }
 
-  /** Get configuration for the active LLM provider. */
-  getLLMConfig(): {
+  /** Get configuration for a specific provider or the active one. */
+  getLLMConfig(type?: LLMProviderType): {
     provider: LLMProviderType;
     api_key: string;
     base_url: string;
     model: string;
     embedding_model: string;
   } {
-    const provider = this.#config.LLM_PROVIDER;
+    const provider = type ?? this.#config.LLM_PROVIDER;
 
     if (provider === "ollama") {
       return {
@@ -102,6 +112,16 @@ class ConfigService {
       };
     }
 
+    if (provider === "minimax") {
+      return {
+        provider,
+        api_key: this.#config.MINIMAX_API_KEY,
+        base_url: this.#config.MINIMAX_BASE_URL,
+        model: this.#config.MINIMAX_MODEL,
+        embedding_model: this.#config.MINIMAX_EMBEDDING_MODEL,
+      };
+    }
+
     return {
       provider,
       api_key: this.#config.OPENROUTER_API_KEY,
@@ -114,12 +134,15 @@ class ConfigService {
   /** Export as SystemConfig for the API. */
   toSystemConfig(): SystemConfig {
     const llm = this.getLLMConfig();
+    const emb = this.getLLMConfig(this.#config.EMBEDDING_PROVIDER ?? llm.provider);
     return {
       provider: llm.provider,
+      embedding_provider: this.#config.EMBEDDING_PROVIDER ?? llm.provider,
       model: llm.model,
-      embedding_model: llm.embedding_model,
+      embedding_model: emb.embedding_model,
       ollama_base_url: this.#config.OLLAMA_BASE_URL,
       openrouter_base_url: this.#config.OPENROUTER_BASE_URL,
+      minimax_base_url: this.#config.MINIMAX_BASE_URL,
       knowledge_base_path: this.#config.KNOWLEDGE_BASE_PATH,
       // Never expose the key itself — only whether one is configured
       has_api_key: llm.api_key.length > 0,

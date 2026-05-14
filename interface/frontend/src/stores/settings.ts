@@ -11,6 +11,7 @@ import { listModels } from "../api";
 
 export interface SettingsState {
   provider: LLMProviderType;
+  embeddingProvider: LLMProviderType;
   chatModel: string;
   embeddingModel: string;
   apiKey: string;
@@ -19,6 +20,7 @@ export interface SettingsState {
   modelsLoading: boolean;
 
   setProvider: (provider: LLMProviderType) => void;
+  setEmbeddingProvider: (provider: LLMProviderType) => void;
   setChatModel: (model: string) => void;
   setEmbeddingModel: (model: string) => void;
   setApiKey: (key: string) => void;
@@ -32,6 +34,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       provider: "ollama",
+      embeddingProvider: "ollama",
       chatModel: "llama3.2",
       embeddingModel: "nomic-embed-text",
       apiKey: "",
@@ -40,6 +43,7 @@ export const useSettingsStore = create<SettingsState>()(
       modelsLoading: false,
 
       setProvider: (provider) => set({ provider }),
+      setEmbeddingProvider: (embeddingProvider) => set({ embeddingProvider }),
       setChatModel: (chatModel) => set({ chatModel }),
       setEmbeddingModel: (embeddingModel) => set({ embeddingModel }),
       setApiKey: (apiKey) => set({ apiKey }),
@@ -65,6 +69,7 @@ export const useSettingsStore = create<SettingsState>()(
       // Don't persist transient loading state
       partialize: (s) => ({
         provider: s.provider,
+        embeddingProvider: s.embeddingProvider,
         chatModel: s.chatModel,
         embeddingModel: s.embeddingModel,
         apiKey: s.apiKey,

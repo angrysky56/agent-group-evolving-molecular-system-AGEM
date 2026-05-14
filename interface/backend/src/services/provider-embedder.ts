@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
 import { EMBEDDING_DIM } from "#agem/lcm/interfaces.js";
 import { createProvider } from "./llm.js";
+import { settings } from "../config.js";
 
 export class ProviderEmbedder implements IEmbedder {
   #failCount = 0;
@@ -24,7 +25,8 @@ export class ProviderEmbedder implements IEmbedder {
     }
 
     try {
-      const provider = createProvider();
+      const config = settings.all;
+      const provider = createProvider(config.EMBEDDING_PROVIDER);
       const embedding = await provider.getEmbedding(text);
 
       if (!embedding || embedding.length === 0) {

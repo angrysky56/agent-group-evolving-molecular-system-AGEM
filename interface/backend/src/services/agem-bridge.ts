@@ -35,6 +35,7 @@ import { ProviderEmbedder } from "./provider-embedder.js";
 import { saveEngineState, loadEngineState } from "./state/index.js";
 import type { EngineSnapshot } from "./state/index.js";
 import type { GapMetrics } from "#agem/tna/interfaces.js";
+import { settings } from "../config.js";
 
 /* ─── AGEM Engine Bridge ─── */
 
@@ -64,7 +65,9 @@ class AgemBridge {
     const embedder = new ProviderEmbedder();
     this.#orchestrator = new Orchestrator(embedder);
     this.#grep = this.#buildGrep(embedder);
-    console.log("[AgemBridge] Using ProviderEmbedder (real embeddings from Ollama/OpenRouter)");
+    const config = settings.getLLMConfig();
+    const embType = settings.all.EMBEDDING_PROVIDER ?? config.provider;
+    console.log(`[AgemBridge] Using ProviderEmbedder (real embeddings from ${embType})`);
 
     // Attempt to load saved state (async, non-blocking)
     void this.loadSession("default");

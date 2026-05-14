@@ -155,6 +155,17 @@ chatRouter.post("/completions", async (req, res) => {
     const session = sessionStore.get(sessionId);
     const historyMessages = [];
 
+    // Resolve provider earlier to check for cache support
+    let resolvedProvider = providerType ?? settings.getLLMConfig().provider;
+    if (model) {
+      if (model.startsWith("ollama:")) resolvedProvider = "ollama";
+      else if (model.startsWith("openrouter:")) resolvedProvider = "openrouter";
+      else if (model.startsWith("anthropic:")) resolvedProvider = "anthropic";
+      else if (model.startsWith("minimax:")) resolvedProvider = "minimax";
+    }
+
+    const isCacheSupported = ["anthropic", "minimax"].includes(resolvedProvider ?? "");
+
     // Inject system prompt with all loaded skills
     const allSkills = Array.from(
       ["agem-expert", "value-guardian"]
@@ -198,28 +209,29 @@ KEY MCP SERVERS:
 - hipai-montague: World model knowledge graph with Paraclete Protocol
 - verifier-graph: Reasoning provenance chains
 - mcp-logic: Formal logic proofs (Prover9/Mace4)
+- aseke-compass: Behavioral analysis
 ${skillContent}`,
-    });
+      cache_control: isCacheSupported ? { type: "ephemeral" } : undefined,
+    } as any);
 
-    historyMessages.push(
-      ...(session?.messages ?? [userMessage]).map((m) => ({
+    const messages = (session?.messages ?? [userMessage]);
+    messages.forEach((m, idx) => {
+      const msg: any = {
         role: m.role,
         content: m.content,
-      })),
-    );
+      };
+      // Mark the 2nd to last message for caching if history is significant
+      if (isCacheSupported && idx === messages.length - 2 && messages.length > 5) {
+        msg.cache_control = { type: "ephemeral" };
+      }
+      historyMessages.push(msg);
+    });
 
     // Get API key from request headers (for OpenRouter)
     const apiKey =
       req.headers["authorization"]?.toString().replace("Bearer ", "") ??
       req.headers["x-openrouter-key"]?.toString() ??
       req.headers["x-api-key"]?.toString();
-
-    let resolvedProvider = providerType ?? settings.getLLMConfig().provider;
-    if (model) {
-      if (model.startsWith("ollama:")) resolvedProvider = "ollama";
-      else if (model.startsWith("openrouter:")) resolvedProvider = "openrouter";
-      else if (model.startsWith("anthropic:")) resolvedProvider = "anthropic";
-    }
 
     const isOllama = resolvedProvider === "ollama";
 

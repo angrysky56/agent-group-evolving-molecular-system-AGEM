@@ -6,7 +6,7 @@
 /* ─── LLM Provider Types ─── */
 
 /** Supported LLM provider identifiers. */
-export type LLMProviderType = "ollama" | "openrouter" | "anthropic";
+export type LLMProviderType = "ollama" | "openrouter" | "anthropic" | "minimax";
 
 /** Model information returned by provider APIs. */
 export interface ModelInfo {
@@ -287,10 +287,12 @@ export interface SSEEvent {
 /** System configuration exposed via API. */
 export interface SystemConfig {
   provider: LLMProviderType;
+  embedding_provider: LLMProviderType;
   model: string;
   embedding_model: string;
   ollama_base_url: string;
   openrouter_base_url: string;
+  minimax_base_url: string;
   knowledge_base_path: string;
   /** True when the backend already has an API key from the environment (never exposes the key itself). */
   has_api_key?: boolean;
