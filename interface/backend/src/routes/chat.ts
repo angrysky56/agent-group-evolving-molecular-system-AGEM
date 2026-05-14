@@ -688,7 +688,7 @@ ${skillContent}`,
     const maxTurns = 15;
     let lastResult: any = null;
     const requestStartTime = Date.now();
-    const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minute overall timeout
+    const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
 
     while (!isDone && turnCount < maxTurns) {
       // Check overall request timeout
@@ -698,7 +698,7 @@ ${skillContent}`,
         );
         sendEvent("error", {
           message:
-            "Request timed out after 5 minutes. Try a simpler query or fewer tool calls.",
+            "Request timed out after 20 minutes. Try a simpler query or fewer tool calls.",
         });
         break;
       }

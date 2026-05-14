@@ -725,45 +725,71 @@ class AnthropicProvider implements LLMProvider {
     }));
 
     // Convert other messages
-    const messages = otherMessages.map((m) => {
-      if (m.role === "assistant" && m.tool_calls) {
-        return {
-          role: "assistant",
-          content: m.tool_calls.map((tc) => ({
-            type: "tool_use",
-            id: tc.id,
-            name: tc.function.name,
-            input:
-              typeof tc.function.arguments === "string"
-                ? JSON.parse(tc.function.arguments || "{}")
-                : tc.function.arguments || {},
-          })),
-        };
-      } else if (m.role === "tool" || m.tool_call_id) {
-        return {
+    const messages: any[] = [];
+    let pendingToolResults: any[] = [];
+
+    for (const m of otherMessages) {
+      const isTool = m.role === "tool" || !!m.tool_call_id;
+
+      if (isTool) {
+        pendingToolResults.push({
+          type: "tool_result",
+          tool_use_id: m.tool_call_id,
+          content: m.content,
+        });
+        continue;
+      }
+
+      // If we have tool results pending and move to a non-tool message, flush them
+      if (pendingToolResults.length > 0) {
+        messages.push({
           role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: m.tool_call_id,
-              content: m.content,
-            },
-          ],
-        };
+          content: pendingToolResults,
+        });
+        pendingToolResults = [];
       }
 
-      let content = m.content;
-      if (typeof content === "string" && m.cache_control) {
-        content = [
-          { type: "text", text: content, cache_control: m.cache_control },
-        ];
+      if (m.role === "assistant") {
+        const content: any[] = [];
+        if (m.content) {
+          content.push({ type: "text", text: m.content });
+        }
+        if (m.tool_calls) {
+          for (const tc of m.tool_calls) {
+            content.push({
+              type: "tool_use",
+              id: tc.id,
+              name: tc.function.name,
+              input:
+                typeof tc.function.arguments === "string"
+                  ? JSON.parse(tc.function.arguments || "{}")
+                  : tc.function.arguments || {},
+            });
+          }
+        }
+        messages.push({ role: "assistant", content });
+      } else {
+        // User message
+        let content = m.content;
+        if (typeof content === "string" && m.cache_control) {
+          content = [
+            { type: "text", text: content, cache_control: m.cache_control },
+          ];
+        }
+        messages.push({
+          role: m.role === "system" ? "user" : m.role,
+          content,
+        });
       }
+    }
 
-      return {
-        role: m.role,
-        content,
-      };
-    });
+    // Flush any remaining tool results
+    if (pendingToolResults.length > 0) {
+      messages.push({
+        role: "user",
+        content: pendingToolResults,
+      });
+    }
 
     return {
       model,
