@@ -71,6 +71,38 @@ export class ImmutableStore {
   }
 
   /**
+   * rehydrate(entries) — restores pre-existing frozen entries verbatim.
+   *
+   * Guards:
+   *   - Throws if the store is already non-empty.
+   *   - Throws if the sequence numbers do not match index ordering exactly (0, 1, 2, ...).
+   *
+   * @param entries - ReadonlyArray of pre-existing frozen entries.
+   * @throws Error if the store is non-empty or sequence numbers are invalid.
+   */
+  rehydrate(entries: readonly LCMEntry[]): void {
+    if (this.#entries.length > 0) {
+      throw new Error("ImmutableStore: cannot rehydrate a non-empty store");
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (entry === undefined) continue;
+      if (entry.sequenceNumber !== i) {
+        throw new Error(
+          `ImmutableStore: sequenceNumber mismatch at index ${i}. Expected ${i}, got ${entry.sequenceNumber}`,
+        );
+      }
+    }
+
+    for (const entry of entries) {
+      const frozenEntry = Object.freeze({ ...entry });
+      this.#idIndex.set(frozenEntry.id, frozenEntry.sequenceNumber);
+      this.#entries.push(frozenEntry);
+    }
+  }
+
+  /**
    * get(id) — O(1) lookup of a single entry by UUIDv7 ID.
    *
    * @param id - The UUIDv7 id of the entry.

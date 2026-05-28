@@ -64,6 +64,30 @@ export class EmbeddingCache {
   }
 
   /**
+   * seed(entryId, vector) — directly seeds the cache with a precomputed embedding.
+   *
+   * @param entryId - The UUIDv7 ID of the LCMEntry.
+   * @param vector  - The embedding vector as a plain number array or Float64Array.
+   */
+  seed(entryId: string, vector: number[] | Float64Array): void {
+    const floatArray = vector instanceof Float64Array ? vector : new Float64Array(vector);
+    this.#cache.set(entryId, floatArray);
+  }
+
+  /**
+   * snapshot() — returns a pure plain-object map of all cached embeddings.
+   *
+   * @returns Record mapping entry IDs to plain number arrays.
+   */
+  snapshot(): Record<string, number[]> {
+    const snapshots: Record<string, number[]> = {};
+    for (const [id, vec] of this.#cache.entries()) {
+      snapshots[id] = Array.from(vec);
+    }
+    return snapshots;
+  }
+
+  /**
    * refreshEntry(entryId, content) — forces recomputation of an entry's embedding.
    *
    * Overwrites the cached embedding with a freshly computed one.

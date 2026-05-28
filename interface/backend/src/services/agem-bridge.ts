@@ -32,8 +32,10 @@ import {
   ImmutableStore,
   EmbeddingCache,
   LCMGrep,
+  EMBEDDING_DIM,
 } from "#agem/lcm/index.js";
 import { ProviderEmbedder } from "./provider-embedder.js";
+import { ProviderCompressor } from "./provider-compressor.js";
 import { saveEngineState, loadEngineState } from "./state/index.js";
 import type { EngineSnapshot } from "./state/index.js";
 import type { GapMetrics } from "#agem/tna/interfaces.js";
@@ -66,7 +68,8 @@ class AgemBridge {
 
   constructor() {
     const embedder = new ProviderEmbedder();
-    this.#orchestrator = new Orchestrator(embedder);
+    const compressor = new ProviderCompressor();
+    this.#orchestrator = new Orchestrator(embedder, compressor);
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
     const metaLlm = createProvider(config.provider);
@@ -837,8 +840,19 @@ class AgemBridge {
       nodeEmbeddings[key] = Array.from(vec);
     }
 
+    // Version 2 additions: summary nodes & tagged embeddings
+    const lcmSummaryNodes = orch.lcmDag.snapshot();
+    const vectors = orch.lcmClient.cache.snapshot();
+    let dim = EMBEDDING_DIM;
+    const firstVec = Object.values(vectors)[0];
+    if (firstVec) {
+      dim = firstVec.length;
+    }
+    const model = getEmbeddingModelName();
+    const lcmEmbeddings = { model, dim, vectors };
+
     return {
-      version: 1,
+      version: 2,
       savedAt: Date.now(),
       iteration: orch.getIterationCount(),
       graph: { nodes, edges },
@@ -849,6 +863,8 @@ class AgemBridge {
           ? evolutionHistory
           : this.#restoredEvolutionHistory,
       nodeEmbeddings,
+      lcmSummaryNodes,
+      lcmEmbeddings,
     };
   }
 
@@ -883,9 +899,29 @@ class AgemBridge {
       }
     }
 
-    // Restore LCM entries
-    for (const entry of snapshot.lcmEntries) {
-      await orch.lcmClient.append(entry.content);
+    // Restore LCM entries & embeddings (ID-preserving rehydration)
+    const currentModel = getEmbeddingModelName();
+    let restoredEmbeddings: Record<string, number[]> | undefined;
+    if (snapshot.version === 2 && snapshot.lcmEmbeddings) {
+      if (snapshot.lcmEmbeddings.model === currentModel) {
+        restoredEmbeddings = snapshot.lcmEmbeddings.vectors;
+        console.log(
+          `[AgemBridge] Embedding cache hit! Restored ${Object.keys(restoredEmbeddings).length} precomputed embeddings verbatim.`
+        );
+      } else {
+        console.warn(
+          `[AgemBridge] Embedding model mismatch: snapshot used '${snapshot.lcmEmbeddings.model}', ` +
+          `current is '${currentModel}'. Discarding cache to recompute lazily.`
+        );
+      }
+    }
+
+    orch.lcmClient.rehydrate(snapshot.lcmEntries, restoredEmbeddings);
+
+    // Restore context DAG (summary nodes)
+    if (snapshot.version === 2 && snapshot.lcmSummaryNodes) {
+      orch.lcmDag.restore(snapshot.lcmSummaryNodes);
+      console.log(`[AgemBridge] Restored ${snapshot.lcmSummaryNodes.length} context DAG summary nodes.`);
     }
 
     // Restore iteration counter
@@ -939,7 +975,8 @@ class AgemBridge {
   async reset(): Promise<void> {
     await this.#orchestrator.shutdown();
     const embedder = new ProviderEmbedder();
-    this.#orchestrator = new Orchestrator(embedder);
+    const compressor = new ProviderCompressor();
+    this.#orchestrator = new Orchestrator(embedder, compressor);
     this.#grep = this.#buildGrep(embedder);
   }
 
@@ -948,19 +985,29 @@ class AgemBridge {
   /**
    * Build a fresh LCMGrep instance.
    *
-   * NOTE: The Orchestrator's internal LCMClient owns its own ImmutableStore.
-   * We create a separate grep instance here for the bridge's context search.
-   * Entries appended via the Orchestrator's LCMClient are NOT visible here.
-   * For full integration, the Orchestrator should expose its internal store.
-   * TODO: Wire into Orchestrator's LCMClient store once exposed.
+   * Now fully integrated: Wires directly into the Orchestrator's internal
+   * LCMClient store and cache so search results reflect live context modifications.
    */
   #buildGrep(embedder: ProviderEmbedder): LCMGrep {
-    const tokenCounter = new GptTokenCounter();
-    const store = new ImmutableStore(tokenCounter);
-    const cache = new EmbeddingCache(embedder);
-    return new LCMGrep(store, cache, embedder);
+    return new LCMGrep(
+      this.#orchestrator.lcmClient.store,
+      this.#orchestrator.lcmClient.cache,
+      embedder,
+    );
   }
 }
 
 /** Singleton AGEM bridge. */
 export const agemBridge = new AgemBridge();
+
+/** Standalone helper to retrieve the active embedding model name from config. */
+function getEmbeddingModelName(): string {
+  const provider = settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
+  if (provider === "ollama") {
+    return settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
+  }
+  if (provider === "openrouter") {
+    return settings.all.OPENROUTER_EMBEDDING_MODEL ?? "google/gemini-embedding-001";
+  }
+  return "mock-embedder";
+}

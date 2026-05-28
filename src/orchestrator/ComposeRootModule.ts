@@ -30,21 +30,23 @@ import {
   buildFlatSheaf,
 } from "../sheaf/index.js";
 
-// ---------------------------------------------------------------------------
-// LCM module imports
-// ---------------------------------------------------------------------------
 import {
   LCMClient,
   ImmutableStore,
   EmbeddingCache,
   GptTokenCounter,
+  ContextDAG,
+  SummaryIndex,
+  EscalationProtocol,
+  MockCompressor,
 } from "../lcm/index.js";
-import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel } from "../lcm/index.js";
+import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel, ICompressor } from "../lcm/index.js";
+import { uuidv7 } from "uuidv7";
 
 // ---------------------------------------------------------------------------
 // Lumpability module imports
 // ---------------------------------------------------------------------------
-import { LumpabilityAuditor, EmbeddingVKChecker } from "../lumpability/index.js";
+import { LumpabilityAuditor, EmbeddingVKChecker, AxiomLossError } from "../lumpability/index.js";
 
 // ---------------------------------------------------------------------------
 // Evolution module imports
@@ -126,6 +128,12 @@ export class Orchestrator {
   /** LCM client: append-only context store with embedding caching. */
   readonly lcmClient!: LCMClient;
 
+  /** Context DAG: tracks pointers from summary nodes to original entries. */
+  readonly lcmDag!: ContextDAG;
+
+  /** Escalation protocol: handles multi-level context compression. */
+  readonly lcmEscalation!: EscalationProtocol;
+
   /** TNA text preprocessor: lemmatization + TF-IDF pipeline. */
   readonly tnaPreprocessor!: Preprocessor;
 
@@ -191,12 +199,14 @@ export class Orchestrator {
    * @param embedder - IEmbedder implementation injected for LCM embedding cache.
    *                   Must implement embed(text: string): Promise<Float64Array>.
    *                   MockEmbedder from src/lcm/interfaces.ts can be used in tests.
+   * @param compressor - Optional ICompressor implementation injected for LCM escalation compression.
+   *                     MockCompressor is used by default if not provided.
    */
-  constructor(embedder: IEmbedder) {
+  constructor(embedder: IEmbedder, compressor?: ICompressor) {
     this.eventBus = new EventBus();
     this.#embedder = embedder;
 
-    this.#initLcm(embedder);
+    this.#initLcm(embedder, compressor);
     this.#initSheaf();
     this.#initTna();
     this.#initSoc();
@@ -504,6 +514,46 @@ export class Orchestrator {
       `[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`,
     );
 
+    // Context compaction / escalation check
+    const store = this.lcmClient.store;
+    const allEntries = store.getAll();
+    const concatenatedText = allEntries.map((e) => e.content).join("\n\n");
+    const result = await this.lcmEscalation.escalate(concatenatedText);
+    if (result.level > 0) {
+      const originalEntryIds = allEntries.map((e) => e.id);
+      const summaryNode: SummaryNode = {
+        id: `summary-${uuidv7()}`,
+        content: result.output,
+        originalEntryIds,
+        createdAt: Date.now(),
+        version: 1,
+        metrics: {
+          level: result.level,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          compressorUsed: result.compressorUsed,
+        },
+        metricHistory: [],
+        intermediateCompressions: [],
+      };
+
+      this.lcmDag.addSummaryNode(summaryNode);
+      console.log(
+        `[ORCH] Iteration ${this.#iterationCounter}: LCM context escalation triggered level ${result.level} compaction: ${summaryNode.id}`,
+      );
+
+      // Route through existing auditCompaction() hook
+      try {
+        await this.auditCompaction(summaryNode, allEntries, result.level as EscalationLevel, signal);
+      } catch (err) {
+        if (err instanceof AxiomLossError) {
+          console.warn(`[ORCH] AxiomLossError in compaction: ${err.message}`);
+          throw err;
+        }
+        throw err;
+      }
+    }
+
     // Step 6: Run Sheaf cohomology analysis
     // In a real system, the sheaf is constructed from TNA graph topology.
     // For Phase 5: use the instance sheaf (empty → h0=0, h1=0 → consensus event fires).
@@ -675,14 +725,24 @@ export class Orchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // Private Initialization Methods
-  // -------------------------------------------------------------------------
-
-  #initLcm(embedder: IEmbedder): void {
+  #initLcm(embedder: IEmbedder, compressor?: ICompressor): void {
     const tokenCounter = new GptTokenCounter();
     const store = new ImmutableStore(tokenCounter);
     const cache = new EmbeddingCache(embedder);
     (this as any).lcmClient = new LCMClient(store, cache, embedder);
+
+    const summaryIndex = new SummaryIndex();
+    const dag = new ContextDAG(store, summaryIndex);
+    (this as any).lcmDag = dag;
+
+    const thresholds = {
+      level1TokenLimit: 1000,
+      level2MinRatio: 0.8,
+      level3KTokens: 2000,
+      coherenceSimilarityThreshold: 0.7,
+    };
+    const comp = compressor ?? new MockCompressor();
+    (this as any).lcmEscalation = new EscalationProtocol(comp, tokenCounter, thresholds);
   }
 
   #initSheaf(): void {

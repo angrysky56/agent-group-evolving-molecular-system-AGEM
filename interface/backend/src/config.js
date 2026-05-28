@@ -1,0 +1,165 @@
+/**
+ * AGEM Backend Configuration Service.
+ *
+ * Manages environment variables and runtime settings for LLM providers,
+ * knowledge base paths, and server configuration.
+ * Uses Zod for validation and dotenv for environment loading.
+ */
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as dotenvConfig } from "dotenv";
+import { z } from "zod";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, "..", "..", "..");
+// Load .env from project root
+dotenvConfig({ path: resolve(PROJECT_ROOT, ".env") });
+/** Zod schema for validated configuration. */
+const ConfigSchema = z.object({
+    // Server
+    PORT: z.coerce.number().default(8000),
+    HOST: z.string().default("0.0.0.0"),
+    // Active Provider
+    LLM_PROVIDER: z
+        .enum(["ollama", "openrouter", "anthropic", "minimax"])
+        .default("ollama"),
+    EMBEDDING_PROVIDER: z
+        .enum(["ollama", "openrouter", "anthropic", "minimax"])
+        .optional(),
+    // Ollama
+    OLLAMA_BASE_URL: z.string().default("http://localhost:11434"),
+    OLLAMA_MODEL: z.string().default("gemma3:latest"),
+    OLLAMA_EMBEDDING_MODEL: z.string().default("nomic-embed-text:latest"),
+    // OpenRouter
+    OPENROUTER_API_KEY: z.string().default(""),
+    OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
+    OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash-preview"),
+    OPENROUTER_EMBEDDING_MODEL: z.string().default("google/gemini-embedding-001"),
+    // Anthropic
+    ANTHROPIC_API_KEY: z.string().default(""),
+    ANTHROPIC_BASE_URL: z.string().default("https://api.anthropic.com/v1"),
+    ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
+    ANTHROPIC_EMBEDDING_MODEL: z.string().default(""),
+    // MiniMax
+    MINIMAX_API_KEY: z.string().default(""),
+    MINIMAX_GROUP_ID: z.string().default(""),
+    MINIMAX_BASE_URL: z.string().default("https://api.minimax.chat/v1"),
+    MINIMAX_MODEL: z.string().default("abab6.5s-chat"),
+    MINIMAX_EMBEDDING_MODEL: z.string().default("embo-01"),
+    // Knowledge Base
+    KNOWLEDGE_BASE_PATH: z
+        .string()
+        .default(resolve(PROJECT_ROOT, "knowledge_base")),
+    // AGEM Engine
+    MAX_AGENT_POOL_SIZE: z.coerce.number().default(20),
+    MAX_ITERATIONS: z.coerce.number().default(50),
+});
+/** Singleton configuration instance. */
+class ConfigService {
+    #config;
+    constructor() {
+        this.#config = ConfigSchema.parse(process.env);
+    }
+    /** Get the entire configuration. */
+    get all() {
+        return this.#config;
+    }
+    /** Get configuration for a specific provider or the active one. */
+    getLLMConfig(type) {
+        const provider = type ?? this.#config.LLM_PROVIDER;
+        if (provider === "ollama") {
+            return {
+                provider,
+                api_key: "",
+                base_url: this.#config.OLLAMA_BASE_URL,
+                model: this.#config.OLLAMA_MODEL,
+                embedding_model: this.#config.OLLAMA_EMBEDDING_MODEL,
+            };
+        }
+        if (provider === "anthropic") {
+            return {
+                provider,
+                api_key: this.#config.ANTHROPIC_API_KEY,
+                base_url: this.#config.ANTHROPIC_BASE_URL,
+                model: this.#config.ANTHROPIC_MODEL,
+                embedding_model: this.#config.ANTHROPIC_EMBEDDING_MODEL,
+            };
+        }
+        if (provider === "minimax") {
+            return {
+                provider,
+                api_key: this.#config.MINIMAX_API_KEY,
+                base_url: this.#config.MINIMAX_BASE_URL,
+                model: this.#config.MINIMAX_MODEL,
+                embedding_model: this.#config.MINIMAX_EMBEDDING_MODEL,
+            };
+        }
+        return {
+            provider,
+            api_key: this.#config.OPENROUTER_API_KEY,
+            base_url: this.#config.OPENROUTER_BASE_URL,
+            model: this.#config.OPENROUTER_MODEL,
+            embedding_model: this.#config.OPENROUTER_EMBEDDING_MODEL,
+        };
+    }
+    /** Export as SystemConfig for the API. */
+    toSystemConfig() {
+        const llm = this.getLLMConfig();
+        const emb = this.getLLMConfig(this.#config.EMBEDDING_PROVIDER ?? llm.provider);
+        return {
+            provider: llm.provider,
+            embedding_provider: this.#config.EMBEDDING_PROVIDER ?? llm.provider,
+            model: llm.model,
+            embedding_model: emb.embedding_model,
+            ollama_base_url: this.#config.OLLAMA_BASE_URL,
+            openrouter_base_url: this.#config.OPENROUTER_BASE_URL,
+            minimax_base_url: this.#config.MINIMAX_BASE_URL,
+            knowledge_base_path: this.#config.KNOWLEDGE_BASE_PATH,
+            // Never expose the key itself — only whether one is configured
+            has_api_key: llm.api_key.length > 0,
+        };
+    }
+    /** Update configuration at runtime and persist to .env. */
+    update(updates) {
+        try {
+            // Merge and re-validate
+            const merged = { ...this.#config, ...updates };
+            this.#config = ConfigSchema.parse(merged);
+            // Persist to .env file
+            this.#persistToEnv(updates);
+            return true;
+        }
+        catch (error) {
+            console.error("[Config] Failed to update:", error);
+            return false;
+        }
+    }
+    /** Write updated keys to the .env file. */
+    #persistToEnv(updates) {
+        const envPath = resolve(PROJECT_ROOT, ".env");
+        let lines = [];
+        if (existsSync(envPath)) {
+            lines = readFileSync(envPath, "utf-8").split("\n");
+        }
+        const updatedKeys = new Set();
+        const newLines = lines.map((line) => {
+            const [key] = line.split("=", 1);
+            const trimmedKey = key?.trim();
+            if (trimmedKey && trimmedKey in updates) {
+                updatedKeys.add(trimmedKey);
+                return `${trimmedKey}=${updates[trimmedKey]}`;
+            }
+            return line;
+        });
+        // Append new keys not already in the file
+        for (const [key, value] of Object.entries(updates)) {
+            if (!updatedKeys.has(key) && value !== undefined && value !== "") {
+                newLines.push(`${key}=${value}`);
+            }
+        }
+        writeFileSync(envPath, newLines.join("\n"), "utf-8");
+    }
+}
+/** Singleton config instance. */
+export const settings = new ConfigService();
+//# sourceMappingURL=config.js.map

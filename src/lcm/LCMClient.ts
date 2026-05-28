@@ -16,7 +16,7 @@
  * calling ImmutableStore.append() directly, so embedding caching is guaranteed.
  */
 
-import type { IEmbedder } from "./interfaces.js";
+import type { IEmbedder, LCMEntry } from "./interfaces.js";
 import { ImmutableStore } from "./ImmutableStore.js";
 import { EmbeddingCache } from "./EmbeddingCache.js";
 
@@ -63,5 +63,30 @@ export class LCMClient {
    */
   get store(): ImmutableStore {
     return this.#store;
+  }
+
+  /**
+   * cache — exposes the underlying EmbeddingCache.
+   */
+  get cache(): EmbeddingCache {
+    return this.#cache;
+  }
+
+  /**
+   * rehydrate(entries, embeddings?) — restores pre-existing entries and seeds embedding cache.
+   *
+   * @param entries    - ReadonlyArray of pre-existing frozen entries.
+   * @param embeddings - Optional record mapping entry IDs to plain vectors or Float64Arrays.
+   */
+  rehydrate(
+    entries: readonly LCMEntry[],
+    embeddings?: Record<string, number[] | Float64Array>,
+  ): void {
+    this.#store.rehydrate(entries);
+    if (embeddings) {
+      for (const [id, vec] of Object.entries(embeddings)) {
+        this.#cache.seed(id, vec);
+      }
+    }
   }
 }

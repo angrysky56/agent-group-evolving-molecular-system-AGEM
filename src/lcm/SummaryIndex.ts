@@ -140,4 +140,34 @@ export class SummaryIndex {
   has(id: string): boolean {
     return this.#nodes.has(id);
   }
+
+  /**
+   * snapshot() — returns all stored SummaryNodes in plain-object form.
+   *
+   * @returns Array of all SummaryNodes in the index.
+   */
+  snapshot(): SummaryNode[] {
+    return Array.from(this.#nodes.values()).map((node) => ({
+      id: node.id,
+      content: node.content,
+      originalEntryIds: [...node.originalEntryIds],
+      createdAt: node.createdAt,
+      version: node.version,
+      metrics: { ...node.metrics },
+      metricHistory: [...node.metricHistory] as MetricUpdate[],
+      intermediateCompressions: [...node.intermediateCompressions],
+    }));
+  }
+
+  /**
+   * restore(nodes) — overwrites current index with pre-validated SummaryNodes.
+   *
+   * @param nodes - Array of SummaryNodes to restore.
+   */
+  restore(nodes: SummaryNode[]): void {
+    this.#nodes.clear();
+    for (const node of nodes) {
+      this.add(node);
+    }
+  }
 }

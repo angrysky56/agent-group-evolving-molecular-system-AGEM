@@ -168,4 +168,22 @@ export class ContextDAG {
     }
     return undefined;
   }
+
+  /**
+   * snapshot() — returns all stored SummaryNodes in plain-object form.
+   *
+   * @returns Array of all SummaryNodes in the index.
+   */
+  snapshot(): SummaryNode[] {
+    return this.#summaryIndex.snapshot();
+  }
+
+  /**
+   * restore(nodes) — overwrites current index with pre-validated SummaryNodes.
+   *
+   * @param nodes - Array of SummaryNodes to restore.
+   */
+  restore(nodes: SummaryNode[]): void {
+    this.#summaryIndex.restore(nodes);
+  }
 }
