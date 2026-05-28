@@ -85,6 +85,17 @@ export function computeCohomology(
   const N0 = sheaf.c0Dimension;
   const N1 = sheaf.c1Dimension;
 
+  if (N1 === 0) {
+    return {
+      h0Dimension: N0,
+      h1Dimension: 0,
+      hasObstruction: false,
+      h1Basis: [],
+      tolerance: 0,
+      coboundaryRank: 0,
+    };
+  }
+
   // Step 1-3: Get B and convert to ml-matrix.
   const B = sheaf.getCoboundaryMatrix();
   const bArray = B.toArray() as number[][];

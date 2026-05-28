@@ -139,6 +139,10 @@ export interface IEmbedder {
  */
 export interface ICompressor {
   compress(text: string, targetRatio: number): Promise<string>;
+  generateReflections?(
+    text: string,
+  ): Promise<Array<{ question: string; answer: string }>>;
+  synthesize?(query: string, context: string): Promise<string>;
 }
 
 /**

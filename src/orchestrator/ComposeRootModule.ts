@@ -39,14 +39,34 @@ import {
   SummaryIndex,
   EscalationProtocol,
   MockCompressor,
+  SubgraphRegistry,
+  EMBEDDING_DIM,
 } from "../lcm/index.js";
-import type { IEmbedder, SummaryNode, LCMEntry, EscalationLevel, ICompressor } from "../lcm/index.js";
+import type {
+  IEmbedder,
+  SummaryNode,
+  LCMEntry,
+  EscalationLevel,
+  ICompressor,
+  Subgraph,
+} from "../lcm/index.js";
+import { cosineSimilarity } from "../lcm/LCMGrep.js";
+import type {
+  VertexId,
+  EdgeId,
+  SheafVertex,
+  SheafEdge,
+} from "../types/index.js";
 import { uuidv7 } from "uuidv7";
 
 // ---------------------------------------------------------------------------
 // Lumpability module imports
 // ---------------------------------------------------------------------------
-import { LumpabilityAuditor, EmbeddingVKChecker, AxiomLossError } from "../lumpability/index.js";
+import {
+  LumpabilityAuditor,
+  EmbeddingVKChecker,
+  AxiomLossError,
+} from "../lumpability/index.js";
 
 // ---------------------------------------------------------------------------
 // Evolution module imports
@@ -125,6 +145,9 @@ export class Orchestrator {
   /** Cohomology analyzer: computes H^0/H^1 from sheaf and emits obstruction events. */
   readonly cohomologyAnalyzer!: CohomologyAnalyzer;
 
+  /** Subgraph registry managing named subgraphs. */
+  readonly subgraphRegistry!: SubgraphRegistry;
+
   /** LCM client: append-only context store with embedding caching. */
   readonly lcmClient!: LCMClient;
 
@@ -188,6 +211,9 @@ export class Orchestrator {
 
   /** Injected embedder reference for node-level embedding computation. */
   #embedder: IEmbedder;
+
+  /** Injected compressor reference for reflection generation. */
+  #compressor: ICompressor | null = null;
 
   // -------------------------------------------------------------------------
   // Constructor
@@ -324,13 +350,19 @@ export class Orchestrator {
    * feedback loop can use lcm_expand to re-inject lost context.
    */
   #wireLumpabilityEvents(): void {
-    this.lumpabilityAuditor.on("lumpability:audit-complete", (event: AnyEvent) => {
-      void this.eventBus.emit(event);
-    });
+    this.lumpabilityAuditor.on(
+      "lumpability:audit-complete",
+      (event: AnyEvent) => {
+        void this.eventBus.emit(event);
+      },
+    );
 
-    this.lumpabilityAuditor.on("lumpability:weak-compression", (event: AnyEvent) => {
-      void this.eventBus.emit(event);
-    });
+    this.lumpabilityAuditor.on(
+      "lumpability:weak-compression",
+      (event: AnyEvent) => {
+        void this.eventBus.emit(event);
+      },
+    );
 
     // VK axiom loss — critical event. Forward to EventBus for logging
     // and ObstructionHandler recovery. The AxiomLossError thrown by the
@@ -355,10 +387,13 @@ export class Orchestrator {
       this.priceEvolver.onRegimeChange(e.regime);
     });
 
-    this.eventBus.subscribe("sheaf:h1-obstruction-detected", (event: AnyEvent) => {
-      const e = event as unknown as { h1Dimension: number };
-      this.priceEvolver.onCohomologyUpdate(e.h1Dimension);
-    });
+    this.eventBus.subscribe(
+      "sheaf:h1-obstruction-detected",
+      (event: AnyEvent) => {
+        const e = event as unknown as { h1Dimension: number };
+        this.priceEvolver.onCohomologyUpdate(e.h1Dimension);
+      },
+    );
 
     this.eventBus.subscribe("sheaf:consensus-reached", () => {
       this.priceEvolver.onCohomologyUpdate(0);
@@ -369,10 +404,13 @@ export class Orchestrator {
       this.priceEvolver.onSOCMetrics(e.cdp);
     });
 
-    this.eventBus.subscribe("lumpability:weak-compression", (event: AnyEvent) => {
-      const e = event as unknown as { sourceEntryIds: readonly string[] };
-      this.priceEvolver.onWeakLumpability(e.sourceEntryIds);
-    });
+    this.eventBus.subscribe(
+      "lumpability:weak-compression",
+      (event: AnyEvent) => {
+        const e = event as unknown as { sourceEntryIds: readonly string[] };
+        this.priceEvolver.onWeakLumpability(e.sourceEntryIds);
+      },
+    );
   }
 
   /**
@@ -521,6 +559,22 @@ export class Orchestrator {
     const result = await this.lcmEscalation.escalate(concatenatedText);
     if (result.level > 0) {
       const originalEntryIds = allEntries.map((e) => e.id);
+
+      // Generate reflections at compaction (Move C1)
+      let reflections: Array<{ question: string; answer: string }> = [];
+      if (
+        this.#compressor &&
+        typeof this.#compressor.generateReflections === "function"
+      ) {
+        try {
+          reflections = await this.#compressor.generateReflections(
+            result.output,
+          );
+        } catch (err) {
+          console.error("[ORCH] Reflection generation failed:", err);
+        }
+      }
+
       const summaryNode: SummaryNode = {
         id: `summary-${uuidv7()}`,
         content: result.output,
@@ -532,10 +586,28 @@ export class Orchestrator {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
           compressorUsed: result.compressorUsed,
+          reflections,
         },
         metricHistory: [],
         intermediateCompressions: [],
       };
+
+      // Seed reflection question embeddings in the active subgraph cache
+      const active = this.subgraphRegistry.activeSubgraph;
+      for (let i = 0; i < reflections.length; i++) {
+        const ref = reflections[i];
+        if (ref && ref.question) {
+          try {
+            const vec = await this.#embedder.embed(ref.question, signal);
+            active.cache.seed(`${summaryNode.id}-ref-${i}`, vec);
+          } catch (err) {
+            console.error(
+              `[ORCH] Failed to embed reflection question ${i}:`,
+              err,
+            );
+          }
+        }
+      }
 
       this.lcmDag.addSummaryNode(summaryNode);
       console.log(
@@ -544,7 +616,12 @@ export class Orchestrator {
 
       // Route through existing auditCompaction() hook
       try {
-        await this.auditCompaction(summaryNode, allEntries, result.level as EscalationLevel, signal);
+        await this.auditCompaction(
+          summaryNode,
+          allEntries,
+          result.level as EscalationLevel,
+          signal,
+        );
       } catch (err) {
         if (err instanceof AxiomLossError) {
           console.warn(`[ORCH] AxiomLossError in compaction: ${err.message}`);
@@ -555,8 +632,10 @@ export class Orchestrator {
     }
 
     // Step 6: Run Sheaf cohomology analysis
-    // In a real system, the sheaf is constructed from TNA graph topology.
-    // For Phase 5: use the instance sheaf (empty → h0=0, h1=0 → consensus event fires).
+    // Dynamically construct CellularSheaf base graph from SubgraphRegistry (Move B2)
+    const dynamicSheaf = await this.buildSheafFromRegistry();
+    (this as any).sheaf = dynamicSheaf;
+
     const cohomologyResult = this.cohomologyAnalyzer.analyze(
       this.sheaf,
       this.#iterationCounter,
@@ -727,13 +806,16 @@ export class Orchestrator {
   // -------------------------------------------------------------------------
   #initLcm(embedder: IEmbedder, compressor?: ICompressor): void {
     const tokenCounter = new GptTokenCounter();
-    const store = new ImmutableStore(tokenCounter);
-    const cache = new EmbeddingCache(embedder);
-    (this as any).lcmClient = new LCMClient(store, cache, embedder);
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    (this as any).subgraphRegistry = registry;
 
-    const summaryIndex = new SummaryIndex();
-    const dag = new ContextDAG(store, summaryIndex);
-    (this as any).lcmDag = dag;
+    const active = registry.activeSubgraph;
+    (this as any).lcmClient = new LCMClient(
+      active.store,
+      active.cache,
+      embedder,
+    );
+    (this as any).lcmDag = active.dag;
 
     const thresholds = {
       level1TokenLimit: 1000,
@@ -742,7 +824,24 @@ export class Orchestrator {
       coherenceSimilarityThreshold: 0.7,
     };
     const comp = compressor ?? new MockCompressor();
-    (this as any).lcmEscalation = new EscalationProtocol(comp, tokenCounter, thresholds);
+    this.#compressor = comp;
+    (this as any).lcmEscalation = new EscalationProtocol(
+      comp,
+      tokenCounter,
+      thresholds,
+    );
+  }
+
+  /** Activate a subgraph and wire its client and DAG. */
+  activateSubgraph(id: string): void {
+    this.subgraphRegistry.activate(id);
+    const active = this.subgraphRegistry.activeSubgraph;
+    (this as any).lcmClient = new LCMClient(
+      active.store,
+      active.cache,
+      this.#embedder,
+    );
+    (this as any).lcmDag = active.dag;
   }
 
   #initSheaf(): void {
@@ -863,12 +962,201 @@ export class Orchestrator {
     graph: ReturnType<CooccurrenceGraph["getGraph"]>,
     iteration: number,
   ): Array<{ source: string; target: string; createdAtIteration: number }> {
-    const result: Array<{ source: string; target: string; createdAtIteration: number }> = [];
+    const result: Array<{
+      source: string;
+      target: string;
+      createdAtIteration: number;
+    }> = [];
     graph.forEachEdge((_edge, attrs, source, target) => {
-      if ((attrs as { createdAtIteration?: number }).createdAtIteration === iteration) {
+      if (
+        (attrs as { createdAtIteration?: number }).createdAtIteration ===
+        iteration
+      ) {
         result.push({ source, target, createdAtIteration: iteration });
       }
     });
     return result;
+  }
+
+  /** Build a CellularSheaf base graph dynamically based on active subgraphs. */
+  async buildSheafFromRegistry(): Promise<CellularSheaf> {
+    const subgraphs = this.subgraphRegistry.list();
+
+    const vertices: SheafVertex[] = subgraphs.map((sub) => ({
+      id: sub.id as VertexId,
+      stalkSpace: { dim: 1, label: sub.name },
+    }));
+
+    const edges: SheafEdge[] = [];
+    const threshold = 0.7;
+
+    const buildIdentityMap = (sourceVertexId: VertexId, edgeId: EdgeId) => {
+      const entries = new Float64Array([1.0]);
+      return {
+        sourceVertexId,
+        edgeId,
+        sourceDim: 1,
+        targetDim: 1,
+        entries,
+      };
+    };
+
+    for (let i = 0; i < subgraphs.length; i++) {
+      for (let j = i + 1; j < subgraphs.length; j++) {
+        const subA = subgraphs[i]!;
+        const subB = subgraphs[j]!;
+
+        const targetsA = subA.summaryIndex
+          .list()
+          .filter((node) => subA.dag.getParentSummary(node.id) === undefined);
+        const idsA =
+          targetsA.length > 0
+            ? targetsA.map((t) => t.id)
+            : subA.store.getAll().map((e) => e.id);
+
+        const targetsB = subB.summaryIndex
+          .list()
+          .filter((node) => subB.dag.getParentSummary(node.id) === undefined);
+        const idsB =
+          targetsB.length > 0
+            ? targetsB.map((t) => t.id)
+            : subB.store.getAll().map((e) => e.id);
+
+        if (idsA.length === 0 || idsB.length === 0) continue;
+
+        let maxSim = -1.0;
+        for (const idA of idsA) {
+          let vecA = subA.cache.getEmbedding(idA);
+          if (!vecA) {
+            const node = subA.summaryIndex.get(idA);
+            const text = node?.content ?? subA.store.get(idA)?.content;
+            if (text) {
+              vecA = await this.#embedder.embed(text);
+              subA.cache.seed(idA, vecA);
+            }
+          }
+          if (!vecA) continue;
+
+          for (const idB of idsB) {
+            let vecB = subB.cache.getEmbedding(idB);
+
+            if (!vecB) {
+              const node = subB.summaryIndex.get(idB);
+              const text = node?.content ?? subB.store.get(idB)?.content;
+              if (text) {
+                vecB = await this.#embedder.embed(text);
+                subB.cache.seed(idB, vecB);
+              }
+            }
+            if (!vecB) continue;
+
+            const sim = cosineSimilarity(vecA, vecB);
+            if (sim > maxSim) {
+              maxSim = sim;
+            }
+          }
+        }
+
+        if (maxSim >= threshold) {
+          const edgeId = `e-${subA.id}-${subB.id}` as EdgeId;
+          edges.push({
+            id: edgeId,
+            sourceVertex: subA.id as VertexId,
+            targetVertex: subB.id as VertexId,
+            stalkSpace: { dim: 1, label: `${subA.name}<->${subB.name}` },
+            sourceRestriction: buildIdentityMap(subA.id as VertexId, edgeId),
+            targetRestriction: buildIdentityMap(subB.id as VertexId, edgeId),
+          });
+        }
+      }
+    }
+
+    return new CellularSheaf(vertices, edges);
+  }
+
+  /**
+   * stagedQuery(query) — Grounding -> Entity -> Synthesis staged query protocol (Move C2)
+   */
+  async stagedQuery(query: string, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) throw new Error("Aborted");
+
+    // Stage 1: Grounding/Selection
+    const ranked = await this.subgraphRegistry.route(query, this.#embedder);
+    const topRanked = ranked[0];
+    const topSubgraph = topRanked
+      ? this.subgraphRegistry.get(topRanked.subgraphId)
+      : this.subgraphRegistry.activeSubgraph;
+    if (!topSubgraph) {
+      throw new Error("[ORCH] No valid subgraphs available for staged query");
+    }
+
+    console.log(
+      `[ORCH] Staged Query Grounding: Selected Subgraph '${topSubgraph.name}' (${topSubgraph.id}) with score ${topRanked?.score.toFixed(3) ?? "N/A"}`,
+    );
+
+    // Stage 2: Entity ID / Target Identification
+    const rootSummaries = topSubgraph.summaryIndex
+      .list()
+      .filter(
+        (node) => topSubgraph.dag.getParentSummary(node.id) === undefined,
+      );
+    const candidates =
+      rootSummaries.length > 0
+        ? rootSummaries.map((n) => ({
+            id: n.id,
+            content: n.content,
+            type: "summary" as const,
+          }))
+        : topSubgraph.store
+            .getAll()
+            .map((e) => ({
+              id: e.id,
+              content: e.content,
+              type: "entry" as const,
+            }));
+
+    if (candidates.length === 0) {
+      return "No context found to answer query.";
+    }
+
+    const queryVector = await this.#embedder.embed(query, signal);
+    let bestCandidate: (typeof candidates)[0] | null = null;
+    let maxSim = -1.0;
+
+    for (const cand of candidates) {
+      let vec = topSubgraph.cache.getEmbedding(cand.id);
+      if (!vec) {
+        vec = await this.#embedder.embed(cand.content, signal);
+        topSubgraph.cache.seed(cand.id, vec);
+      }
+      const sim = cosineSimilarity(queryVector, vec);
+      if (sim > maxSim) {
+        maxSim = sim;
+        bestCandidate = cand;
+      }
+    }
+
+    console.log(
+      `[ORCH] Staged Query Entity ID: Best target is ${bestCandidate?.type} '${bestCandidate?.id}' with similarity ${maxSim.toFixed(3)}`,
+    );
+
+    // Stage 3: Synthesis
+    let contextText = "";
+    if (bestCandidate) {
+      if (bestCandidate.type === "summary") {
+        const originalEntries = topSubgraph.dag.getEntriesForSummary(
+          bestCandidate.id,
+        );
+        contextText = originalEntries.map((e) => e.content).join("\n\n");
+      } else {
+        contextText = bestCandidate.content;
+      }
+    }
+
+    if (this.#compressor && typeof this.#compressor.synthesize === "function") {
+      return await this.#compressor.synthesize(query, contextText);
+    }
+
+    return `Synthesized answer based on context:\n${contextText}`;
   }
 }

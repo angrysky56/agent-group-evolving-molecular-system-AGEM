@@ -31,6 +31,12 @@ export { LCMClient } from "./LCMClient.js";
 // DAG and summary management
 export { ContextDAG } from "./ContextDAG.js";
 export { SummaryIndex } from "./SummaryIndex.js";
+export { SubgraphRegistry } from "./SubgraphRegistry.js";
+export type {
+  Subgraph,
+  SubgraphSnapshot,
+  SubgraphRegistrySnapshot,
+} from "./SubgraphRegistry.js";
 
 // Escalation
 export { EscalationProtocol } from "./EscalationProtocol.js";

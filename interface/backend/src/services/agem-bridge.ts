@@ -840,10 +840,10 @@ class AgemBridge {
       nodeEmbeddings[key] = Array.from(vec);
     }
 
-    // Version 2 additions: summary nodes & tagged embeddings
+    // Version 2 additions: summary nodes & tagged embeddings (retained for backward compatibility and root-level fallback)
     const lcmSummaryNodes = orch.lcmDag.snapshot();
     const vectors = orch.lcmClient.cache.snapshot();
-    let dim = EMBEDDING_DIM;
+    let dim = 384;
     const firstVec = Object.values(vectors)[0];
     if (firstVec) {
       dim = firstVec.length;
@@ -851,8 +851,11 @@ class AgemBridge {
     const model = getEmbeddingModelName();
     const lcmEmbeddings = { model, dim, vectors };
 
+    // Version 3 additions: SubgraphRegistry (Move B1/B2/C1/C2)
+    const lcmSubgraphs = orch.subgraphRegistry.snapshot();
+
     return {
-      version: 2,
+      version: 3,
       savedAt: Date.now(),
       iteration: orch.getIterationCount(),
       graph: { nodes, edges },
@@ -865,6 +868,7 @@ class AgemBridge {
       nodeEmbeddings,
       lcmSummaryNodes,
       lcmEmbeddings,
+      lcmSubgraphs,
     };
   }
 
@@ -899,29 +903,48 @@ class AgemBridge {
       }
     }
 
-    // Restore LCM entries & embeddings (ID-preserving rehydration)
+    // Restore LCM multiple subgraphs registry (Move B1/B2/C1/C2)
     const currentModel = getEmbeddingModelName();
-    let restoredEmbeddings: Record<string, number[]> | undefined;
-    if (snapshot.version === 2 && snapshot.lcmEmbeddings) {
-      if (snapshot.lcmEmbeddings.model === currentModel) {
-        restoredEmbeddings = snapshot.lcmEmbeddings.vectors;
-        console.log(
-          `[AgemBridge] Embedding cache hit! Restored ${Object.keys(restoredEmbeddings).length} precomputed embeddings verbatim.`
-        );
-      } else {
-        console.warn(
-          `[AgemBridge] Embedding model mismatch: snapshot used '${snapshot.lcmEmbeddings.model}', ` +
-          `current is '${currentModel}'. Discarding cache to recompute lazily.`
-        );
+    if (snapshot.version === 3 && snapshot.lcmSubgraphs) {
+      // Validate model mismatch across all subgraphs
+      const subgraphs = snapshot.lcmSubgraphs.subgraphs.map((sub) => {
+        let restoredEmbeddings = sub.embeddings;
+        if (sub.embeddingModel && sub.embeddingModel !== currentModel) {
+          console.warn(
+            `[AgemBridge] Embedding model mismatch for subgraph '${sub.name}': snapshot used '${sub.embeddingModel}', ` +
+              `current is '${currentModel}'. Discarding cache to recompute lazily.`,
+          );
+          restoredEmbeddings = {};
+        }
+        return {
+          ...sub,
+          embeddingModel: currentModel,
+          embeddings: restoredEmbeddings,
+        };
+      });
+
+      orch.subgraphRegistry.restore({
+        activeSubgraphId: snapshot.lcmSubgraphs.activeSubgraphId,
+        subgraphs,
+      });
+
+      // Wire active client & DAG references
+      orch.activateSubgraph(orch.subgraphRegistry.activeSubgraphId);
+      console.log(
+        `[AgemBridge] Restored SubgraphRegistry with ${orch.subgraphRegistry.list().length} subgraphs. ` +
+          `Active subgraph: '${orch.subgraphRegistry.activeSubgraph.name}'`,
+      );
+    } else {
+      // Fallback for direct snapshot integration tests or version 1/2 load-path
+      const restoredEmbeddings =
+        snapshot.lcmEmbeddings && snapshot.lcmEmbeddings.model === currentModel
+          ? snapshot.lcmEmbeddings.vectors
+          : undefined;
+
+      orch.lcmClient.rehydrate(snapshot.lcmEntries, restoredEmbeddings);
+      if (snapshot.lcmSummaryNodes) {
+        orch.lcmDag.restore(snapshot.lcmSummaryNodes);
       }
-    }
-
-    orch.lcmClient.rehydrate(snapshot.lcmEntries, restoredEmbeddings);
-
-    // Restore context DAG (summary nodes)
-    if (snapshot.version === 2 && snapshot.lcmSummaryNodes) {
-      orch.lcmDag.restore(snapshot.lcmSummaryNodes);
-      console.log(`[AgemBridge] Restored ${snapshot.lcmSummaryNodes.length} context DAG summary nodes.`);
     }
 
     // Restore iteration counter
@@ -1002,12 +1025,15 @@ export const agemBridge = new AgemBridge();
 
 /** Standalone helper to retrieve the active embedding model name from config. */
 function getEmbeddingModelName(): string {
-  const provider = settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
+  const provider =
+    settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
   if (provider === "ollama") {
     return settings.all.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text:latest";
   }
   if (provider === "openrouter") {
-    return settings.all.OPENROUTER_EMBEDDING_MODEL ?? "google/gemini-embedding-001";
+    return (
+      settings.all.OPENROUTER_EMBEDDING_MODEL ?? "google/gemini-embedding-001"
+    );
   }
   return "mock-embedder";
 }
