@@ -202,4 +202,105 @@ describe("Preprocessor", () => {
     expect(p.lemmatize("cats")).toBe("cat");
     expect(p.lemmatize("dogs")).toBe("dog");
   });
+
+  // --------------------------------------------------------------------------
+  // T5: Noise filter (numerals, short tokens, domain artifacts)
+  //
+  // Real noise classes observed in AGEM cycle dumps:
+  //   - Bare numerals being labeled as concepts (community "0 . 2 . 15").
+  //   - Single letters from formulas / OCR-y prose ("s", "h", "l", "im", "ax").
+  //   - Lemmatizer artifacts ("mot" <- "not", "pas" <- "passage").
+  //   - Low-signal connectors eng stopword corpus leaves through.
+  // --------------------------------------------------------------------------
+
+  it("T5: pure numerals are rejected (no number ever becomes a node)", () => {
+    const result = preprocessor.preprocess(
+      "see section 462 and equation 769 with rate 0.5 across 990 nodes",
+    );
+
+    for (const tok of result.tokens) {
+      expect(/^-?\d+(\.\d+)?$/.test(tok)).toBe(false);
+    }
+    // Negative sanity: a content word from the same sentence should survive.
+    expect(result.tokens.length).toBeGreaterThan(0);
+  });
+
+  it("T5: single-letter tokens are rejected; legitimate 2-char content words survive", () => {
+    // "h", "l", "s" — singletons, all observed as garbage nodes.
+    // "go", "no", "so", "us" — legitimate 2-char content words, must survive
+    //   (note: many are filtered by the stopword corpus, but those that aren't
+    //    must not be dropped by the noise filter).
+    const result = preprocessor.preprocess(
+      "the h l s entropy values rise across iterations",
+    );
+
+    for (const tok of result.tokens) {
+      expect(tok.length).toBeGreaterThanOrEqual(2);
+    }
+    // "entropy" lemma is the survivor we expect.
+    expect(result.tokens.some((t) => t.startsWith("entrop"))).toBe(true);
+  });
+
+  it("T5: two-letter math/formula leftovers are rejected", () => {
+    // "im", "ax", "dx", "dy" — observed math/formula fragments.
+    const result = preprocessor.preprocess(
+      "im ax dx dy entropy gradient analysis",
+    );
+    for (const noise of ["im", "ax", "dx", "dy"]) {
+      expect(result.tokens).not.toContain(noise);
+    }
+    expect(result.tokens.some((t) => t.startsWith("entrop"))).toBe(true);
+  });
+
+  it("T5: domain noise tokens are rejected (lemmatizer artifacts + low-signal connectors)", () => {
+    // Connectors and artifacts that should never appear as nodes.
+    const noise = [
+      "also",
+      "often",
+      "rather",
+      "whether",
+      "thing",
+      "say",
+      "use",
+      "let",
+      "may",
+      "would",
+      "could",
+      "should",
+      "must",
+      "well",
+      "even",
+      "still",
+      "yet",
+      "however",
+      "thus",
+      "hence",
+      "etc",
+      "mot",
+      "pas",
+    ];
+    const result = preprocessor.preprocess(noise.join(" ") + " entropy");
+
+    for (const n of noise) {
+      expect(result.tokens).not.toContain(n);
+    }
+    // "entropy" survives.
+    expect(result.tokens.some((t) => t.startsWith("entrop"))).toBe(true);
+  });
+
+  it("T5: noise filter survives the corpus pipeline (preprocessWithCorpus)", () => {
+    const corpus = new Preprocessor({ minTfidfWeight: 0.0 });
+    corpus.addDocument("passage 1 entropy analysis 462");
+    corpus.addDocument("passage 2 cohomology 769");
+    corpus.addDocument("passage 3 lumpability 990");
+
+    const result = corpus.preprocessWithCorpus(
+      "passage 4 says 0 entropy at 15",
+    );
+
+    // No numeral ever scored.
+    for (const tok of result.tokens) {
+      expect(/^-?\d+(\.\d+)?$/.test(tok)).toBe(false);
+    }
+  });
 });

@@ -125,6 +125,93 @@ export class SubgraphRegistry {
   }
 
   /**
+   * getConceptVector(subgraphId) — return the subgraph's L2-normalized concept
+   * centroid: the mean of (root-summary embeddings ∪ entry embeddings), normalized.
+   *
+   * Why this exists:
+   *   - The original route() iterated every (summaryA, summaryB, reflection) pair
+   *     across every subgraph pair to compute "the strongest match". For N subgraphs
+   *     with K roots each, that's O(N^2 * K^2) embedding-cosines per route call.
+   *   - A single concept centroid per subgraph collapses that to O(N) for routing
+   *     and O(N^2) for the sheaf base graph — and gives downstream code a
+   *     well-defined "subgraph as a single embedding" handle.
+   *   - Embeddings come from EmbeddingCache, so the centroid is essentially free
+   *     after first computation (the per-entry embed already runs at append time).
+   *
+   * Missing-vector strategy:
+   *   - If an entry/summary has no cached embedding yet, it is skipped silently.
+   *     The caller can pre-warm by routing a query through normal channels.
+   *   - If NO embeddings exist (fresh empty subgraph), returns null.
+   *
+   * @param subgraphId - The subgraph to summarize.
+   * @returns L2-normalized centroid Float64Array, or null if no embeddings exist.
+   */
+  getConceptVector(subgraphId: string): Float64Array | null {
+    const sub = this.#subgraphs.get(subgraphId);
+    if (!sub) return null;
+
+    // Collect embeddings from root summaries first (more semantically condensed),
+    // then fall back to including raw entries.
+    const ids: string[] = [];
+    const rootSummaries = sub.summaryIndex
+      .list()
+      .filter((node) => sub.dag.getParentSummary(node.id) === undefined);
+
+    if (rootSummaries.length > 0) {
+      for (const node of rootSummaries) ids.push(node.id);
+    } else {
+      for (const entry of sub.store.getAll()) ids.push(entry.id);
+    }
+
+    if (ids.length === 0) return null;
+
+    let dim: number | null = null;
+    let centroid: Float64Array | null = null;
+    let count = 0;
+
+    for (const id of ids) {
+      const vec = sub.cache.getEmbedding(id);
+      if (!vec || vec.length === 0) continue;
+      if (centroid === null) {
+        dim = vec.length;
+        centroid = new Float64Array(dim);
+      }
+      if (vec.length !== dim) continue; // skip dim-mismatched (model swap mid-session)
+      for (let k = 0; k < dim; k++) centroid[k] += vec[k];
+      count++;
+    }
+
+    if (centroid === null || count === 0 || dim === null) return null;
+
+    // Average + L2 normalize.
+    let norm = 0;
+    for (let k = 0; k < dim; k++) {
+      centroid[k] /= count;
+      norm += centroid[k] * centroid[k];
+    }
+    norm = Math.sqrt(norm);
+    if (norm === 0) return centroid; // degenerate; return as-is rather than NaN
+    for (let k = 0; k < dim; k++) centroid[k] /= norm;
+    return centroid;
+  }
+
+  /**
+   * conceptSimilarity(idA, idB) — cosine similarity between two subgraphs'
+   * concept centroids. Returns -1 when either centroid is unavailable.
+   *
+   * This is the cheap, semantically meaningful edge weight the sheaf builder
+   * needs. Replaces the previous O(K^2) pairwise summary-to-summary loop.
+   */
+  conceptSimilarity(idA: string, idB: string): number {
+    const a = this.getConceptVector(idA);
+    const b = this.getConceptVector(idB);
+    if (!a || !b || a.length !== b.length) return -1;
+    let dot = 0;
+    for (let k = 0; k < a.length; k++) dot += a[k] * b[k];
+    return dot; // both already L2-normalized
+  }
+
+  /**
    * route(query, embedder) — ranks subgraphs by maximum cosine similarity
    * of the query embedding against the subgraph's routing targets.
    *

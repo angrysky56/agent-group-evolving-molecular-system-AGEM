@@ -143,6 +143,76 @@ export class Preprocessor {
   }
 
   // --------------------------------------------------------------------------
+  // Private: #isNoiseToken() — junk-token rejection
+  // --------------------------------------------------------------------------
+
+  /**
+   * #isNoiseToken — return true when a token should not become a graph node.
+   *
+   * Rejects:
+   *   - Bare numerals (e.g., "0", "15", "462") — these were leaking through and
+   *     polluting community labels with passage-offset noise.
+   *   - Tokens shorter than 2 chars (single letters "s", "h", "l").
+   *   - Two-letter math/formula leftovers ("im", "ax", "dx", "dy", "dz")
+   *     and lemmatizer fragments ("mot" <- "not", "pas" <- "passage").
+   *   - Low-signal connectors the eng stopword corpus omits.
+   *
+   * Legitimate 2-char content words ("go", "no", "so", "us") are preserved.
+   */
+  #isNoiseToken(token: string): boolean {
+    if (/^-?\d+(\.\d+)?$/.test(token)) return true;
+    if (token.length < 2) return true;
+    return Preprocessor.#DOMAIN_NOISE.has(token);
+  }
+
+  /**
+   * Domain noise: two-letter math/formula leftovers + lemmatizer artifacts +
+   * low-signal connectors the eng stopword corpus omits. Conservative — only
+   * tokens observed as garbage in real AGEM cycles.
+   *
+   * Legitimate 2-char content words ("go", "no", "so", "us") are deliberately
+   * NOT in this set.
+   */
+  static readonly #DOMAIN_NOISE: ReadonlySet<string> = new Set([
+    // 2-char math/formula leftovers and abbreviation fragments observed as junk nodes.
+    "im",
+    "ax",
+    "dx",
+    "dy",
+    "dz",
+    "vs",
+    "eq",
+    "ie",
+    "eg",
+    "ok",
+    // Lemmatizer artifacts (real failures observed in test corpora):
+    "mot", // "not" mis-lemmatized via fallback
+    "pas", // "passage" mis-stemmed
+    // Low-signal connectors eng stopword corpus omits:
+    "also",
+    "often",
+    "rather",
+    "whether",
+    "thing",
+    "say",
+    "use",
+    "let",
+    "may",
+    "would",
+    "could",
+    "should",
+    "must",
+    "well",
+    "even",
+    "still",
+    "yet",
+    "however",
+    "thus",
+    "hence",
+    "etc",
+  ]);
+
+  // --------------------------------------------------------------------------
   // Private: #runPipeline() — shared tokenize/stopword/lemmatize logic
   // --------------------------------------------------------------------------
 
@@ -165,17 +235,19 @@ export class Preprocessor {
     const withoutStopwords = removeStopwords(lowercased, eng);
 
     // Step 4: Lemmatize each token — build surface-to-lemma map.
+    // Apply the noise filter both to the surface form (catches numerals and
+    // single letters before they ever lemmatize) and to the resulting lemma
+    // (catches lemmatizer artifacts like "mot" <- "not").
     const surfaceToLemma = new Map<string, string>();
     const lemmatizedTokens: string[] = [];
 
     for (const surface of withoutStopwords) {
+      if (this.#isNoiseToken(surface)) continue;
       const lemma = this.lemmatize(surface);
-      if (lemma.length > 0) {
-        // Record ALL surface forms that map to this lemma.
-        // If "running" and "runs" both map to "run", both are recorded.
-        surfaceToLemma.set(surface, lemma);
-        lemmatizedTokens.push(lemma);
-      }
+      if (lemma.length === 0) continue;
+      if (this.#isNoiseToken(lemma)) continue;
+      surfaceToLemma.set(surface, lemma);
+      lemmatizedTokens.push(lemma);
     }
 
     return { lemmatizedTokens, surfaceToLemma };

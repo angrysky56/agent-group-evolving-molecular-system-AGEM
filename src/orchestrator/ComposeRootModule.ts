@@ -978,9 +978,62 @@ export class Orchestrator {
     return result;
   }
 
-  /** Build a CellularSheaf base graph dynamically based on active subgraphs. */
+  /**
+   * buildSheafFromRegistry — assemble a CellularSheaf over the subgraph registry.
+   *
+   * What this builds:
+   *   - Vertices = subgraphs. Each carries a scalar (dim=1) stalk: a single
+   *     real-valued "section" representing the subgraph's level of activation.
+   *   - Edges = pairs of subgraphs whose concept centroids exceed `threshold`.
+   *     The edge stalk is also scalar.
+   *   - sourceRestriction: F_{u <- e} = [1.0]  (identity).
+   *     targetRestriction: F_{v <- e} = [sim]  (cosine similarity of the two
+   *       concept centroids, in [-1, 1]).
+   *
+   * What this means mathematically:
+   *   Consensus (B*x = 0) reads as  x_v * sim_uv = x_u  on each edge. A global
+   *   section is any vertex assignment whose neighboring values agree weighted
+   *   by their semantic similarity. H^0 = #components-of-the-similarity-graph
+   *   = the number of disconnected semantic clusters (up to numerical kernel).
+   *   H^1 emerges when, around a cycle of subgraphs, the product of similarity
+   *   weights around the loop does NOT equal 1 — i.e. the system cannot
+   *   self-consistently weigh the same content via two different paths. That
+   *   is a real semantic obstruction, not graph topology.
+   *
+   * What this is NOT (yet):
+   *   The full vector-valued sheaf, where stalks carry the EMBED_DIM-dim
+   *   concept vectors themselves and restriction maps are linear projections
+   *   between concept bases. That lift is correct semantically but requires
+   *   per-pair basis fitting (Procrustes / orthogonal regression) and is
+   *   deferred. See TODO below.
+   *
+   *   Note on the "Kronecker shortcut": IF every restriction map were
+   *     sim_uv * I_{EMBED_DIM}
+   *   then the full coboundary would factor as B_scalar (x) I_{EMBED_DIM},
+   *   and  dim(H^k_full) = EMBED_DIM * dim(H^k_scalar). In that special case
+   *   the scalar computation here would be the correct optimized form. But
+   *   that case is a strong assumption (it says every restriction is a
+   *   uniform rescale of every embedding component, which loses any rotation
+   *   between subgraph concept bases). The honest read is: this is a scalar
+   *   sheaf that captures similarity-weighted consensus and H^1 around loops,
+   *   and is strictly more informative than the prior identity-mapped version
+   *   (which collapsed to graph Betti numbers ignoring similarity entirely).
+   *
+   * TODO(sheaf-vector-lift): promote to vector-valued stalks. Steps:
+   *   1. Set vertex stalkSpace.dim = EMBED_DIM, edge stalkSpace.dim = EMBED_DIM.
+   *   2. Fit an orthogonal map M_{u<-v} from subgraph u's concept basis to
+   *      subgraph v's basis (Procrustes alignment of top-k summary embeddings).
+   *   3. sourceRestriction = I_{EMBED_DIM}; targetRestriction = sim * M_{u<-v}.
+   *   4. Cohomology then captures basis-rotation obstructions, not just
+   *      scalar-weight ones.
+   *   The TFLOPs cost of SVD over a (num_edges * EMBED_DIM) x (num_subgraphs *
+   *   EMBED_DIM) coboundary is the reason this is deferred until restriction
+   *   maps actually need vector content — e.g. once cross-subgraph reflection
+   *   matching uses per-component projections rather than scalar cosines.
+   */
   async buildSheafFromRegistry(): Promise<CellularSheaf> {
     const subgraphs = this.subgraphRegistry.list();
+    const threshold = 0.7;
 
     const vertices: SheafVertex[] = subgraphs.map((sub) => ({
       id: sub.id as VertexId,
@@ -988,86 +1041,67 @@ export class Orchestrator {
     }));
 
     const edges: SheafEdge[] = [];
-    const threshold = 0.7;
 
-    const buildIdentityMap = (sourceVertexId: VertexId, edgeId: EdgeId) => {
-      const entries = new Float64Array([1.0]);
-      return {
-        sourceVertexId,
-        edgeId,
-        sourceDim: 1,
-        targetDim: 1,
-        entries,
-      };
-    };
+    // Pre-warm: ensure concept centroids exist for every subgraph that has
+    // root summaries or entries. Skip pairs where either subgraph has no
+    // embeddable content.
+    for (const sub of subgraphs) {
+      const rootSummaries = sub.summaryIndex
+        .list()
+        .filter((node) => sub.dag.getParentSummary(node.id) === undefined);
+      const ids: Array<{ id: string; text: string }> = [];
+      if (rootSummaries.length > 0) {
+        for (const node of rootSummaries) {
+          if (!sub.cache.getEmbedding(node.id))
+            ids.push({ id: node.id, text: node.content });
+        }
+      } else {
+        for (const entry of sub.store.getAll()) {
+          if (!sub.cache.getEmbedding(entry.id))
+            ids.push({ id: entry.id, text: entry.content });
+        }
+      }
+      for (const { id, text } of ids) {
+        const vec = await this.#embedder.embed(text);
+        sub.cache.seed(id, vec);
+      }
+    }
 
     for (let i = 0; i < subgraphs.length; i++) {
       for (let j = i + 1; j < subgraphs.length; j++) {
         const subA = subgraphs[i]!;
         const subB = subgraphs[j]!;
 
-        const targetsA = subA.summaryIndex
-          .list()
-          .filter((node) => subA.dag.getParentSummary(node.id) === undefined);
-        const idsA =
-          targetsA.length > 0
-            ? targetsA.map((t) => t.id)
-            : subA.store.getAll().map((e) => e.id);
+        // O(1) per pair using the precomputed L2-normalized concept centroids.
+        const sim = this.subgraphRegistry.conceptSimilarity(subA.id, subB.id);
+        if (sim < threshold) continue;
 
-        const targetsB = subB.summaryIndex
-          .list()
-          .filter((node) => subB.dag.getParentSummary(node.id) === undefined);
-        const idsB =
-          targetsB.length > 0
-            ? targetsB.map((t) => t.id)
-            : subB.store.getAll().map((e) => e.id);
+        // Clamp to a small finite range to keep the coboundary well-conditioned.
+        // Negative similarities (semantic opposition) are valid sheaf data, but
+        // we only emit an edge above `threshold` so the path doesn't trigger.
+        const weight = Math.max(-1, Math.min(1, sim));
 
-        if (idsA.length === 0 || idsB.length === 0) continue;
-
-        let maxSim = -1.0;
-        for (const idA of idsA) {
-          let vecA = subA.cache.getEmbedding(idA);
-          if (!vecA) {
-            const node = subA.summaryIndex.get(idA);
-            const text = node?.content ?? subA.store.get(idA)?.content;
-            if (text) {
-              vecA = await this.#embedder.embed(text);
-              subA.cache.seed(idA, vecA);
-            }
-          }
-          if (!vecA) continue;
-
-          for (const idB of idsB) {
-            let vecB = subB.cache.getEmbedding(idB);
-
-            if (!vecB) {
-              const node = subB.summaryIndex.get(idB);
-              const text = node?.content ?? subB.store.get(idB)?.content;
-              if (text) {
-                vecB = await this.#embedder.embed(text);
-                subB.cache.seed(idB, vecB);
-              }
-            }
-            if (!vecB) continue;
-
-            const sim = cosineSimilarity(vecA, vecB);
-            if (sim > maxSim) {
-              maxSim = sim;
-            }
-          }
-        }
-
-        if (maxSim >= threshold) {
-          const edgeId = `e-${subA.id}-${subB.id}` as EdgeId;
-          edges.push({
-            id: edgeId,
-            sourceVertex: subA.id as VertexId,
-            targetVertex: subB.id as VertexId,
-            stalkSpace: { dim: 1, label: `${subA.name}<->${subB.name}` },
-            sourceRestriction: buildIdentityMap(subA.id as VertexId, edgeId),
-            targetRestriction: buildIdentityMap(subB.id as VertexId, edgeId),
-          });
-        }
+        const edgeId = `e-${subA.id}-${subB.id}` as EdgeId;
+        edges.push({
+          id: edgeId,
+          sourceVertex: subA.id as VertexId,
+          targetVertex: subB.id as VertexId,
+          stalkSpace: { dim: 1, label: `${subA.name}<->${subB.name}` },
+          sourceRestriction: {
+            sourceVertexId: subA.id as VertexId,
+            edgeId,
+            sourceDim: 1,
+            targetDim: 1,
+            entries: new Float64Array([1.0]),
+          },
+          targetRestriction: {
+            sourceVertexId: subB.id as VertexId,
+            edgeId,
+            sourceDim: 1,
+            targetDim: 1,
+            entries: new Float64Array([weight]),
+          },
+        });
       }
     }
 

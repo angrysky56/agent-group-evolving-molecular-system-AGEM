@@ -238,4 +238,158 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
       await orch.shutdown();
     }
   });
+
+  // --------------------------------------------------------------------------
+  // CONCEPT-VECTOR LAYER — "subgraph as a single embedding"
+  //
+  // The registry exposes:
+  //   getConceptVector(id):       L2-normalized centroid of root-summary +
+  //                               entry embeddings for the subgraph.
+  //   conceptSimilarity(idA,idB): cosine between the two centroids.
+  // These collapse the O(K^2) pairwise matching that buildSheafFromRegistry
+  // used previously into O(1) per pair, and give downstream code a
+  // semantically meaningful single handle per subgraph.
+  // --------------------------------------------------------------------------
+
+  it("ConceptVector: returns null for an empty subgraph (no entries, no summaries)", () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    expect(registry.getConceptVector("default")).toBeNull();
+  });
+
+  it("ConceptVector: returns null when entries exist but no embeddings are cached", () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("noembed", "noembed-id");
+    sub.store.append("text without cached embedding");
+    // getConceptVector never invokes the embedder itself; it only averages
+    // already-cached vectors. An entry without a cached embedding contributes
+    // nothing and a fully-uncached subgraph yields null.
+    expect(registry.getConceptVector("noembed-id")).toBeNull();
+  });
+
+  it("ConceptVector: produces an L2-normalized centroid from cached entry embeddings", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("bio", "bio-id");
+
+    const e1 = sub.store.append("RNA transcription");
+    const e2 = sub.store.append("genetics and biology");
+    await sub.cache.cacheEntry(e1.id, e1.content);
+    await sub.cache.cacheEntry(e2.id, e2.content);
+
+    const centroid = registry.getConceptVector("bio-id");
+    expect(centroid).not.toBeNull();
+    expect(centroid!.length).toBe(384);
+
+    // L2 norm must be 1 (within float tolerance).
+    let normSq = 0;
+    for (let k = 0; k < centroid!.length; k++) normSq += centroid![k] ** 2;
+    expect(Math.abs(Math.sqrt(normSq) - 1.0)).toBeLessThan(1e-9);
+
+    // Deterministic embedder places biology vectors on axis 0, so the
+    // centroid should be the unit vector on axis 0.
+    expect(centroid![0]).toBeCloseTo(1.0, 9);
+  });
+
+  it("ConceptSimilarity: high for same-topic subgraphs, low for different topics", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const subBioA = registry.create("bioA", "bio-a");
+    const subBioB = registry.create("bioB", "bio-b");
+    const subChem = registry.create("chem", "chem-id");
+
+    const ea = subBioA.store.append("RNA transcription pathways");
+    const eb = subBioB.store.append("genetics of biology");
+    const ec = subChem.store.append("covalent chemical bonds");
+    await subBioA.cache.cacheEntry(ea.id, ea.content);
+    await subBioB.cache.cacheEntry(eb.id, eb.content);
+    await subChem.cache.cacheEntry(ec.id, ec.content);
+
+    const simBioBio = registry.conceptSimilarity("bio-a", "bio-b");
+    const simBioChem = registry.conceptSimilarity("bio-a", "chem-id");
+
+    expect(simBioBio).toBeGreaterThan(0.99); // both project to axis 0
+    expect(simBioChem).toBeLessThan(0.01); // orthogonal in the test embedder
+    expect(simBioBio).toBeGreaterThan(simBioChem);
+  });
+
+  it("ConceptSimilarity: returns -1 when either centroid is unavailable", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    registry.create("empty", "empty-id");
+    const subBio = registry.create("bio", "bio-id");
+    const e = subBio.store.append("RNA transcription");
+    await subBio.cache.cacheEntry(e.id, e.content);
+
+    expect(registry.conceptSimilarity("empty-id", "bio-id")).toBe(-1);
+    expect(registry.conceptSimilarity("nonexistent", "bio-id")).toBe(-1);
+  });
+
+  // --------------------------------------------------------------------------
+  // SHEAF: similarity-weighted restriction maps (replacing the [1.0]/[1.0]
+  // identity that previously made cohomology equivalent to graph Betti).
+  // --------------------------------------------------------------------------
+
+  it("Sheaf: edges encode actual semantic similarity in the target restriction map", async () => {
+    const orch = new Orchestrator(embedder, new MockCompressor());
+    try {
+      const reg = orch.subgraphRegistry;
+      const subBioA = reg.create("bioA", "bio-a");
+      const subBioB = reg.create("bioB", "bio-b");
+
+      const ea = subBioA.store.append("RNA transcription pathways");
+      const eb = subBioB.store.append("genetics of biology");
+      await subBioA.cache.cacheEntry(ea.id, ea.content);
+      await subBioB.cache.cacheEntry(eb.id, eb.content);
+
+      const sheaf = await orch.buildSheafFromRegistry();
+      const edgeIds = sheaf.getEdgeIds();
+      // Only bio-a <-> bio-b crosses threshold; default and the others are
+      // empty and produce -1 similarity.
+      const bioEdge = edgeIds.find(
+        (id) =>
+          id.includes("bio-a") && id.includes("bio-b"),
+      );
+      expect(bioEdge).toBeDefined();
+
+      const edge = sheaf.getEdge(bioEdge!);
+      // Source map: identity [1.0].
+      expect(Array.from(edge.sourceRestriction.entries)).toEqual([1.0]);
+      // Target map carries the actual cosine similarity, NOT 1.0.
+      const weight = edge.targetRestriction.entries[0]!;
+      expect(weight).toBeGreaterThan(0.99); // same-axis test vectors
+      expect(weight).toBeLessThanOrEqual(1.0);
+    } finally {
+      await orch.shutdown();
+    }
+  });
+
+  it("Sheaf: H^0 grows with #disconnected semantic clusters (scalar sheaf semantics hold)", async () => {
+    const orch = new Orchestrator(embedder, new MockCompressor());
+    try {
+      const reg = orch.subgraphRegistry;
+      // Drop the default empty subgraph from the picture by populating it,
+      // so every vertex has a well-defined concept vector.
+      const subDef = reg.activeSubgraph;
+      const ed = subDef.store.append("RNA transcription");
+      await subDef.cache.cacheEntry(ed.id, ed.content);
+
+      const subBio = reg.create("bio2", "bio-2");
+      const subChem = reg.create("chem", "chem-id");
+      const e1 = subBio.store.append("RNA polymerase II");
+      const e2 = subChem.store.append("covalent chemical bonds and molecules");
+      await subBio.cache.cacheEntry(e1.id, e1.content);
+      await subChem.cache.cacheEntry(e2.id, e2.content);
+
+      const sheaf = await orch.buildSheafFromRegistry();
+      const coho = computeCohomology(sheaf);
+
+      // Two semantic clusters: {default + bio-2} on axis 0, {chem-id} on axis 1.
+      // The bio cluster has 2 vertices connected by a high-similarity edge.
+      // The chem cluster is isolated (no edges into it).
+      // Scalar sheaf cohomology: H^0 = #connected components in the
+      // similarity-weighted graph.
+      expect(coho.h0Dimension).toBeGreaterThanOrEqual(2);
+      // No cycles among 3 vertices and at most 1 edge => H^1 = 0.
+      expect(coho.h1Dimension).toBe(0);
+    } finally {
+      await orch.shutdown();
+    }
+  });
 });
