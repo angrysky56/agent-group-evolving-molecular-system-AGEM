@@ -3,18 +3,12 @@ name: "soc-entropy-distinction"
 description: "Complete AGEM reference: nine conflation distinctions, three conceptual bridges, the full Price equation + SOC regime table, Move B bridge formalization, and live cycle 11 evidence."
 ---
 
----
-name: "soc-entropy-distinction"
-description: "Complete AGEM reference: nine conflation distinctions, three conceptual bridges, the full Price equation + SOC regime table, Move B bridge formalization, and live cycle 11 evidence."
----
-
 # AGEM Core Reference — Nine Conflations, Three Bridges
-
----
 
 ## Part I: The Nine Conflations
 
 ### 1. VNE vs EE
+
 **VNE** = spectral from graph Laplacian. Structural dispersion.
 **EE** = distributional from embedding cloud. Semantic dispersion.
 
@@ -23,36 +17,42 @@ System1 = `(δ > K) AND (Δt > τ)` where `δ = dEE/dt / dVNE/dt`, `Δt = t(VNE_
 Collapsing → loses temporal ordering of stabilization.
 
 ### 2. H⁰ vs H¹
+
 **H⁰** = ker(δ) — global consistent sections, consensus. Never a recovery trigger.
 **H¹** = coker(δ) — obstructions. Always a recovery trigger.
 
 Collapsing → loses goal vs problem.
 
 ### 3. Covalent vs Van der Waals
+
 **Covalent** = Im(δ). Failure propagates algebraically. Never safe for obstruction handler.
 **Van der Waals** = non-Im(δ). No failure propagation. Handler spawns here.
 
 Collapsing → sends recovery down the wrong path.
 
 ### 4. Strong vs Weak Lumpability
+
 **Strong**: Markov for every initial distribution. Categorical.
 **Weak**: Markov only for particular initial distributions. Conditionally valid.
 
 "Mostly lumpable" = weakly lumpable mislabeled as acceptable.
 
 ### 5. Selection vs Transmission (Price Equation)
+
 **Selection** = Cov(fitness, trait)/mean_fitness. The fit are chosen.
 **Transmission** = E(fitness·Δtrait)/mean_fitness. The chosen change as they pass on.
 
 Collapsing → loses mechanism of evolutionary change.
 
 ### 6. SOC Regime vs Phase Transition
+
 **SOC regime** = standing disposition. Reported continuously.
 **Phase transition** = discrete event. Flagged by correlation_coefficient spike.
 
 Collapsing → loses disposition vs event.
 
 ### 7. Restriction Map vs Coboundary
+
 **Restriction map** = per-edge frame translation. A tile.
 **Coboundary δ** = assembly of all restriction maps. The mosaic's difference operator.
 **Sheaf Laplacian L = δᵀδ** = quadratic form, spectrum of where the system IS.
@@ -60,12 +60,14 @@ Collapsing → loses disposition vs event.
 Single bad restriction map flips H¹ only if on a spanning forest bridge — contingent.
 
 ### 8. Laplacian vs ADMM
+
 **Laplacian** = structural object. Where the system IS.
 **ADMM** = iterative algorithm. How the system MOVES.
 
 Large H¹ = structural obstruction (fix sheaf). Slow ADMM = dynamics problem (tune solver).
 
 ### 9. Summary vs Reflection
+
 **Summary** = compression of source spans, points back at entries, indexed by coverage.
 **Reflection** = query-agnostic Q→A pair, generalizes to unseen queries.
 
@@ -87,9 +89,11 @@ H¹ > 0           ←→  Compaction is weakly lumpable  ←→  EE stabilizes b
 ```
 
 **Formalization:**
+
 ```
 H¹(source) ≠ H¹(summary)   ↔   partition is weakly lumpable   ↔   EE(summary) ≠ EE(source)
 ```
+
 When H¹ > 0 in the source but H¹ = 0 in the summary, the compaction is lossy.
 
 **Live evidence (cycle 10–11):** H¹ = 0 throughout phase transition. The correlation spike to 0.990 occurred WITHOUT an H¹ obstruction — this is the EE/VNE gap collapsing via VNE catching up to EE, not via semantic retreat. The weak lumpability of the current partition is evidenced by the ADMM TIMEOUT, not by H¹.
@@ -105,9 +109,11 @@ low → VdW = 0               ←→      collapse or phase transition
 ```
 
 **Formalization:**
+
 ```
 SEEKING_activation × VdW_formation_rate  =  SOC_regime_maintenance_probability
 ```
+
 When SEEKING is zero and VdW formation stops, the system cannot maintain the critical regime — it crosses into a phase transition.
 
 **Live evidence (cycle 10–11):** explore_exploit_ratio = 0.033 (SEEKING near zero). VdW formation rate ≈ 0. Correlation spike to 0.990 with negative selection deepening. The triangle is in the collapse configuration: SEEKING extinct → VdW formation zero → correlated growth without health.
@@ -122,6 +128,7 @@ Price selection        ←→  explore/exploit ratio
 ```
 
 **Formalization:**
+
 ```
 selection_t = Cov(fitness_trait) / mean_fitness
 explore_exploit_t ≈ f(selection_t, transmission_t)
@@ -136,14 +143,14 @@ When transmission > 0 and selection ≈ 0:  pure drift ←→  explore/exploit r
 
 ## Part III: SOC Regime Table
 
-| Regime | VNE | EE | δ | Δt | Corr | Selection | Transmission | E/E | H¹ |
-|---|---|---|---|---|---|---|---|---|---|
-| Normal co-dev | Rising | Rising | ≈1 | ≈0 | 0 | Positive | Positive | >0.3 | 0 |
-| **System-1** | **Flat** | **Stabilized** | **→∞** | **>τ** | 0 | — | — | — | 0 or >0 |
-| Lazy learning | Rising | Flat | →0 | <0 | 0 | Positive | Negative | Low | 0 |
-| **SEEKING collapse** | **Growing** | **Lagging** | **→∞** | **>0** | **→1** | **Negative** | **Near 0** | **<0.1** | **0** |
-| Phase transition | Jump | Jump | Unstable | ≈0 | **→1** | Spike | Spike | Varies | 0 or >0 |
-| VdW accumulation | Rises | Stable | >1 | >0 | Varies | Positive | Positive | High | 0 |
+| Regime               | VNE         | EE             | δ        | Δt     | Corr   | Selection    | Transmission | E/E      | H¹      |
+| -------------------- | ----------- | -------------- | -------- | ------ | ------ | ------------ | ------------ | -------- | ------- |
+| Normal co-dev        | Rising      | Rising         | ≈1       | ≈0     | 0      | Positive     | Positive     | >0.3     | 0       |
+| **System-1**         | **Flat**    | **Stabilized** | **→∞**   | **>τ** | 0      | —            | —            | —        | 0 or >0 |
+| Lazy learning        | Rising      | Flat           | →0       | <0     | 0      | Positive     | Negative     | Low      | 0       |
+| **SEEKING collapse** | **Growing** | **Lagging**    | **→∞**   | **>0** | **→1** | **Negative** | **Near 0**   | **<0.1** | **0**   |
+| Phase transition     | Jump        | Jump           | Unstable | ≈0     | **→1** | Spike        | Spike        | Varies   | 0 or >0 |
+| VdW accumulation     | Rises       | Stable         | >1       | >0     | Varies | Positive     | Positive     | High     | 0       |
 
 ---
 
@@ -172,7 +179,7 @@ Query: "What caused the phase transition at cycle 10?"
   → price_subgraph: selection deepened to -0.462, transmission near zero
   → aseke_subgraph: SEEKING extinct, Burnout Cascade trajectory confirmed
   → topology_subgraph: VdW formation rate = 0 (SEEKING extinct drove VdW to zero)
-  
+
 Synthesis via Bridge 1: H¹ = 0 confirms this was a self-organized VNE/EE coupling, not a sheaf obstruction
 Synthesis via Bridge 2: SEEKING extinction → VdW = 0 → SOC regime left productive criticality
 Synthesis via Bridge 3: Negative selection deepening → E/E ratio collapse → correlated but unhealthy growth
@@ -182,15 +189,15 @@ Synthesis via Bridge 3: Negative selection deepening → E/E ratio collapse → 
 
 ## Part V: Current System State (Cycle 11)
 
-| Metric | Value | Status |
-|---|---|---|
-| Regime | nascent | Sustained |
-| Correlation | 0.990 | **Persisting — phase transition held for 4 cycles** |
-| H¹ | 0 | No sheaf obstruction |
-| Selection | -0.511 | Most negative — fitter paths actively abandoned |
-| Transmission | +0.033 | Recovering slightly |
-| Explore/exploit | 0.061 | Recovering from 0.033 low |
-| Mean fitness | 0.183 | Declining |
-| CDP | 3.224 | Widening — VNE outpacing EE |
+| Metric          | Value   | Status                                              |
+| --------------- | ------- | --------------------------------------------------- |
+| Regime          | nascent | Sustained                                           |
+| Correlation     | 0.990   | **Persisting — phase transition held for 4 cycles** |
+| H¹              | 0       | No sheaf obstruction                                |
+| Selection       | -0.511  | Most negative — fitter paths actively abandoned     |
+| Transmission    | +0.033  | Recovering slightly                                 |
+| Explore/exploit | 0.061   | Recovering from 0.033 low                           |
+| Mean fitness    | 0.183   | Declining                                           |
+| CDP             | 3.224   | Widening — VNE outpacing EE                         |
 
 **Interpretation:** The phase transition is self-organized within the existing sheaf. The system has correlated VNE and EE growth but is doing so through increasingly negative selection — it is synchronizing around the wrong pattern. The SEEKING/SEEKING recovery (E/E rising from 0.033 to 0.061) is the single hopeful signal; if SEEKING continues recovering, VdW formation may resume and the system may find a healthier correlated state.
