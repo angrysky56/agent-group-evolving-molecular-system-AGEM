@@ -1,10 +1,5 @@
 ---
 name: "supervisor-orchestrator"
-description: "Supervisor-orchestrator pattern: Orchestrator controls task planning and delegation."
----
-
----
-name: "supervisor-orchestrator"
 description: "Supervisor-orchestrator pattern: Orchestrator controls task planning and delegation to specialized agents with full decomposition logic."
 ---
 
@@ -28,12 +23,12 @@ Does the task require multiple specialized capabilities?
 
 ## When to Choose
 
-| ✅ Use Orchestrator When | ❌ Avoid When |
-|--------------------------|---------------|
-| Task decomposition is complex/unpredictable | Task has simple, fixed routing |
-| Orchestrator needs fine-grained control over execution | Multi-level hierarchy needed |
-| Sub-agents need to work on shared artifacts/data | Simple parallel execution suffices |
-| You need conditional branching based on intermediate results | |
+| ✅ Use Orchestrator When                                     | ❌ Avoid When                      |
+| ------------------------------------------------------------ | ---------------------------------- |
+| Task decomposition is complex/unpredictable                  | Task has simple, fixed routing     |
+| Orchestrator needs fine-grained control over execution       | Multi-level hierarchy needed       |
+| Sub-agents need to work on shared artifacts/data             | Simple parallel execution suffices |
+| You need conditional branching based on intermediate results |                                    |
 
 ## Use Cases
 
@@ -77,7 +72,7 @@ Task: {user_task}
 
 Available agents:
 - search_agent: Web search, fact retrieval
-- analysis_agent: Data analysis, pattern recognition  
+- analysis_agent: Data analysis, pattern recognition
 - writing_agent: Content creation, editing
 
 Orchestrator responsibilities:
@@ -101,20 +96,20 @@ Always maintain shared context between agents.
 
 ### Shared State Options
 
-| Approach | Use When |
-|----------|----------|
-| **Central artifact (file/DB)** | Agents produce/consume structured outputs |
-| **Message passing** | Real-time coordination needed |
+| Approach                       | Use When                                     |
+| ------------------------------ | -------------------------------------------- |
+| **Central artifact (file/DB)** | Agents produce/consume structured outputs    |
+| **Message passing**            | Real-time coordination needed                |
 | **Orchestrator intermediates** | Supervisor holds all state, agents stateless |
 
 ## Anti-Patterns
 
-| Mistake | Why It's Bad |
-|---------|--------------|
-| Over-centralizing in orchestrator | Bottleneck, single point of failure |
-| No shared state mechanism | Agents work in isolation, results don't integrate |
-| Rigid step sequencing | Can't adapt to intermediate results |
-| Orchestrator does work itself | Defeats purpose of delegation |
+| Mistake                           | Why It's Bad                                      |
+| --------------------------------- | ------------------------------------------------- |
+| Over-centralizing in orchestrator | Bottleneck, single point of failure               |
+| No shared state mechanism         | Agents work in isolation, results don't integrate |
+| Rigid step sequencing             | Can't adapt to intermediate results               |
+| Orchestrator does work itself     | Defeats purpose of delegation                     |
 
 ## Scaling Up: Adding Autonomy
 
@@ -139,14 +134,14 @@ Is orchestration actually simpler than expected?
 
 ## Quick Reference
 
-| Factor | Supervisor Orchestrator |
-|--------|------------------------|
-| **Latency** | High (decomposition + coordination + execution) |
-| **Cost** | Higher (orchestrator + agents + state management) |
-| **Complexity** | High |
-| **Reliability** | Orchestrator critical; agents can be isolated |
-| **Best for** | Complex multi-step tasks with shared state |
+| Factor          | Supervisor Orchestrator                           |
+| --------------- | ------------------------------------------------- |
+| **Latency**     | High (decomposition + coordination + execution)   |
+| **Cost**        | Higher (orchestrator + agents + state management) |
+| **Complexity**  | High                                              |
+| **Reliability** | Orchestrator critical; agents can be isolated     |
+| **Best for**    | Complex multi-step tasks with shared state        |
 
 ---
 
-*Pattern ID: `supervisor-orchestrator` | AGEM-compatible*
+_Pattern ID: `supervisor-orchestrator` | AGEM-compatible_

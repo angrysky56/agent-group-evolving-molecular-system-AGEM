@@ -1,10 +1,5 @@
 ---
 name: "hierarchical-supervisor"
-description: "Hierarchical supervisor pattern: Multi-level supervisor chains."
----
-
----
-name: "hierarchical-supervisor"
 description: "Hierarchical supervisor pattern: Multi-level supervisor chains where supervisors delegate to supervisors who delegate to workers."
 ---
 
@@ -30,12 +25,12 @@ Does the task require multiple specialized capabilities?
 
 ## When to Choose
 
-| ✅ Use Hierarchical When | ❌ Avoid When |
-|--------------------------|---------------|
-| Large organization-scale tasks | Simple routing with fixed paths |
-| Clear domain/team boundaries needing management | Shallow task decomposition |
-| Middle managers needed for domain expertise | Single supervisor suffices |
-| Coordination at multiple abstraction levels | Overhead exceeds benefit |
+| ✅ Use Hierarchical When                        | ❌ Avoid When                   |
+| ----------------------------------------------- | ------------------------------- |
+| Large organization-scale tasks                  | Simple routing with fixed paths |
+| Clear domain/team boundaries needing management | Shallow task decomposition      |
+| Middle managers needed for domain expertise     | Single supervisor suffices      |
+| Coordination at multiple abstraction levels     | Overhead exceeds benefit        |
 
 ## Use Cases
 
@@ -68,11 +63,11 @@ Does the task require multiple specialized capabilities?
 
 ## Level Definitions
 
-| Level | Role | Responsibility |
-|-------|------|----------------|
-| **Executive** | Task interpretation | Convert user request to domain tasks |
-| **Domain Lead** | Domain coordination | Manage specialists within domain |
-| **Specialist** | Execution | Perform actual work |
+| Level           | Role                | Responsibility                       |
+| --------------- | ------------------- | ------------------------------------ |
+| **Executive**   | Task interpretation | Convert user request to domain tasks |
+| **Domain Lead** | Domain coordination | Manage specialists within domain     |
+| **Specialist**  | Execution           | Perform actual work                  |
 
 ## Key Considerations
 
@@ -85,21 +80,21 @@ Does the task require multiple specialized capabilities?
 
 ### Design Principles
 
-| Principle | Why It Matters |
-|-----------|----------------|
-| **3 levels max** | More adds latency, loses context |
-| **Semantic handoffs** | Each level adds its own interpretation |
-| **Clear domain boundaries** | Reduces cross-level confusion |
-| **Aggregated feedback** | Lower levels report up; upper levels synthesize |
+| Principle                   | Why It Matters                                  |
+| --------------------------- | ----------------------------------------------- |
+| **3 levels max**            | More adds latency, loses context                |
+| **Semantic handoffs**       | Each level adds its own interpretation          |
+| **Clear domain boundaries** | Reduces cross-level confusion                   |
+| **Aggregated feedback**     | Lower levels report up; upper levels synthesize |
 
 ## Anti-Patterns
 
-| Mistake | Why It's Bad |
-|---------|--------------|
-| Too many levels | Context collapse, latency explosion |
-| Unclear level responsibilities | Work falls through cracks |
-| Top does work | Middle management is overhead |
-| Bottom reports directly to top | Bypasses domain expertise |
+| Mistake                        | Why It's Bad                        |
+| ------------------------------ | ----------------------------------- |
+| Too many levels                | Context collapse, latency explosion |
+| Unclear level responsibilities | Work falls through cracks           |
+| Top does work                  | Middle management is overhead       |
+| Bottom reports directly to top | Bypasses domain expertise           |
 
 ## Scaling Down
 
@@ -115,14 +110,14 @@ Is hierarchy actually simpler than expected?
 
 ## Quick Reference
 
-| Factor | Hierarchical Supervisor |
-|--------|--------------------------|
-| **Latency** | Highest (multiple levels) |
-| **Cost** | Highest (multiple supervisors) |
-| **Complexity** | Very High |
+| Factor          | Hierarchical Supervisor                    |
+| --------------- | ------------------------------------------ |
+| **Latency**     | Highest (multiple levels)                  |
+| **Cost**        | Highest (multiple supervisors)             |
+| **Complexity**  | Very High                                  |
 | **Reliability** | Distributed; domain leads isolate failures |
-| **Best for** | Large-scale multi-domain tasks |
+| **Best for**    | Large-scale multi-domain tasks             |
 
 ---
 
-*Pattern ID: `hierarchical-supervisor` | AGEM-compatible*
+_Pattern ID: `hierarchical-supervisor` | AGEM-compatible_

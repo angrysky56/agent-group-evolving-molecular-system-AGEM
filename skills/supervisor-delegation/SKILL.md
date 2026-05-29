@@ -1,10 +1,5 @@
 ---
 name: "supervisor-delegation"
-description: "Supervisor delegation pattern: One supervisor LLM routes tasks to specialized sub-agents."
----
-
----
-name: "supervisor-delegation"
 description: "Supervisor delegation pattern: One supervisor LLM routes tasks to specialized sub-agents. Best for multi-capability routing."
 ---
 
@@ -27,11 +22,11 @@ Does the task require multiple specialized capabilities?
 
 ## When to Choose
 
-| ✅ Use Supervisor Delegation When | ❌ Avoid When |
-|----------------------------------|--------------|
+| ✅ Use Supervisor Delegation When                    | ❌ Avoid When                                    |
+| ---------------------------------------------------- | ------------------------------------------------ |
 | Task has distinct phases needing different expertise | Sub-agents need to collaborate on shared context |
-| You want centralized control/logic in supervisor | Task decomposition is complex/unpredictable |
-| Sub-agents are largely independent workers | You need multi-level handoffs |
+| You want centralized control/logic in supervisor     | Task decomposition is complex/unpredictable      |
+| Sub-agents are largely independent workers           | You need multi-level handoffs                    |
 
 ## Use Cases
 
@@ -87,20 +82,20 @@ Respond with your routing decision and reasoning.
 
 ### Specialist Definition Best Practices
 
-| Aspect | Recommendation |
-|--------|----------------|
-| **Scope** | Narrow, well-defined capabilities |
-| **Interface** | Consistent input/output format |
-| **Fallback** | Default response if task doesn't fit specialty |
+| Aspect           | Recommendation                                 |
+| ---------------- | ---------------------------------------------- |
+| **Scope**        | Narrow, well-defined capabilities              |
+| **Interface**    | Consistent input/output format                 |
+| **Fallback**     | Default response if task doesn't fit specialty |
 | **Independence** | Each specialist should be independently usable |
 
 ## Anti-Patterns
 
-| Mistake | Why It's Bad |
-|---------|--------------|
-| Vague specialist definitions | Supervisor can't route reliably |
-| Overloading supervisor | Supervisor becomes a bottleneck |
-| No synthesis layer | User gets fragmented outputs |
+| Mistake                             | Why It's Bad                    |
+| ----------------------------------- | ------------------------------- |
+| Vague specialist definitions        | Supervisor can't route reliably |
+| Overloading supervisor              | Supervisor becomes a bottleneck |
+| No synthesis layer                  | User gets fragmented outputs    |
 | Sub-agents that need shared context | Creates coordination nightmares |
 
 ## Scaling Up: Multi-Level Routing
@@ -125,14 +120,14 @@ Is the task actually simpler than expected?
 
 ## Quick Reference
 
-| Factor | Supervisor Delegation |
-|--------|----------------------|
-| **Latency** | Medium (routing + sub-agent) |
-| **Cost** | Medium (supervisor + specialists) |
-| **Complexity** | Moderate |
+| Factor          | Supervisor Delegation                           |
+| --------------- | ----------------------------------------------- |
+| **Latency**     | Medium (routing + sub-agent)                    |
+| **Cost**        | Medium (supervisor + specialists)               |
+| **Complexity**  | Moderate                                        |
 | **Reliability** | Sub-agents isolated, supervisor is single point |
-| **Best for** | Multi-capability routing with central control |
+| **Best for**    | Multi-capability routing with central control   |
 
 ---
 
-*Pattern ID: `supervisor-delegation` | AGEM-compatible*
+_Pattern ID: `supervisor-delegation` | AGEM-compatible_

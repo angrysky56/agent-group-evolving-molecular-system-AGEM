@@ -1,7 +1,7 @@
 # Skill Architecture & Generation Guide
 
 > [!TIP]
-> **TL;DR**: This skill is for creating, updating, and standardizing agent skills within this repository. Use it when you need to package new domain knowledge, build a specialized agent persona, or refactor existing documentation to follow the [Agent Skills](file:///home/ty/.gemini/antigravity/global_workflows/agent-skills.md) specification.
+> **TL;DR**: This skill is for creating, updating, and standardizing agent skills within this repository. Use it when you need to package new domain knowledge, build a specialized agent persona, or refactor existing skill documentation to follow the specification defined in this file.
 > **Key Action**: Follow the [Scaffolding Template](references/TEMPLATE.md) to initialize a new skill directory.
 
 ## Quick-Start Card
@@ -15,7 +15,7 @@
 
 ## The Specification (At a Glance)
 
-A skill is a self-contained directory following the [Agent Skills](file:///home/ty/.gemini/antigravity/global_workflows/agent-skills.md) standard.
+A skill is a self-contained directory. The standard is defined by the structure and rules in this file (`skill-architect/SKILL.md`).
 
 ### Directory Layout
 
@@ -57,4 +57,4 @@ For complex skills, utilize the following patterns:
 
 - [Template Scaffolding](references/TEMPLATE.md) — Pre-configured YAML and Markdown structure.
 - [Validation Checklist](references/CHECKLIST.md) — Self-audit guide before deployment.
-- [Tool Design Rules](file:///home/ty/.gemini/antigravity/skills/tool-design/SKILL.md) — If the skill introduces new tools or scripts.
+- [Tool Use Patterns](../agentic-tooluse/SKILL.md) — If the skill introduces new tools or scripts, follow tool contract design rules.

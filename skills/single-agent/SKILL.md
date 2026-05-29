@@ -1,10 +1,5 @@
 ---
 name: "single-agent"
-description: "Single-agent pattern: One LLM handles all tasks without sub-agent delegation."
----
-
----
-name: "single-agent"
 description: "Single-agent pattern: One LLM handles all tasks without sub-agent delegation. Use when simplicity beats sophistication."
 ---
 
@@ -23,12 +18,12 @@ Does the task require multiple specialized capabilities?
 
 ## When to Choose
 
-| ✅ Use Single Agent When | ❌ Avoid When |
-|--------------------------|---------------|
-| Straightforward, linear tasks | Task has distinct specialized phases |
+| ✅ Use Single Agent When              | ❌ Avoid When                                    |
+| ------------------------------------- | ------------------------------------------------ |
+| Straightforward, linear tasks         | Task has distinct specialized phases             |
 | Task fits in one LLM's context window | Multiple experts needed (legal + code + writing) |
-| Speed/simplicity is paramount | One specialist failing shouldn't block others |
-| Low task variance | Task might need independent retry logic |
+| Speed/simplicity is paramount         | One specialist failing shouldn't block others    |
+| Low task variance                     | Task might need independent retry logic          |
 
 ## Use Cases
 
@@ -69,11 +64,11 @@ User Request
 
 ## Anti-Patterns
 
-| Mistake | Why It's Bad |
-|---------|--------------|
-| Forcing delegation into a simple task | Adds latency, cost, and complexity for no benefit |
-| Ignoring when a task outgrows single agent | Leads to prompt engineering spaghetti |
-| Using single agent for multi-domain expertise | LLM may "hallucinate" expertise it doesn't have |
+| Mistake                                       | Why It's Bad                                      |
+| --------------------------------------------- | ------------------------------------------------- |
+| Forcing delegation into a simple task         | Adds latency, cost, and complexity for no benefit |
+| Ignoring when a task outgrows single agent    | Leads to prompt engineering spaghetti             |
+| Using single agent for multi-domain expertise | LLM may "hallucinate" expertise it doesn't have   |
 
 ## Scaling Up
 
@@ -91,14 +86,14 @@ Need multiple specialized capabilities?
 
 ## Quick Reference
 
-| Factor | Single Agent |
-|--------|--------------|
-| **Latency** | Lowest |
-| **Cost** | Lowest |
-| **Complexity** | Minimal |
+| Factor          | Single Agent            |
+| --------------- | ----------------------- |
+| **Latency**     | Lowest                  |
+| **Cost**        | Lowest                  |
+| **Complexity**  | Minimal                 |
 | **Reliability** | Single point of failure |
-| **Best for** | Simple, linear tasks |
+| **Best for**    | Simple, linear tasks    |
 
 ---
 
-*Pattern ID: `single-agent` | Decision tree leaf | AGEM-compatible*
+_Pattern ID: `single-agent` | Decision tree leaf | AGEM-compatible_

@@ -1,10 +1,5 @@
 ---
 name: "parallel-execution"
-description: "Parallel execution pattern: Multiple agents work simultaneously on independent sub-tasks."
----
-
----
-name: "parallel-execution"
 description: "Parallel execution pattern: Multiple agents work simultaneously on independent sub-tasks. Best for embarrassingly parallel workloads."
 ---
 
@@ -27,12 +22,12 @@ Does the task require multiple specialized capabilities?
 
 ## When to Choose
 
-| ✅ Use Parallel When | ❌ Avoid When |
-|----------------------|---------------|
-| Subtasks are truly independent | Subtasks share state/artifacts |
-| You need maximum throughput | Order dependency exists |
-| Each subtask is self-contained | Errors in one affect others |
-| Subtasks are embarrassingly parallel | Result synthesis is complex |
+| ✅ Use Parallel When                 | ❌ Avoid When                  |
+| ------------------------------------ | ------------------------------ |
+| Subtasks are truly independent       | Subtasks share state/artifacts |
+| You need maximum throughput          | Order dependency exists        |
+| Each subtask is self-contained       | Errors in one affect others    |
+| Subtasks are embarrassingly parallel | Result synthesis is complex    |
 
 ## Use Cases
 
@@ -94,30 +89,30 @@ Subtasks identified: {list}
 
 ### Independence Checklist
 
-| Question | If NO, Use Another Pattern |
-|----------|----------------------------|
-| Do subtasks need shared state? | ❌ → supervisor-orchestrator |
+| Question                                   | If NO, Use Another Pattern   |
+| ------------------------------------------ | ---------------------------- |
+| Do subtasks need shared state?             | ❌ → supervisor-orchestrator |
 | Do subtasks depend on each other's output? | ❌ → supervisor-orchestrator |
-| Is there an execution order requirement? | ❌ → supervisor-orchestrator |
-| Do subtasks need to collaborate? | ❌ → supervisor-orchestrator |
+| Is there an execution order requirement?   | ❌ → supervisor-orchestrator |
+| Do subtasks need to collaborate?           | ❌ → supervisor-orchestrator |
 
 ## Anti-Patterns
 
-| Mistake | Why It's Bad |
-|---------|--------------|
-| Faking independence | Race conditions, corrupted outputs |
-| No aggregation plan | Results pile up without synthesis |
-| Uneven workload | Some agents idle, others overwhelmed |
-| Ignoring partial failures | Incomplete results, wasted compute |
+| Mistake                   | Why It's Bad                         |
+| ------------------------- | ------------------------------------ |
+| Faking independence       | Race conditions, corrupted outputs   |
+| No aggregation plan       | Results pile up without synthesis    |
+| Uneven workload           | Some agents idle, others overwhelmed |
+| Ignoring partial failures | Incomplete results, wasted compute   |
 
 ## Aggregation Strategies
 
-| Strategy | Use When |
-|----------|----------|
-| **Simple concatenation** | Results are independent, list format OK |
-| **Weighted scoring** | Some results more important than others |
-| **Consensus voting** | Multiple perspectives on same question |
-| **Hierarchical synthesis** | Results themselves need synthesis |
+| Strategy                   | Use When                                |
+| -------------------------- | --------------------------------------- |
+| **Simple concatenation**   | Results are independent, list format OK |
+| **Weighted scoring**       | Some results more important than others |
+| **Consensus voting**       | Multiple perspectives on same question  |
+| **Hierarchical synthesis** | Results themselves need synthesis       |
 
 ## Scaling Up: Adding Dependencies
 
@@ -141,14 +136,14 @@ Is parallelism actually overkill?
 
 ## Quick Reference
 
-| Factor | Parallel Execution |
-|--------|-------------------|
-| **Latency** | Low (limited by slowest subtask) |
-| **Cost** | Higher (N agents running) |
-| **Complexity** | Low-Moderate |
+| Factor          | Parallel Execution                        |
+| --------------- | ----------------------------------------- |
+| **Latency**     | Low (limited by slowest subtask)          |
+| **Cost**        | Higher (N agents running)                 |
+| **Complexity**  | Low-Moderate                              |
 | **Reliability** | Partial failure possible; others continue |
-| **Best for** | Independent batch workloads |
+| **Best for**    | Independent batch workloads               |
 
 ---
 
-*Pattern ID: `parallel-execution` | AGEM-compatible*
+_Pattern ID: `parallel-execution` | AGEM-compatible_
