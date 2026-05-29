@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { AgenticDesignPicker } from "./AgenticDesignPicker.js";
-import type { LLMProvider } from "../../../interface/backend/src/services/llm.js";
+import type { LLMProvider } from "../interfaces.js";
 
 describe("AgenticDesignPicker", () => {
   it("routes a simple greeting to react with no tools", async () => {

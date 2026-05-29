@@ -11,8 +11,7 @@
  *   3. Inhibit: Apply complexity penalties and guardrails.
  */
 
-import type { LLMProvider } from "../../../interface/backend/src/services/llm.js";
-import type { TopologicalManifest } from "../interfaces.js";
+import type { TopologicalManifest, LLMProvider } from "../interfaces.js";
 
 /**
  * PickerConstraints — input constraints for the design evaluation.

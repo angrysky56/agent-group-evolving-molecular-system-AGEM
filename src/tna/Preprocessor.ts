@@ -49,6 +49,7 @@ const DEFAULT_CONFIG: Required<TNAConfig> = {
   minTfidfWeight: 0.1,
   louvainSeed: 42,
   language: "en",
+  enablePhrases: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +144,91 @@ export class Preprocessor {
   }
 
   // --------------------------------------------------------------------------
+  // Private: #stripStructuralArtifacts() — pre-tokenization noise removal
+  // --------------------------------------------------------------------------
+
+  /**
+   * #stripStructuralArtifacts — drop content that *looks* textual but is
+   * actually code/JSON/path/identifier noise that should never seed a concept
+   * graph. Runs BEFORE tokenization so identifiers don't even reach the
+   * tokenizer where they would split on '_' into garbage lemmas.
+   *
+   * Removed (replaced with spaces so word boundaries are preserved):
+   *   - Fenced code blocks  ```...```  including the language tag
+   *   - Inline code spans   `...`
+   *   - JSON-like braces and the keys/values inside them when the input is
+   *     dominated by JSON shape (heuristic: 3+ snake_case identifiers on
+   *     consecutive lines)
+   *   - snake_case identifiers with 2+ underscores
+   *     (e.g. "proposed_action", "correlation_coefficient", "key_value_pairs")
+   *   - lowerCamelCase identifiers preceded by '.' or '->'
+   *     (e.g. ".getConceptVector", "obj->method")
+   *   - URLs and file paths
+   *   - UUIDs (RFC4122 and UUIDv7 hex shape)
+   *   - Numeric IDs immediately following ':' inside JSON-like text
+   *
+   * This is the "re-ingestion guard": when the user or model pastes JSON tool
+   * output, or a stack trace, or a serialized cycle state, those tokens are
+   * structurally absent from the TNA graph instead of polluting it.
+   */
+  #stripStructuralArtifacts(text: string): string {
+    let out = text;
+
+    // Fenced code blocks (```lang ... ```).
+    out = out.replace(/```[\s\S]*?```/g, " ");
+
+    // Inline code spans (`...`) — only if reasonably short, to avoid eating prose.
+    out = out.replace(/`[^`\n]{1,200}`/g, " ");
+
+    // URLs (http/https/file).
+    out = out.replace(/\b(?:https?|file|ftp):\/\/\S+/g, " ");
+
+    // Absolute file paths (Unix). Conservative: requires /word/word pattern.
+    out = out.replace(
+      /(?:\.{0,2}\/)?(?:[A-Za-z0-9._-]+\/){2,}[A-Za-z0-9._-]+/g,
+      " ",
+    );
+
+    // UUIDs: 8-4-4-4-12 hex with dashes (covers v4 and v7).
+    out = out.replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+      " ",
+    );
+
+    // snake_case identifiers with 1+ internal underscore. These are virtually
+    // always serialized object keys ("proposed_action", "correlation_coefficient",
+    // "key_value_pairs"). The pattern requires letters or digits on both sides
+    // of every underscore, so it doesn't eat hyphen-style words. The risk of
+    // false positives on natural prose is low because English rarely uses
+    // underscores; when it does (e.g. "non_negative"), losing it is acceptable
+    // versus the cost of leaving "proposed_action" as a "concept" node.
+    out = out.replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/gi, " ");
+
+    // Method-call style "obj.methodName" and "obj->methodName". Just the
+    // method part; the receiver is left alone since it might be a normal word.
+    out = out.replace(/(?:\.|->)\s*[a-z][a-zA-Z0-9]*(?=\b)/g, " ");
+
+    // JSON-style key colons after quoted strings: "key": value.
+    // Drop the quoted key plus the colon so the surrounding prose, if any, is
+    // preserved; if the entire input is JSON it collapses to whitespace.
+    out = out.replace(/"[^"\n]{1,80}"\s*:/g, " ");
+
+    // Short JSON-style quoted bareword values: "ingest", "ready", "active".
+    // Conservative: ONLY single-word quoted strings (no spaces inside) up to
+    // 30 chars. This strips enum-like values without eating quoted prose like
+    // "an entropy of 1.5" which has spaces.
+    out = out.replace(/"[a-zA-Z][a-zA-Z0-9_-]{0,30}"/g, " ");
+
+    // Bare digit sequences attached to ':' (timestamps, ids in JSON).
+    out = out.replace(/:\s*\d+(\.\d+)?\b/g, " ");
+
+    // Collapse runs of whitespace to keep tokenization clean.
+    out = out.replace(/\s+/g, " ").trim();
+
+    return out;
+  }
+
+  // --------------------------------------------------------------------------
   // Private: #isNoiseToken() — junk-token rejection
   // --------------------------------------------------------------------------
 
@@ -225,8 +311,16 @@ export class Preprocessor {
    * @param text - Raw input text.
    */
   #runPipeline(text: string): PipelineResult {
+    // Step 0: Strip structural artifacts (code, JSON, paths, identifiers, UUIDs).
+    // This is the re-ingestion guard — when serialized tool output is pasted in,
+    // its structural noise dies here instead of polluting the concept graph.
+    const stripped = this.#stripStructuralArtifacts(text);
+    if (stripped.length === 0) {
+      return { lemmatizedTokens: [], surfaceToLemma: new Map() };
+    }
+
     // Step 1: Tokenize.
-    const rawTokens: string[] = this.#tokenizer.tokenize(text) ?? [];
+    const rawTokens: string[] = this.#tokenizer.tokenize(stripped) ?? [];
 
     // Step 2: Lowercase.
     const lowercased = rawTokens.map((t) => t.toLowerCase());

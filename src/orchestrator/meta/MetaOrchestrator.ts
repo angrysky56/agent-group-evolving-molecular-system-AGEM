@@ -11,8 +11,7 @@
 
 import { AgenticDesignPicker, type PickerConstraints } from "./AgenticDesignPicker.js";
 import { Orchestrator } from "../ComposeRootModule.js";
-import type { LLMProvider } from "../../../interface/backend/src/services/llm.js";
-import type { TopologicalManifest } from "../interfaces.js";
+import type { TopologicalManifest, LLMProvider } from "../interfaces.js";
 
 /**
  * MetaOrchestrator — high-level coordinator that analyzes task topology

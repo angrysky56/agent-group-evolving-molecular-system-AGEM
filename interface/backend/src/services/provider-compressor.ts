@@ -1,11 +1,25 @@
 /**
- * ProviderCompressor — production ICompressor that calls the backend
+ * ProviderCompressor -- production ICompressor that calls the backend
  * LLM provider (Ollama or OpenRouter) to summarize and compress context.
  *
- * Falls back to character-wise truncation if the provider call fails.
+ * Failure modes hardened in this version:
+ *   1. compress() -- when the provider returns empty content, falls back to
+ *      sentence-boundary truncation (not mid-character slicing) so the
+ *      summary at least ends cleanly. When no boundary exists in the target
+ *      window, the full text is returned -- text salad poisons embeddings
+ *      worse than length excess.
+ *   2. generateReflections() -- mid-tier models routinely emit JSON with
+ *      trailing commas, single quotes, or surrounding prose. We delegate
+ *      extraction/repair to src/lcm/jsonRepair (which is unit-tested
+ *      against real failure shapes from cycle logs) and retry once with a
+ *      stricter prompt on first failure.
  */
 
 import type { ICompressor } from "#agem/lcm/interfaces.js";
+import {
+  extractJsonArray,
+  sentenceBoundaryTruncate,
+} from "#agem/lcm/jsonRepair.js";
 import { createProvider } from "./llm.js";
 import { settings } from "../config.js";
 
@@ -33,22 +47,17 @@ ${text}`;
       return response.content.trim();
     } catch (error) {
       console.error(
-        "[ProviderCompressor] Error during compression, falling back to mock truncation:",
+        "[ProviderCompressor] Error during compression, falling back to sentence-boundary truncation:",
         error,
       );
-      // Fallback: truncate character-wise as a safe recovery
-      const targetLength = Math.max(1, Math.floor(text.length * targetRatio));
-      return text.slice(0, targetLength);
+      return sentenceBoundaryTruncate(text, targetRatio);
     }
   }
 
   async generateReflections(
     text: string,
   ): Promise<Array<{ question: string; answer: string }>> {
-    try {
-      const config = settings.getLLMConfig();
-      const provider = createProvider(config.provider);
-      const prompt = `You are a highly precise learning agent. Analyze the following context summary and generate exactly 3 compositional Question-and-Answer (Q&A) pairs.
+    const prompt = `You are a highly precise learning agent. Analyze the following context summary and generate exactly 3 compositional Question-and-Answer (Q&A) pairs.
 These Q&A pairs must reflect key facts, entities, logical relations, and inferences that can be derived from the text.
 Generate one direct question, one indirect/inferred question, and one multi-hop/synthesis question.
 Format your output exactly as a JSON array of objects, each containing "question" and "answer" keys. Output ONLY the JSON array, with no other text, markdown formatting, or code blocks.
@@ -56,29 +65,24 @@ Format your output exactly as a JSON array of objects, each containing "question
 Context:
 ${text}`;
 
-      const response = await provider.chat({
-        messages: [{ role: "user", content: prompt }],
-      });
+    // First attempt.
+    const firstAttempt = await this.#tryReflections(prompt);
+    if (firstAttempt !== null) return firstAttempt;
 
-      const cleaned = response.content
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-      const parsed = JSON.parse(cleaned);
-      if (Array.isArray(parsed)) {
-        return parsed.map((item: any) => ({
-          question: String(item.question ?? ""),
-          answer: String(item.answer ?? ""),
-        }));
-      }
-      return [];
-    } catch (error) {
-      console.error(
-        "[ProviderCompressor] Error generating reflections:",
-        error,
-      );
-      return [];
-    }
+    // Second attempt with a stricter reminder. Many mid models comply on the
+    // retry when reminded explicitly that the previous response was malformed.
+    const strictPrompt =
+      prompt +
+      `\n\nIMPORTANT: Your previous response could not be parsed as JSON. Return ONLY a single JSON array. No code fences. No explanation. Example shape: [{"question":"...","answer":"..."}]`;
+    const secondAttempt = await this.#tryReflections(strictPrompt);
+    if (secondAttempt !== null) return secondAttempt;
+
+    // Give up. Empty reflections is safe: routing still works on the
+    // root-summary embedding alone.
+    console.error(
+      "[ProviderCompressor] Reflections unparseable after retry; returning empty list",
+    );
+    return [];
   }
 
   async synthesize(query: string, context: string): Promise<string> {
@@ -101,6 +105,45 @@ ${context}`;
     } catch (error) {
       console.error("[ProviderCompressor] Error during synthesis:", error);
       return `Fallback Answer: Based on retrieved context: ${context.slice(0, 200)}...`;
+    }
+  }
+
+  /**
+   * #tryReflections -- single provider call with robust JSON extraction.
+   * Returns the parsed array on success, null on any failure (so the caller
+   * can decide whether to retry or give up).
+   */
+  async #tryReflections(
+    prompt: string,
+  ): Promise<Array<{ question: string; answer: string }> | null> {
+    try {
+      const config = settings.getLLMConfig();
+      const provider = createProvider(config.provider);
+      const response = await provider.chat({
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const parsed = extractJsonArray(response.content ?? "");
+      if (parsed === null) {
+        console.warn(
+          "[ProviderCompressor] Could not extract JSON array from reflections response",
+        );
+        return null;
+      }
+
+      return parsed.map((item: unknown) => {
+        const obj = item as { question?: unknown; answer?: unknown };
+        return {
+          question: String(obj.question ?? ""),
+          answer: String(obj.answer ?? ""),
+        };
+      });
+    } catch (error) {
+      console.warn(
+        "[ProviderCompressor] Reflection attempt failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+      return null;
     }
   }
 }

@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { MetaOrchestrator } from "./MetaOrchestrator.js";
 import { Orchestrator } from "../ComposeRootModule.js";
-import type { LLMProvider } from "../../../interface/backend/src/services/llm.js";
+import type { LLMProvider } from "../interfaces.js";
 
 describe("MetaOrchestrator", () => {
   it("executes the routing pipeline and hands off to Orchestrator", async () => {

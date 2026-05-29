@@ -122,7 +122,15 @@ describe("CooccurrenceGraph", () => {
   // --------------------------------------------------------------------------
 
   it("T6b: node count proportional to unique concepts, NOT total word count", () => {
-    const graph = new CooccurrenceGraph(preprocessor, { windowSize: 4 });
+    // Disable phrase promotion for this test to isolate the lemmatization
+    // guard. With phrases ON (the production default), repeated bigrams
+    // like "analyze analysis" become legitimate phrase nodes -- still
+    // bounded, just slightly larger than the lemma-only count. T6c below
+    // verifies that bound separately.
+    const graph = new CooccurrenceGraph(preprocessor, {
+      windowSize: 4,
+      enablePhrases: false,
+    });
 
     // Insert raw text containing 4 morphological variants of "analyze" repeated many times.
     // This tests the FULL pipeline: raw text → lemmatization → graph insertion.
@@ -154,6 +162,57 @@ describe("CooccurrenceGraph", () => {
 
     // 3. Not 4 — the number of distinct surface forms without lemmatization.
     expect(nodeCount).not.toBe(4);
+  });
+
+  // --------------------------------------------------------------------------
+  // T6c: Phrase promotion — bigrams that repeat become first-class concept nodes
+  // --------------------------------------------------------------------------
+
+  it("T6c: frequently-seen lemma bigrams are promoted to phrase nodes", () => {
+    // With phrases enabled (the default), feeding the same bigram across
+    // multiple ingestions should promote it. We use distinct prose around
+    // the bigram each time so other bigrams DON'T cross threshold.
+    const graph = new CooccurrenceGraph(preprocessor, { windowSize: 4 });
+
+    graph.ingest("the weak lumpability fails reliably", 0);
+    graph.ingest("a different system has weak lumpability", 1);
+    graph.ingest("here weak lumpability emerges again", 2);
+
+    // The bigram "weak lumpability" should now exist as a node, in addition
+    // to the component lemmas.
+    expect(graph.getGraph().hasNode("weak lumpability")).toBe(true);
+    expect(graph.getGraph().hasNode("weak")).toBe(true);
+    expect(graph.getGraph().hasNode("lumpability")).toBe(true);
+
+    // The phrase node should have strong edges to its two components.
+    const phraseToWeak = graph.getEdgeWeight("weak lumpability", "weak");
+    const phraseToLump = graph.getEdgeWeight("weak lumpability", "lumpability");
+    expect(phraseToWeak).toBeGreaterThan(0);
+    expect(phraseToLump).toBeGreaterThan(0);
+  });
+
+  it("T6c: phrase nodes are NOT created when bigram only appears once (single-pass content)", () => {
+    const graph = new CooccurrenceGraph(preprocessor, { windowSize: 4 });
+    graph.ingest("an isolated phrase appears exactly once here", 0);
+    // No bigram crosses the default 2-occurrence threshold.
+    const nodes = graph.getGraph().nodes();
+    const phraseNodes = nodes.filter((n) => n.includes(" "));
+    expect(phraseNodes).toEqual([]);
+  });
+
+  it("T6c: enablePhrases=false produces NO phrase nodes regardless of repetition", () => {
+    const graph = new CooccurrenceGraph(preprocessor, {
+      windowSize: 4,
+      enablePhrases: false,
+    });
+    graph.ingest("weak lumpability everywhere", 0);
+    graph.ingest("again weak lumpability", 1);
+    graph.ingest("more weak lumpability", 2);
+
+    // No multi-word nodes when phrase extraction is disabled.
+    const nodes = graph.getGraph().nodes();
+    const phraseNodes = nodes.filter((n) => n.includes(" "));
+    expect(phraseNodes).toEqual([]);
   });
 
   // --------------------------------------------------------------------------

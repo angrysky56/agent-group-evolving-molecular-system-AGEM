@@ -210,3 +210,38 @@ export interface TopologicalManifest {
   /** Natural language explanation for why this topology was chosen. */
   readonly rationale: string;
 }
+
+// ---------------------------------------------------------------------------
+// LLM Provider abstraction
+// ---------------------------------------------------------------------------
+
+/**
+ * ChatCompletionMessage — a single message in a chat request.
+ */
+export interface ChatCompletionMessage {
+  readonly role: string;
+  readonly content: string;
+}
+
+/**
+ * ChatCompletionOptions — parameters passed to the chat completion request.
+ */
+export interface ChatCompletionOptions {
+  readonly messages: ReadonlyArray<ChatCompletionMessage>;
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * ChatCompletionResult — structured response returned by the chat request.
+ */
+export interface ChatCompletionResult {
+  readonly content: string;
+}
+
+/**
+ * LLMProvider — lightweight, self-contained interface representing
+ * any LLM client/provider used by Orchestrator or Picker components.
+ */
+export interface LLMProvider {
+  chat(options: ChatCompletionOptions): Promise<ChatCompletionResult>;
+}

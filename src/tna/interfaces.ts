@@ -393,6 +393,15 @@ export interface TNAConfig {
    * Passed to stopword library for language-specific stopword corpus.
    */
   language?: string;
+  /**
+   * Promote frequently-seen adjacent lemma bigrams to first-class concept
+   * phrase nodes (default: true). When enabled, "weak lumpability",
+   * "honest messenger", "phase transition" etc. become single multi-word
+   * nodes alongside their component lemmas, improving community detection
+   * on multi-word concepts. Set false to disable for legacy single-lemma
+   * behavior in older tests.
+   */
+  enablePhrases?: boolean;
 }
 
 // ---------------------------------------------------------------------------

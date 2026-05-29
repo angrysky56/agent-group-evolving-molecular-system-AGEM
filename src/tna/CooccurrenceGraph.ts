@@ -23,6 +23,7 @@
 import GraphologyLib from "graphology";
 import type { AbstractGraph } from "graphology-types";
 import { Preprocessor } from "./Preprocessor.js";
+import { PhraseExtractor } from "./PhraseExtractor.js";
 import type { TextNode, TextNodeId, TNAConfig } from "./interfaces.js";
 
 // Graphology TypeScript pattern for NodeNext ESM:
@@ -91,10 +92,20 @@ export class CooccurrenceGraph {
 
   #currentIteration: number = 0;
 
+  /**
+   * Optional bigram-phrase extractor. When configured, frequently-seen
+   * adjacent lemma pairs become first-class "concept phrase" nodes (e.g.
+   * "weak lumpability", "honest messenger") in addition to their components.
+   * Set null to keep the legacy single-lemma-only behavior.
+   */
+  readonly #phraseExtractor: PhraseExtractor | null;
+
   constructor(preprocessor: Preprocessor, config?: TNAConfig) {
     this.#preprocessor = preprocessor;
     this.#windowSize = config?.windowSize ?? DEFAULT_WINDOW_SIZE;
     this.#graph = new GraphConstructor({ type: "undirected", multi: false });
+    this.#phraseExtractor =
+      config?.enablePhrases !== false ? new PhraseExtractor() : null;
   }
 
   // --------------------------------------------------------------------------
@@ -119,14 +130,31 @@ export class CooccurrenceGraph {
     const result = this.#preprocessor.preprocessDetailed(text);
 
     // Build a surface-to-lemma map for this ingestion batch.
-    // result.surfaceToLemma contains the mapping for all non-stopword tokens.
     const surfaceToLemma = result.surfaceToLemma;
+
+    // Phrase extraction pass (Move TNA-phrase):
+    //   1. Update bigram counts from this batch.
+    //   2. Compute which positions have promoted bigrams (count >= threshold).
+    //   3. Insert phrase nodes for promoted bigrams alongside the per-lemma
+    //      nodes, with edges to both components and into the sliding window
+    //      context.
+    let phrases: ReadonlyArray<{ position: number; phrase: string }> = [];
+    if (this.#phraseExtractor && result.tokens.length >= 2) {
+      this.#phraseExtractor.update(result.tokens);
+      phrases = this.#phraseExtractor.promotedPhrases(result.tokens);
+    }
 
     this.#insertTokensWithSurfaces(
       result.tokens,
       result.tfidfScores,
       surfaceToLemma,
     );
+
+    // Insert phrase nodes AFTER component lemma nodes, so component nodes
+    // exist and can receive edges from the phrase node.
+    if (phrases.length > 0) {
+      this.#insertPhrases(phrases, result.tokens, result.tfidfScores);
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -269,6 +297,99 @@ export class CooccurrenceGraph {
           }
         }
       }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Private: phrase node insertion
+  // --------------------------------------------------------------------------
+
+  /**
+   * #insertPhrases — for each promoted bigram, insert a phrase node and wire
+   * it up.
+   *
+   * For each `{ position: i, phrase: "a b" }` from the PhraseExtractor:
+   *   - Add a phrase node with id = "a b" if not present.
+   *   - Add strong edges (weight = windowSize, i.e. weight-3 with default
+   *     window=4) between the phrase node and each of its component lemma
+   *     nodes "a" and "b". These edges are heavier than within-window
+   *     edges because the components are definitionally part of the phrase.
+   *   - Add window-context edges from the phrase node to surrounding tokens
+   *     (positions i-2, i-1 BEFORE; i+2, i+3 AFTER), mirroring the 4-gram
+   *     window semantics but anchored at the phrase rather than the bigram.
+   *
+   * Node metadata for phrase nodes:
+   *   - lemma: the phrase string itself ("weak lumpability")
+   *   - surfaceForms: { phrase string } (single surface form for now)
+   *   - tfidfWeight: average of components' tfidf scores at this batch
+   *
+   * Idempotent: if the phrase node already exists, edges are accumulated.
+   */
+  #insertPhrases(
+    phrases: ReadonlyArray<{ position: number; phrase: string }>,
+    tokens: readonly string[],
+    tfidfScores: ReadonlyMap<string, number>,
+  ): void {
+    for (const { position, phrase } of phrases) {
+      const a = tokens[position];
+      const b = tokens[position + 1];
+      if (!a || !b) continue;
+
+      // Ensure the phrase node exists with metadata.
+      if (!this.#graph.hasNode(phrase)) {
+        this.#graph.addNode(phrase);
+        const phraseTfidf =
+          ((tfidfScores.get(a) ?? 0) + (tfidfScores.get(b) ?? 0)) / 2;
+        this.#nodeMetadata.set(phrase, {
+          id: phrase as TextNodeId,
+          lemma: phrase,
+          surfaceForms: new Set([phrase]),
+          tfidfWeight: phraseTfidf,
+        });
+      }
+
+      // Strong covalent-style edges to the two components.
+      this.#accumulateEdge(phrase, a, this.#windowSize);
+      this.#accumulateEdge(phrase, b, this.#windowSize);
+
+      // Window-context edges to surrounding tokens. Uses standard window
+      // weighting (windowSize - distance) so weights stay comparable.
+      for (let d = 1; d < this.#windowSize; d++) {
+        // Before the phrase (position - d).
+        const before = position - d;
+        if (before >= 0) {
+          const ctx = tokens[before];
+          if (ctx && ctx !== a && ctx !== b && ctx !== phrase) {
+            this.#accumulateEdge(phrase, ctx, this.#windowSize - d);
+          }
+        }
+        // After the phrase (position + 1 + d). Note: position + 1 is `b`
+        // (already wired); we start at position + 2.
+        const after = position + 1 + d;
+        if (after < tokens.length) {
+          const ctx = tokens[after];
+          if (ctx && ctx !== a && ctx !== b && ctx !== phrase) {
+            this.#accumulateEdge(phrase, ctx, this.#windowSize - d);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * #accumulateEdge — add `weight` to the (src, dst) edge, creating it if
+   * needed. Records createdAtIteration only on creation.
+   */
+  #accumulateEdge(src: string, dst: string, weight: number): void {
+    if (src === dst) return;
+    if (this.#graph.hasEdge(src, dst)) {
+      const current = (this.#graph.getEdgeAttribute(src, dst, "weight") ?? 0) as number;
+      this.#graph.setEdgeAttribute(src, dst, "weight", current + weight);
+    } else {
+      this.#graph.addEdge(src, dst, {
+        weight,
+        createdAtIteration: this.#currentIteration,
+      });
     }
   }
 
