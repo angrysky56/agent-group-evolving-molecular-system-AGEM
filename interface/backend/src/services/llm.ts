@@ -18,7 +18,7 @@ export type ThinkingCallback = (chunk: string) => void;
 
 /** Options for a chat completion request. */
 export interface ChatCompletionOptions {
-  messages: Array<{
+  messages: ReadonlyArray<{
     role: string;
     content: string | any[];
     tool_calls?: any[];

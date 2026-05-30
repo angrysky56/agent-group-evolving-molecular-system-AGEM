@@ -69,7 +69,9 @@ class AgemBridge {
   constructor() {
     const embedder = new ProviderEmbedder();
     const compressor = new ProviderCompressor();
-    this.#orchestrator = new Orchestrator(embedder, compressor);
+    this.#orchestrator = new Orchestrator(embedder, compressor, {
+      vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
+    });
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
     const metaLlm = createProvider(config.provider);
@@ -999,7 +1001,9 @@ class AgemBridge {
     await this.#orchestrator.shutdown();
     const embedder = new ProviderEmbedder();
     const compressor = new ProviderCompressor();
-    this.#orchestrator = new Orchestrator(embedder, compressor);
+    this.#orchestrator = new Orchestrator(embedder, compressor, {
+      vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
+    });
     this.#grep = this.#buildGrep(embedder);
   }
 

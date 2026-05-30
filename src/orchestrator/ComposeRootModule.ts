@@ -215,6 +215,9 @@ export class Orchestrator {
   /** Injected compressor reference for reflection generation. */
   #compressor: ICompressor | null = null;
 
+  /** Max reasoning steps per VdW agent (configurable via constructor options). */
+  #vdwAgentMaxIterations: number | undefined;
+
   // -------------------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------------------
@@ -227,10 +230,19 @@ export class Orchestrator {
    *                   MockEmbedder from src/lcm/interfaces.ts can be used in tests.
    * @param compressor - Optional ICompressor implementation injected for LCM escalation compression.
    *                     MockCompressor is used by default if not provided.
+   * @param options - Optional engine tuning.
+   * @param options.vdwAgentMaxIterations - Max reasoning steps per VdW agent before
+   *                                        self-termination. Overrides the hardcoded default (15).
+   *                                        Set via VDW_AGENT_MAX_ITERATIONS in .env.
    */
-  constructor(embedder: IEmbedder, compressor?: ICompressor) {
+  constructor(
+    embedder: IEmbedder,
+    compressor?: ICompressor,
+    options?: { vdwAgentMaxIterations?: number },
+  ) {
     this.eventBus = new EventBus();
     this.#embedder = embedder;
+    this.#vdwAgentMaxIterations = options?.vdwAgentMaxIterations;
 
     this.#initLcm(embedder, compressor);
     this.#initSheaf();
@@ -892,7 +904,11 @@ export class Orchestrator {
   }
 
   #initOrchestration(): void {
-    const vdwSpawner = new VdWAgentSpawner(this.eventBus);
+    const vdwConfig =
+      this.#vdwAgentMaxIterations !== undefined
+        ? { agentMaxIterations: this.#vdwAgentMaxIterations }
+        : {};
+    const vdwSpawner = new VdWAgentSpawner(this.eventBus, vdwConfig);
     (this as any).obstructionHandler = new ObstructionHandler(
       this.eventBus,
       this.tnaGapDetector,

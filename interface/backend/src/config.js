@@ -53,6 +53,8 @@ const ConfigSchema = z.object({
     // AGEM Engine
     MAX_AGENT_POOL_SIZE: z.coerce.number().default(20),
     MAX_ITERATIONS: z.coerce.number().default(50),
+    // Maximum reasoning steps per VdW agent before self-termination
+    VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
 });
 /** Singleton configuration instance. */
 class ConfigService {

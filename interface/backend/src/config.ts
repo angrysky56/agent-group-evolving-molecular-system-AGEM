@@ -65,6 +65,8 @@ const ConfigSchema = z.object({
   // AGEM Engine
   MAX_AGENT_POOL_SIZE: z.coerce.number().default(20),
   MAX_ITERATIONS: z.coerce.number().default(50),
+  /** Maximum reasoning steps per VdW agent before self-termination. Default: 50 */
+  VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
 });
 
 type Config = z.infer<typeof ConfigSchema>;
@@ -134,7 +136,9 @@ class ConfigService {
   /** Export as SystemConfig for the API. */
   toSystemConfig(): SystemConfig {
     const llm = this.getLLMConfig();
-    const emb = this.getLLMConfig(this.#config.EMBEDDING_PROVIDER ?? llm.provider);
+    const emb = this.getLLMConfig(
+      this.#config.EMBEDDING_PROVIDER ?? llm.provider,
+    );
     return {
       provider: llm.provider,
       embedding_provider: this.#config.EMBEDDING_PROVIDER ?? llm.provider,
