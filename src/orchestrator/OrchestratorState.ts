@@ -255,4 +255,16 @@ export class OrchestratorStateManager {
   getLastStateChangeTime(): number {
     return this.#lastStateChangeTime;
   }
+
+  snapshot(): { currentState: OrchestratorState; lastStateChangeTime: number } {
+    return {
+      currentState: this.#currentState,
+      lastStateChangeTime: this.#lastStateChangeTime,
+    };
+  }
+
+  restore(snap: { currentState: OrchestratorState; lastStateChangeTime: number }): void {
+    this.#currentState = snap.currentState;
+    this.#lastStateChangeTime = snap.lastStateChangeTime;
+  }
 }

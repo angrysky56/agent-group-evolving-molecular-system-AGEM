@@ -343,8 +343,7 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
       // Only bio-a <-> bio-b crosses threshold; default and the others are
       // empty and produce -1 similarity.
       const bioEdge = edgeIds.find(
-        (id) =>
-          id.includes("bio-a") && id.includes("bio-b"),
+        (id) => id.includes("bio-a") && id.includes("bio-b"),
       );
       expect(bioEdge).toBeDefined();
 
@@ -391,5 +390,62 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     } finally {
       await orch.shutdown();
     }
+  });
+
+  // --------------------------------------------------------------------------
+  // PCA & CONCEPT-SUBSPACE TESTS
+  // --------------------------------------------------------------------------
+
+  it("ConceptSubspace: returns null for an empty subgraph", () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    expect(registry.getConceptSubspace("default", 3)).toBeNull();
+  });
+
+  it("ConceptSubspace: adaptive-rank ladder — N = 1 degrades to weak-level stalk (1-D centroid)", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("bio", "bio-id");
+    const e = sub.store.append("RNA transcription");
+    await sub.cache.cacheEntry(e.id, e.content);
+
+    const subspace = registry.getConceptSubspace("bio-id", 3);
+    expect(subspace).not.toBeNull();
+    expect(subspace).toHaveLength(1);
+    expect(subspace![0]!.length).toBe(384);
+    expect(subspace![0]![0]).toBeCloseTo(1.0, 9);
+  });
+
+  it("ConceptSubspace: adaptive-rank ladder — 1 < N <= k sets k_eff = N - 1", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("bio", "bio-id");
+
+    const e1 = sub.store.append("RNA transcription pathways");
+    const e2 = sub.store.append("genetics of biology"); // N = 2, k = 3 -> k_eff = 1
+    await sub.cache.cacheEntry(e1.id, e1.content);
+    await sub.cache.cacheEntry(e2.id, e2.content);
+
+    const subspace = registry.getConceptSubspace("bio-id", 3);
+    expect(subspace).not.toBeNull();
+    expect(subspace).toHaveLength(1); // k_eff = 2 - 1 = 1
+    expect(subspace![0]!.length).toBe(384);
+  });
+
+  it("ConceptSubspace: adaptive-rank ladder — N > k sets k_eff = k", async () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("bio", "bio-id");
+
+    const e1 = sub.store.append("RNA transcription pathways");
+    const e2 = sub.store.append("genetics of biology");
+    const e3 = sub.store.append("molecular biochemistry and transcription");
+    const e4 = sub.store.append("chromatin and genes"); // N = 4, k = 2 -> k_eff = 2
+    await sub.cache.cacheEntry(e1.id, e1.content);
+    await sub.cache.cacheEntry(e2.id, e2.content);
+    await sub.cache.cacheEntry(e3.id, e3.content);
+    await sub.cache.cacheEntry(e4.id, e4.content);
+
+    const subspace = registry.getConceptSubspace("bio-id", 2);
+    expect(subspace).not.toBeNull();
+    expect(subspace).toHaveLength(2); // k_eff = 2
+    expect(subspace![0]!.length).toBe(384);
+    expect(subspace![1]!.length).toBe(384);
   });
 });

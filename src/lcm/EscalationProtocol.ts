@@ -181,6 +181,20 @@ export class EscalationProtocol extends EventEmitter {
   }
 
   /**
+   * level1TokenLimit — read-only accessor for the level-1 escalation threshold.
+   *
+   * Exposed so callers can cheaply decide whether escalation is even possible
+   * before paying to tokenize a large input. Inputs at or below this limit
+   * always return `level: 0` (no escalation), so a caller that already knows an
+   * upper bound on the input's token count can skip the call entirely.
+   *
+   * @returns The current level-1 token limit.
+   */
+  get level1TokenLimit(): number {
+    return this.#thresholds.level1TokenLimit;
+  }
+
+  /**
    * escalate(text) — attempts three-level escalation on the given text.
    *
    * Returns immediately (no escalation) if inputTokens <= level1TokenLimit.

@@ -132,22 +132,68 @@ export interface VanDerWaalsBond {
 export type MolecularBond = CovalentBond | HydrogenBond | VanDerWaalsBond;
 
 // ---------------------------------------------------------------------------
-// BondGraph — enforces behavioral invariants at creation/removal time
+// ---------------------------------------------------------------------------
+// Helper: cosineSimilarity
 // ---------------------------------------------------------------------------
 
-/**
- * BondGraph — manages a collection of MolecularBond instances with enforced
- * behavioral invariants.
- *
- * This is NOT metadata tagging. The class makes it IMPOSSIBLE to:
- *   - Create a HydrogenBond with semanticDistance > threshold
- *   - Create a VanDerWaalsBond with trajectoryLength < minimum
- *   - Remove a CovalentBond without getting the set of invalidated steps back
- *
- * Internal storage: Map<string, MolecularBond> keyed on `${source}:${target}`.
- */
+function cosineSimilarity(a: Float64Array, b: Float64Array): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    dot += (a[i] ?? 0) * (b[i] ?? 0);
+    normA += (a[i] ?? 0) * (a[i] ?? 0);
+    normB += (b[i] ?? 0) * (b[i] ?? 0);
+  }
+  normA = Math.sqrt(normA);
+  normB = Math.sqrt(normB);
+  if (normA < 1e-12 || normB < 1e-12) return 0;
+  return dot / (normA * normB);
+}
+
+// ---------------------------------------------------------------------------
+// Interfaces for event sourcing & observe options
+// ---------------------------------------------------------------------------
+
+export interface ObserveOptions {
+  readonly isLogicalDependency?: boolean;
+  readonly strength?: number;
+  readonly trajectoryLength?: number;
+  readonly sourceEmbedding?: Float64Array;
+  readonly targetEmbedding?: Float64Array;
+}
+
+export interface BondObservation {
+  readonly source: StepId;
+  readonly target: StepId;
+  readonly isLogicalDependency?: boolean;
+  readonly strength?: number;
+  readonly trajectoryLength?: number;
+  readonly sourceEmbedding?: Float64Array;
+  readonly targetEmbedding?: Float64Array;
+}
+
+export interface BondGraphSnapshot {
+  readonly observations: Array<{
+    readonly source: string;
+    readonly target: string;
+    readonly isLogicalDependency?: boolean;
+    readonly strength?: number;
+    readonly trajectoryLength?: number;
+    readonly sourceEmbedding?: number[];
+    readonly targetEmbedding?: number[];
+  }>;
+}
+
+// ---------------------------------------------------------------------------
+// BondGraph — manages a collection of MolecularBond instances with emergent
+// types and event-sourced rehydration.
+// ---------------------------------------------------------------------------
+
 export class BondGraph {
   readonly #bonds: Map<string, MolecularBond> = new Map();
+  readonly #observations: BondObservation[] = [];
   readonly #hydrogenThreshold: number;
   readonly #vdwMinTrajectory: number;
 
@@ -162,35 +208,120 @@ export class BondGraph {
   }
 
   // -------------------------------------------------------------------------
-  // Bond creation
+  // Emergent Observation API (The MEAO Core)
   // -------------------------------------------------------------------------
 
   /**
-   * addCovalentBond — creates a strong logical dependency bond.
-   * Always succeeds (no constraints on covalent bond creation).
+   * observe — records an observation between two steps and derives the bond type
+   * dynamically. Recomputes the active bond projection.
    *
-   * @param source - The step that the target depends on.
-   * @param target - The step derived from source.
-   * @param strength - Dependency strength (0.0 to 1.0).
+   * Priority hierarchy for classification:
+   *   1. Covalent (if isLogicalDependency === true)
+   *   2. Hydrogen (if semanticDistance <= threshold)
+   *   3. VanDerWaals (if trajectoryLength >= minimum)
+   *
+   * @param source  - Source step ID.
+   * @param target  - Target step ID.
+   * @param options - Classification inputs (embeddings, dependency, trajectory).
+   * @returns Derived MolecularBond or undefined if no criteria matched.
+   */
+  observe(
+    source: StepId,
+    target: StepId,
+    options?: ObserveOptions,
+  ): MolecularBond | undefined {
+    // Record observation
+    const obs: BondObservation = {
+      source,
+      target,
+      isLogicalDependency: options?.isLogicalDependency,
+      strength: options?.strength,
+      trajectoryLength: options?.trajectoryLength,
+      sourceEmbedding: options?.sourceEmbedding,
+      targetEmbedding: options?.targetEmbedding,
+    };
+    this.#observations.push(obs);
+
+    // Recompute the projection
+    this.#recomputeBonds();
+
+    return this.getBond(source, target);
+  }
+
+  /**
+   * #recomputeBonds — projects current #observations into active bonds.
+   */
+  #recomputeBonds(): void {
+    this.#bonds.clear();
+    for (const obs of this.#observations) {
+      const key = `${obs.source}:${obs.target}`;
+
+      // 1. Covalent Check
+      if (obs.isLogicalDependency === true) {
+        const bond: CovalentBond = {
+          type: "covalent",
+          source: obs.source,
+          target: obs.target,
+          strength: obs.strength ?? 1.0,
+        };
+        this.#bonds.set(key, bond);
+        continue;
+      }
+
+      // 2. Hydrogen Check
+      if (obs.sourceEmbedding && obs.targetEmbedding) {
+        const sim = cosineSimilarity(obs.sourceEmbedding, obs.targetEmbedding);
+        const semanticDistance = 1.0 - sim;
+        if (semanticDistance <= this.#hydrogenThreshold) {
+          const bond: HydrogenBond = {
+            type: "hydrogen",
+            source: obs.source,
+            target: obs.target,
+            semanticDistance,
+          };
+          this.#bonds.set(key, bond);
+          continue;
+        }
+      }
+
+      // 3. Van Der Waals Check
+      if (
+        obs.trajectoryLength !== undefined &&
+        obs.trajectoryLength >= this.#vdwMinTrajectory
+      ) {
+        const bond: VanDerWaalsBond = {
+          type: "vanDerWaals",
+          source: obs.source,
+          target: obs.target,
+          trajectoryLength: obs.trajectoryLength,
+        };
+        this.#bonds.set(key, bond);
+        continue;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Classic wrappers for backward compatibility and test conformance
+  // -------------------------------------------------------------------------
+
+  /**
+   * addCovalentBond — wrapper around observe() for strong logical dependency.
    */
   addCovalentBond(
     source: StepId,
     target: StepId,
     strength: number,
   ): CovalentBond {
-    const bond: CovalentBond = { type: "covalent", source, target, strength };
-    this.#bonds.set(`${source}:${target}`, bond);
-    return bond;
+    this.observe(source, target, {
+      isLogicalDependency: true,
+      strength,
+    });
+    return this.getBond(source, target) as CovalentBond;
   }
 
   /**
-   * addHydrogenBond — creates a weak semantic association bond.
-   *
-   * @throws {Error} if semanticDistance > hydrogenThreshold.
-   *
-   * @param source - Source step.
-   * @param target - Target step (semantically related).
-   * @param semanticDistance - Semantic distance (0.0 to 1.0).
+   * addHydrogenBond — wrapper around observe() for weak semantic association.
    */
   addHydrogenBond(
     source: StepId,
@@ -203,24 +334,22 @@ export class BondGraph {
           `Steps are too semantically distant for a hydrogen bond.`,
       );
     }
-    const bond: HydrogenBond = {
-      type: "hydrogen",
-      source,
-      target,
-      semanticDistance,
-    };
-    this.#bonds.set(`${source}:${target}`, bond);
-    return bond;
+    // We mock embeddings to generate the requested exact semanticDistance:
+    // since semanticDistance = 1.0 - dotProduct(a, b) for L2 normalized vectors,
+    // we can pass two vectors whose dot product equals 1.0 - semanticDistance.
+    const sim = 1.0 - semanticDistance;
+    const sourceEmbedding = new Float64Array([1.0, 0.0]);
+    const targetEmbedding = new Float64Array([sim, Math.sqrt(Math.max(0, 1.0 - sim * sim))]);
+
+    this.observe(source, target, {
+      sourceEmbedding,
+      targetEmbedding,
+    });
+    return this.getBond(source, target) as HydrogenBond;
   }
 
   /**
-   * addVanDerWaalsBond — creates a transient proximity bond.
-   *
-   * @throws {Error} if trajectoryLength < vdwMinTrajectory.
-   *
-   * @param source - Source step.
-   * @param target - Target step (appeared nearby in trajectory).
-   * @param trajectoryLength - Length of the reasoning trajectory.
+   * addVanDerWaalsBond — wrapper around observe() for transient proximity.
    */
   addVanDerWaalsBond(
     source: StepId,
@@ -233,32 +362,22 @@ export class BondGraph {
           `Trajectory too short for a meaningful proximity association.`,
       );
     }
-    const bond: VanDerWaalsBond = {
-      type: "vanDerWaals",
-      source,
-      target,
+    this.observe(source, target, {
       trajectoryLength,
-    };
-    this.#bonds.set(`${source}:${target}`, bond);
-    return bond;
+    });
+    return this.getBond(source, target) as VanDerWaalsBond;
   }
 
   // -------------------------------------------------------------------------
-  // Bond removal
+  // Covalent removal (with cascade invalidation)
   // -------------------------------------------------------------------------
 
   /**
    * removeCovalentBond — removes a covalent bond AND returns all transitively
    * dependent step IDs that must be re-derived (cascadeInvalidate).
    *
-   * Uses DFS from `target` through all covalent bonds to find transitive dependents.
-   * The returned array includes `target` itself and all steps reachable via covalent
-   * bonds FROM target.
-   *
-   * @param source - Source step of the bond to remove.
-   * @param target - Target step of the bond to remove.
-   * @returns Array of StepIds that need re-derivation (cascadeInvalidate result).
-   * @throws {Error} if the covalent bond does not exist.
+   * Under event-sourcing, this deletes the corresponding Covalent observation
+   * and triggers dynamic projection recomputation.
    */
   removeCovalentBond(source: StepId, target: StepId): StepId[] {
     const key = `${source}:${target}`;
@@ -270,10 +389,7 @@ export class BondGraph {
       );
     }
 
-    // Remove the bond.
-    this.#bonds.delete(key);
-
-    // DFS from target through all covalent bonds to find transitive dependents.
+    // DFS from target through all covalent bonds to find transitive dependents BEFORE removal
     const invalidated: StepId[] = [];
     const visited = new Set<string>();
     const stack: StepId[] = [target];
@@ -285,7 +401,6 @@ export class BondGraph {
       visited.add(currentStr);
       invalidated.push(current);
 
-      // Find all covalent bonds where current is the source.
       for (const [, b] of this.#bonds) {
         if (b.type === "covalent" && (b.source as string) === currentStr) {
           stack.push(b.target);
@@ -293,34 +408,69 @@ export class BondGraph {
       }
     }
 
+    // Remove the observation representing this bond
+    const index = this.#observations.findIndex(
+      (o) => o.source === source && o.target === target && o.isLogicalDependency === true,
+    );
+    if (index !== -1) {
+      this.#observations.splice(index, 1);
+    }
+
+    // Recompute projection without this observation
+    this.#recomputeBonds();
+
     return invalidated;
+  }
+
+  // -------------------------------------------------------------------------
+  // State Serialization / Persistence
+  // -------------------------------------------------------------------------
+
+  /** Export the entire observation log as a JSON-serializable snapshot. */
+  snapshot(): BondGraphSnapshot {
+    return {
+      observations: this.#observations.map((o) => ({
+        source: o.source as string,
+        target: o.target as string,
+        isLogicalDependency: o.isLogicalDependency,
+        strength: o.strength,
+        trajectoryLength: o.trajectoryLength,
+        sourceEmbedding: o.sourceEmbedding ? Array.from(o.sourceEmbedding) : undefined,
+        targetEmbedding: o.targetEmbedding ? Array.from(o.targetEmbedding) : undefined,
+      })),
+    };
+  }
+
+  /** Restore the observation log from a snapshot and recompute all bonds. */
+  restore(snapshot: BondGraphSnapshot): void {
+    this.#observations.length = 0;
+    for (const o of snapshot.observations) {
+      this.#observations.push({
+        source: o.source as StepId,
+        target: o.target as StepId,
+        isLogicalDependency: o.isLogicalDependency,
+        strength: o.strength,
+        trajectoryLength: o.trajectoryLength,
+        sourceEmbedding: o.sourceEmbedding ? new Float64Array(o.sourceEmbedding) : undefined,
+        targetEmbedding: o.targetEmbedding ? new Float64Array(o.targetEmbedding) : undefined,
+      });
+    }
+    this.#recomputeBonds();
   }
 
   // -------------------------------------------------------------------------
   // Queries
   // -------------------------------------------------------------------------
 
-  /**
-   * getBonds — returns all bonds in the graph.
-   */
   getBonds(): ReadonlyArray<MolecularBond> {
     return Array.from(this.#bonds.values());
   }
 
-  /**
-   * getDependents — returns all transitive dependents of stepId via covalent bonds.
-   *
-   * Does NOT include stepId itself. Useful for read-only dependency analysis
-   * without modifying the bond graph.
-   *
-   * @param stepId - The step to find dependents for.
-   */
   getDependents(stepId: StepId): ReadonlyArray<StepId> {
     const dependents: StepId[] = [];
     const visited = new Set<string>();
     const stack: StepId[] = [];
 
-    // Find immediate covalent dependents of stepId.
     const stepIdStr = stepId as string;
     for (const [, b] of this.#bonds) {
       if (b.type === "covalent" && (b.source as string) === stepIdStr) {
@@ -345,16 +495,10 @@ export class BondGraph {
     return dependents;
   }
 
-  /**
-   * hasBond — checks if a bond exists between source and target.
-   */
   hasBond(source: StepId, target: StepId): boolean {
     return this.#bonds.has(`${source}:${target}`);
   }
 
-  /**
-   * getBond — retrieves a specific bond by source and target.
-   */
   getBond(source: StepId, target: StepId): MolecularBond | undefined {
     return this.#bonds.get(`${source}:${target}`);
   }

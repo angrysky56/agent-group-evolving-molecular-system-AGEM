@@ -465,4 +465,54 @@ export class SOCTracker extends EventEmitter {
 
     return { mean, slope, window: actualWindow };
   }
+
+  snapshot(): {
+    history: SOCMetrics[];
+    previousVNE: number | null;
+    previousEE: number | null;
+    previousCorrelation: number | null;
+    deltaStructural: number[];
+    deltaSemantic: number[];
+    currentH1Dimension: number;
+    latestRegimeMetrics: RegimeMetrics | undefined;
+    regimeValidator: any;
+    regimeAnalyzer: any;
+  } {
+    return {
+      history: this.#history.map((m) => ({ ...m })),
+      previousVNE: this.#previousVNE,
+      previousEE: this.#previousEE,
+      previousCorrelation: this.#previousCorrelation,
+      deltaStructural: [...this.#deltaStructural],
+      deltaSemantic: [...this.#deltaSemantic],
+      currentH1Dimension: this.#currentH1Dimension,
+      latestRegimeMetrics: this.#latestRegimeMetrics ? { ...this.#latestRegimeMetrics } : undefined,
+      regimeValidator: this.#regimeValidator.snapshot(),
+      regimeAnalyzer: this.#regimeAnalyzer.snapshot(),
+    };
+  }
+
+  restore(snap: {
+    history: SOCMetrics[];
+    previousVNE: number | null;
+    previousEE: number | null;
+    previousCorrelation: number | null;
+    deltaStructural: number[];
+    deltaSemantic: number[];
+    currentH1Dimension: number;
+    latestRegimeMetrics: RegimeMetrics | undefined;
+    regimeValidator: any;
+    regimeAnalyzer: any;
+  }): void {
+    this.#history = snap.history.map((m) => ({ ...m }));
+    this.#previousVNE = snap.previousVNE;
+    this.#previousEE = snap.previousEE;
+    this.#previousCorrelation = snap.previousCorrelation;
+    this.#deltaStructural = [...snap.deltaStructural];
+    this.#deltaSemantic = [...snap.deltaSemantic];
+    this.#currentH1Dimension = snap.currentH1Dimension;
+    this.#latestRegimeMetrics = snap.latestRegimeMetrics ? { ...snap.latestRegimeMetrics } : undefined;
+    this.#regimeValidator.restore(snap.regimeValidator);
+    this.#regimeAnalyzer.restore(snap.regimeAnalyzer);
+  }
 }

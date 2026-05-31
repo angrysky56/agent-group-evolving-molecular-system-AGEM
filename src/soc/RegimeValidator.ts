@@ -312,6 +312,40 @@ export class RegimeValidator {
   getEntropyPairs(): ReadonlyArray<{ vne: number; ee: number; iteration: number }> {
     return [...this.#entropyPairs];
   }
+
+  snapshot(): {
+    signHistory: number[];
+    candidateStartIteration: number | null;
+    candidateSign: number;
+    lastSign: number;
+    lastConfirmedIteration: number | null;
+    entropyPairs: Array<{ vne: number; ee: number; iteration: number }>;
+  } {
+    return {
+      signHistory: [...this.#signHistory],
+      candidateStartIteration: this.#candidateStartIteration,
+      candidateSign: this.#candidateSign,
+      lastSign: this.#lastSign,
+      lastConfirmedIteration: this.#lastConfirmedIteration,
+      entropyPairs: this.#entropyPairs.map((p) => ({ ...p })),
+    };
+  }
+
+  restore(snap: {
+    signHistory: number[];
+    candidateStartIteration: number | null;
+    candidateSign: number;
+    lastSign: number;
+    lastConfirmedIteration: number | null;
+    entropyPairs: Array<{ vne: number; ee: number; iteration: number }>;
+  }): void {
+    this.#signHistory = [...snap.signHistory];
+    this.#candidateStartIteration = snap.candidateStartIteration;
+    this.#candidateSign = snap.candidateSign;
+    this.#lastSign = snap.lastSign;
+    this.#lastConfirmedIteration = snap.lastConfirmedIteration;
+    this.#entropyPairs = snap.entropyPairs.map((p) => ({ ...p }));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -453,5 +487,31 @@ export class RegimeAnalyzer {
    */
   getMetricsWindow(): ReadonlyArray<SOCMetrics> {
     return [...this.#metricsWindow];
+  }
+
+  snapshot(): {
+    currentRegime: RegimeStability;
+    regimeStartIteration: number;
+    metricsWindow: SOCMetrics[];
+    totalIterations: number;
+  } {
+    return {
+      currentRegime: this.#currentRegime,
+      regimeStartIteration: this.#regimeStartIteration,
+      metricsWindow: this.#metricsWindow.map((m) => ({ ...m })),
+      totalIterations: this.#totalIterations,
+    };
+  }
+
+  restore(snap: {
+    currentRegime: RegimeStability;
+    regimeStartIteration: number;
+    metricsWindow: SOCMetrics[];
+    totalIterations: number;
+  }): void {
+    this.#currentRegime = snap.currentRegime;
+    this.#regimeStartIteration = snap.regimeStartIteration;
+    this.#metricsWindow = snap.metricsWindow.map((m) => ({ ...m }));
+    this.#totalIterations = snap.totalIterations;
   }
 }

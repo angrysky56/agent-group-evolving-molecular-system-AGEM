@@ -21,6 +21,8 @@
  *   orch:  EventBus, OrchestratorState, OrchestratorStateManager, ObstructionHandler
  */
 
+import { Matrix as MlMatrix, SingularValueDecomposition } from "ml-matrix";
+
 // ---------------------------------------------------------------------------
 // Sheaf module imports
 // ---------------------------------------------------------------------------
@@ -47,6 +49,7 @@ import type {
   SummaryNode,
   LCMEntry,
   EscalationLevel,
+  EscalationResult,
   ICompressor,
   Subgraph,
 } from "../lcm/index.js";
@@ -567,8 +570,33 @@ export class Orchestrator {
     // Context compaction / escalation check
     const store = this.lcmClient.store;
     const allEntries = store.getAll();
-    const concatenatedText = allEntries.map((e) => e.content).join("\n\n");
-    const result = await this.lcmEscalation.escalate(concatenatedText);
+
+    // PERF: avoid re-tokenizing the entire history every cycle.
+    // Each LCMEntry already carries its own tokenCount (computed once at append),
+    // so the sum is free. Concatenation adds "\n\n" separators between entries,
+    // which the per-entry counts do not include; we add a generous separator
+    // allowance (8 tokens per gap) so the cheap estimate is an UPPER bound and
+    // never causes us to skip a genuinely-needed escalation. Only when this
+    // upper bound could cross the level-1 limit do we pay to build the big
+    // string and tokenize it inside escalate(). Below the limit, escalate()
+    // would return level 0 anyway, so behaviour is identical.
+    const SEPARATOR_TOKEN_ALLOWANCE = 8;
+    const estimatedTokens =
+      allEntries.reduce((sum, e) => sum + e.tokenCount, 0) +
+      Math.max(0, allEntries.length - 1) * SEPARATOR_TOKEN_ALLOWANCE;
+
+    let result: EscalationResult = {
+      level: 0,
+      output: "",
+      inputTokens: estimatedTokens,
+      outputTokens: estimatedTokens,
+      compressorUsed: false,
+    };
+
+    if (estimatedTokens > this.lcmEscalation.level1TokenLimit) {
+      const concatenatedText = allEntries.map((e) => e.content).join("\n\n");
+      result = await this.lcmEscalation.escalate(concatenatedText);
+    }
     if (result.level > 0) {
       const originalEntryIds = allEntries.map((e) => e.id);
 
@@ -777,6 +805,34 @@ export class Orchestrator {
    */
   getState(): OrchestratorState {
     return this.stateManager.getState();
+  }
+
+  /**
+   * snapshot — returns a serializable snapshot of the entire orchestrator state.
+   */
+  snapshot(): {
+    iterationCounter: number;
+    stateManager: any;
+    socTracker: any;
+  } {
+    return {
+      iterationCounter: this.#iterationCounter,
+      stateManager: this.stateManager.snapshot(),
+      socTracker: this.socTracker.snapshot(),
+    };
+  }
+
+  /**
+   * restore — restores the entire orchestrator state from a saved snapshot.
+   */
+  restore(snap: {
+    iterationCounter: number;
+    stateManager: any;
+    socTracker: any;
+  }): void {
+    this.#iterationCounter = snap.iterationCounter;
+    this.stateManager.restore(snap.stateManager);
+    this.socTracker.restore(snap.socTracker);
   }
 
   /**
@@ -1049,14 +1105,6 @@ export class Orchestrator {
    */
   async buildSheafFromRegistry(): Promise<CellularSheaf> {
     const subgraphs = this.subgraphRegistry.list();
-    const threshold = 0.7;
-
-    const vertices: SheafVertex[] = subgraphs.map((sub) => ({
-      id: sub.id as VertexId,
-      stalkSpace: { dim: 1, label: sub.name },
-    }));
-
-    const edges: SheafEdge[] = [];
 
     // Pre-warm: ensure concept centroids exist for every subgraph that has
     // root summaries or entries. Skip pairs where either subgraph has no
@@ -1083,39 +1131,134 @@ export class Orchestrator {
       }
     }
 
-    for (let i = 0; i < subgraphs.length; i++) {
-      for (let j = i + 1; j < subgraphs.length; j++) {
-        const subA = subgraphs[i]!;
-        const subB = subgraphs[j]!;
+    const getSafeSubspace = (subgraphId: string): Float64Array[] => {
+      const subspace = this.subgraphRegistry.getConceptSubspace(subgraphId, 3);
+      if (subspace && subspace.length > 0) {
+        return subspace;
+      }
+      // Safe 1-D fallback: a single unit vector of dimension EMBEDDING_DIM
+      const fallbackVec = new Float64Array(EMBEDDING_DIM);
+      fallbackVec[0] = 1.0;
+      return [fallbackVec];
+    };
 
-        // O(1) per pair using the precomputed L2-normalized concept centroids.
+    const vertices: SheafVertex[] = subgraphs.map((sub) => {
+      const P_A = getSafeSubspace(sub.id);
+      return {
+        id: sub.id as VertexId,
+        stalkSpace: { dim: P_A.length, label: sub.name },
+      };
+    });
+
+    const edges: SheafEdge[] = [];
+    const addedEdges = new Set<string>();
+
+    for (const subA of subgraphs) {
+      const neighbors: Array<{ subB: (typeof subgraphs)[0]; sim: number }> = [];
+
+      for (const subB of subgraphs) {
+        if (subA.id === subB.id) continue;
         const sim = this.subgraphRegistry.conceptSimilarity(subA.id, subB.id);
-        if (sim < threshold) continue;
+        if (sim >= 0.4) {
+          neighbors.push({ subB, sim });
+        }
+      }
 
-        // Clamp to a small finite range to keep the coboundary well-conditioned.
-        // Negative similarities (semantic opposition) are valid sheaf data, but
-        // we only emit an edge above `threshold` so the path doesn't trigger.
+      // Sort by similarity descending
+      neighbors.sort((x, y) => y.sim - x.sim);
+
+      // Take the top 2 neighbors
+      const top2 = neighbors.slice(0, 2);
+      for (const { subB, sim } of top2) {
+        const [sub1, sub2] = subA.id < subB.id ? [subA, subB] : [subB, subA];
+        const edgeId = `e-${sub1.id}-${sub2.id}` as EdgeId;
+        if (addedEdges.has(edgeId)) continue;
+        addedEdges.add(edgeId);
+
+        const P_A = getSafeSubspace(sub1.id);
+        const P_B = getSafeSubspace(sub2.id);
+        const k_A = P_A.length;
+        const k_B = P_B.length;
+        const m = Math.min(k_A, k_B);
+
+        // Run SVD on combined subspaces to find shared reference basis E of dimension m
+        const combined: number[][] = [];
+        for (const vec of P_A) {
+          combined.push(Array.from(vec));
+        }
+        for (const vec of P_B) {
+          combined.push(Array.from(vec));
+        }
+
+        const matrix = new MlMatrix(combined);
+        const svd = new SingularValueDecomposition(matrix, {
+          autoTranspose: true,
+        });
+        const V = svd.rightSingularVectors;
+
+        const E: Float64Array[] = [];
+        for (let col = 0; col < m; col++) {
+          const dir = new Float64Array(EMBEDDING_DIM);
+          for (let row = 0; row < EMBEDDING_DIM; row++) {
+            dir[row] = V.get(row, col);
+          }
+
+          // Resolve SVD sign ambiguity by aligning E[col] with P_A[0]
+          let dot = 0;
+          for (let i = 0; i < EMBEDDING_DIM; i++) {
+            dot += P_A[0]![i]! * dir[i]!;
+          }
+          if (dot < 0) {
+            for (let i = 0; i < EMBEDDING_DIM; i++) {
+              dir[i] = -dir[i]!;
+            }
+          }
+
+          E.push(dir);
+        }
+
+        const sourceEntries = new Float64Array(m * k_A);
+        const targetEntries = new Float64Array(m * k_B);
+
+        const dotProduct = (v1: Float64Array, v2: Float64Array): number => {
+          let dot = 0;
+          for (let i = 0; i < v1.length; i++) {
+            dot += v1[i]! * v2[i]!;
+          }
+          return dot;
+        };
+
+        for (let r = 0; r < m; r++) {
+          for (let c = 0; c < k_A; c++) {
+            sourceEntries[r * k_A + c] = dotProduct(P_A[c]!, E[r]!);
+          }
+        }
+
         const weight = Math.max(-1, Math.min(1, sim));
+        for (let r = 0; r < m; r++) {
+          for (let c = 0; c < k_B; c++) {
+            targetEntries[r * k_B + c] = dotProduct(P_B[c]!, E[r]!) * weight;
+          }
+        }
 
-        const edgeId = `e-${subA.id}-${subB.id}` as EdgeId;
         edges.push({
           id: edgeId,
-          sourceVertex: subA.id as VertexId,
-          targetVertex: subB.id as VertexId,
-          stalkSpace: { dim: 1, label: `${subA.name}<->${subB.name}` },
+          sourceVertex: sub1.id as VertexId,
+          targetVertex: sub2.id as VertexId,
+          stalkSpace: { dim: m, label: `${sub1.name}<->${sub2.name}` },
           sourceRestriction: {
-            sourceVertexId: subA.id as VertexId,
+            sourceVertexId: sub1.id as VertexId,
             edgeId,
-            sourceDim: 1,
-            targetDim: 1,
-            entries: new Float64Array([1.0]),
+            sourceDim: k_A,
+            targetDim: m,
+            entries: sourceEntries,
           },
           targetRestriction: {
-            sourceVertexId: subB.id as VertexId,
+            sourceVertexId: sub2.id as VertexId,
             edgeId,
-            sourceDim: 1,
-            targetDim: 1,
-            entries: new Float64Array([weight]),
+            sourceDim: k_B,
+            targetDim: m,
+            entries: targetEntries,
           },
         });
       }
@@ -1157,13 +1300,11 @@ export class Orchestrator {
             content: n.content,
             type: "summary" as const,
           }))
-        : topSubgraph.store
-            .getAll()
-            .map((e) => ({
-              id: e.id,
-              content: e.content,
-              type: "entry" as const,
-            }));
+        : topSubgraph.store.getAll().map((e) => ({
+            id: e.id,
+            content: e.content,
+            type: "entry" as const,
+          }));
 
     if (candidates.length === 0) {
       return "No context found to answer query.";

@@ -617,4 +617,32 @@ describe("Orchestrator (ComposeRootModule)", () => {
       await expect(orchestrator.shutdown()).resolves.not.toThrow();
     });
   });
+
+  describe("T16: Whole-system rehydration and state re-integration", () => {
+    it("should snapshot and restore the entire Orchestrator state verbatim", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator1 = new Orchestrator(embedder);
+
+      // Advance state of orchestrator1 by running multiple iterations
+      await orchestrator1.runReasoning("Phase transition setup 1");
+      await orchestrator1.runReasoning("Phase transition setup 2");
+
+      // Manually trigger an obstruction in the stateManager to ensure it gets snapshotted
+      orchestrator1.stateManager.updateMetrics(3); // transitions state to OBSTRUCTED
+
+      const snap = orchestrator1.snapshot();
+
+      expect(snap.iterationCounter).toBe(2);
+      expect(snap.stateManager.currentState).toBe(OrchestratorState.OBSTRUCTED);
+      expect(snap.socTracker.history.length).toBe(2);
+
+      const orchestrator2 = new Orchestrator(embedder);
+      orchestrator2.restore(snap);
+
+      // Assert that restored properties match the original
+      expect(orchestrator2.getIterationCount()).toBe(2);
+      expect(orchestrator2.getState()).toBe(OrchestratorState.OBSTRUCTED);
+      expect(orchestrator2.socTracker.snapshot().history.length).toBe(2);
+    });
+  });
 });

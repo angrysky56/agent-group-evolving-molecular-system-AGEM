@@ -26,6 +26,7 @@ import { ContextDAG } from "./ContextDAG.js";
 import { GptTokenCounter } from "./interfaces.js";
 import { uuidv7 } from "uuidv7";
 import { cosineSimilarity } from "./LCMGrep.js";
+import { Matrix as MlMatrix, SingularValueDecomposition } from "ml-matrix";
 
 export interface Subgraph {
   readonly id: string;
@@ -193,6 +194,108 @@ export class SubgraphRegistry {
     if (norm === 0) return centroid; // degenerate; return as-is rather than NaN
     for (let k = 0; k < dim; k++) centroid[k] /= norm;
     return centroid;
+  }
+
+  /**
+   * getConceptSubspace(subgraphId, k) — return the top-k principal directions
+   * of the mean-subtracted (centered) root summaries/entries.
+   *
+   * Adaptive-rank ladder:
+   *   - N > k → extract top-k principal components (the normal path).
+   *   - 1 < N <= k → set k_eff = N - 1 and extract that many.
+   *   - N = 1 → no spread to measure. Vertex degrades to a weak-level-only stalk
+   *     (the single normalized embedding).
+   *   - N = 0 or empty → returns null.
+   */
+  getConceptSubspace(subgraphId: string, k: number): Float64Array[] | null {
+    const sub = this.#subgraphs.get(subgraphId);
+    if (!sub) return null;
+
+    const ids: string[] = [];
+    const rootSummaries = sub.summaryIndex
+      .list()
+      .filter((node) => sub.dag.getParentSummary(node.id) === undefined);
+
+    if (rootSummaries.length > 0) {
+      for (const node of rootSummaries) ids.push(node.id);
+    } else {
+      for (const entry of sub.store.getAll()) ids.push(entry.id);
+    }
+
+    if (ids.length === 0) return null;
+
+    const vecs: Float64Array[] = [];
+    for (const id of ids) {
+      const vec = sub.cache.getEmbedding(id);
+      if (vec && vec.length > 0) {
+        vecs.push(vec);
+      }
+    }
+
+    const N = vecs.length;
+    if (N === 0) return null;
+    const dim = vecs[0]!.length;
+
+    // N = 1: no spread to measure. Vertex degrades to weak-level-only stalk (the single embedding)
+    if (N === 1) {
+      const single = vecs[0]!;
+      return [new Float64Array(single)];
+    }
+
+    // Centroid calculation
+    const centroid = new Float64Array(dim);
+    for (const vec of vecs) {
+      for (let i = 0; i < dim; i++) {
+        centroid[i] += vec[i] ?? 0;
+      }
+    }
+    for (let i = 0; i < dim; i++) {
+      centroid[i] /= N;
+    }
+
+    // Mean-center the embeddings
+    const centered: number[][] = [];
+    for (const vec of vecs) {
+      const row: number[] = [];
+      for (let i = 0; i < dim; i++) {
+        row.push((vec[i] ?? 0) - (centroid[i] ?? 0));
+      }
+      centered.push(row);
+    }
+
+    // autoTranspose: true handles non-square SVD correctly.
+    // Matrix size: N x dim. SVD will give svd.rightSingularVectors as dim x dim.
+    const matrix = new MlMatrix(centered);
+    const svd = new SingularValueDecomposition(matrix, { autoTranspose: true });
+    const V = svd.rightSingularVectors;
+
+    // k_eff calculation based on the adaptive-rank ladder
+    const k_eff = N > k ? k : N - 1;
+    if (k_eff <= 0) {
+      // Fallback: return L2-normalized centroid
+      const normCentroid = new Float64Array(dim);
+      let norm = 0;
+      for (let i = 0; i < dim; i++) {
+        normCentroid[i] = centroid[i] ?? 0;
+        norm += normCentroid[i] * normCentroid[i];
+      }
+      norm = Math.sqrt(norm);
+      if (norm > 0) {
+        for (let i = 0; i < dim; i++) normCentroid[i] /= norm;
+      }
+      return [normCentroid];
+    }
+
+    const directions: Float64Array[] = [];
+    for (let col = 0; col < k_eff; col++) {
+      const dir = new Float64Array(dim);
+      for (let row = 0; row < dim; row++) {
+        dir[row] = V.get(row, col);
+      }
+      directions.push(dir);
+    }
+
+    return directions;
   }
 
   /**

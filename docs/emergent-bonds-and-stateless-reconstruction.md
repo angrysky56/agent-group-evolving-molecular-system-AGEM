@@ -346,3 +346,336 @@ itself before the harder evolver work begins.
   `lcm/ContextRehydration.test.ts`, `orchestrator/OrchestratorState.ts`,
   `sheaf/ADMMSolver.ts`, `soc/SOCTracker.ts`, `types/MolecularCoT.ts`,
   `evolution/PriceEvolver.ts`.
+
+---
+
+## 11. Performance: per-cycle recomputation audit (VERIFIED)
+
+> Added after observing slowdown that worsens per-cycle once information has
+> accumulated. Every finding below is read off the source, with line references.
+> The earlier verbal claim that the _eigenspectrum cache_ was the safest first fix
+> was **wrong** and is corrected here (§11.2) — `CohomologyAnalyzer.analyze()` does
+> not call `getEigenspectrum` at all; it runs its own SVD. This is logged as a
+> second example (after the ADMM miscall in §3) of why fixes are read off source,
+> not memory.
+
+### 11.1 The shape of the problem
+
+The slowdown is **growth-dependent**: fine for a few cycles, then progressively
+slower as entries/nodes/subgraphs accumulate. That signature points at work that
+scales with _cumulative state_ and runs _every cycle with no change-detection_.
+The per-cycle loop is `ComposeRootModule.runReasoning` (line ~523). Five distinct
+steps each traverse or decompose the entire accumulated state every iteration.
+
+### 11.2 The five offenders (ranked by cost growth)
+
+**#1 — Full-history re-tokenization every cycle (Step 5, ~line 567). PRIME SUSPECT.**
+Each cycle does `store.getAll()` → `.map(e => e.content).join("\n\n")` →
+`lcmEscalation.escalate(concatenatedText)`. The **first line** of
+`EscalationProtocol.escalate` (EscalationProtocol.ts ~line 195) is
+`this.#tokenCounter.countTokens(text)` using `gpt-tokenizer`'s `encode`. So **even
+on cycles where no compaction is needed** (the `level 0` early return), AGEM
+tokenizes the _entire conversation history_ from scratch. Cost grows linearly with
+total history length, paid unconditionally, every cycle. This is the cleanest
+match to the observed curve.
+_Fix:_ maintain a running token count; only build the big string and call
+`escalate()` when the running count crosses `level1TokenLimit`. Incremental, no
+math risk, biggest expected win.
+
+**#2 — Sheaf rebuilt from scratch + full SVD every cycle (Step 6, ~line 660).**
+`buildSheafFromRegistry()` constructs a **new** `CellularSheaf` each cycle (so any
+per-object Laplacian/SVD cache is discarded by construction), with an O(S²) loop
+over all subgraph pairs. Then `cohomologyAnalyzer.analyze()` runs
+`new SingularValueDecomposition(mlB, { autoTranspose: true })` — a full SVD of the
+coboundary matrix computing **both** `U` (N₁×N₁) and `V` (N₀×N₀) singular-vector
+matrices. But `analyze` only needs (a) singular _values_ for the rank → H⁰/H¹, and
+(b) the H¹ basis = columns of `U` past `rank`. The entire `V` matrix is computed
+and discarded (the code comment says "H^0 basis not returned").
+_Fix:_ (a) only rebuild the sheaf when the subgraph registry changed (dirty flag /
+version), and (b) avoid materializing `V`; request thin/values-only where the
+ml-matrix API allows. Gate the whole step on registry change.
+
+**#3 — Von Neumann entropy, dense eig every cycle (Step 7, soc/entropy.ts).**
+`vonNeumannEntropy` builds the n×n normalized Laplacian and runs `math.eigs` —
+O(n³) — every cycle. Note: gating alone helps little here, because the TNA graph
+_does_ change every cycle (each `ingest` adds tokens), so VNE genuinely needs
+recomputing. The lever is algorithmic + bounded working set, not memoization.
+_Fix:_ eigenvalues-only routine (no eigenvectors), or stochastic trace estimation
+(Hutchinson) for large n; and/or compute over a bounded working set (see §6/ETE)
+so n stops growing.
+
+**#4 — Embedding entropy, the un-implemented Phase-4 TODO (Step 7, soc/entropy.ts).**
+`embeddingEntropy` builds a d×d covariance (O(n·d²)) and eigendecomposes it
+(O(d³)) every cycle. The file's own comment: _"Acceptable for Phase 4. Phase 6 can
+add random projection if n or d grows large."_ That projection was never added;
+d=384 ⇒ ~56M ops fixed cost per cycle.
+_Fix:_ implement the promised random projection (Johnson–Lindenstrauss) to shrink d
+before the covariance build.
+
+**#5 — Louvain every cycle, ungated (Step 4, ~line 545).**
+`tnaLouvain.detect()` runs over the full graph unconditionally — superlinear in
+graph size. Directly adjacent, `tnaCentrality.computeIfDue()` and
+`tnaLayout.computeIfDue()` are **already interval-gated**. Someone solved this
+pattern once and did not propagate it to Louvain.
+_Fix:_ gate Louvain with the same `computeIfDue` interval pattern.
+
+### 11.3 The single root cause
+
+All five are the same disease: **recompute over all accumulated state with no
+"did my input change?" check.** Two levers fix all of them:
+
+- **Incremental accumulation** where a running total is valid (token count #1,
+  edge-list construction).
+- **Change-gated memoization** elsewhere (#2, #5) — key derived values to a
+  version/hash of their input; skip when unchanged. The `computeIfDue` pattern
+  already in the orchestrator (centrality, layout) is the in-repo template.
+- For the two that genuinely change every cycle (#3, #4), the lever is
+  **algorithmic** (values-only / projection) plus a **bounded working set** so the
+  size driving the cubic terms stops growing.
+
+This is the same versioning the stateless refactor (§5) needs. The performance
+work is a down payment on statelessness, not a detour.
+
+### 11.4 Changes applied in this pass (review before relying on them)
+
+**APPLIED — Fix #1, behaviour-preserving (the prime suspect).**
+
+- `src/lcm/EscalationProtocol.ts`: added a read-only `get level1TokenLimit()`
+  accessor.
+- `src/orchestrator/ComposeRootModule.ts` (Step 5): before escalating, sum the
+  per-entry `tokenCount` (already cached on every `LCMEntry` at append) plus an
+  8-token-per-gap separator allowance. This sum is an **upper bound** on the true
+  concatenated token count. Only when it exceeds `level1TokenLimit` do we build
+  the big string and call `escalate()` (which then tokenizes). Below the limit,
+  `escalate()` would have returned `level: 0` regardless, so behaviour is
+  identical — we simply skip the wasted full-history `gpt-tokenizer` encode on
+  every sub-threshold cycle. Added `EscalationResult` to the type imports.
+- Why this is safe: the gate can only ever _skip_ work that would have been a
+  no-op. The separator allowance is generous (double-newline is 1–2 tokens, we
+  budget 8), so the estimate never under-counts enough to skip a real escalation.
+- Expected effect: removes the dominant growth-with-history cost on the common
+  path. This is the one to measure first.
+
+**NOT APPLIED — deliberately deferred because they change semantics or carry
+math/API risk. These are your calls, not mine to bake in silently.**
+
+- **#5 Louvain gating.** Gating `detect()` to an interval would make community
+  assignments _lag_. `#buildCommunityMap` reads `communityId` off node attributes,
+  so stale assignments are valid (new nodes correctly skipped), but SOC's
+  surprising-edge ratio compares _cross-community_ edges — so lagged communities
+  shift a real metric. This is a tuning tradeoff (freshness vs. cost), not a free
+  win. Recommend: add `computeIfDue`-style gating to `LouvainDetector` and expose
+  the interval as config, then tune with eyes open.
+- **#2 Sheaf SVD.** Two sub-fixes: (a) only rebuild the sheaf when the subgraph
+  registry changed (needs a dirty flag/version on `SubgraphRegistry`), and (b)
+  avoid materialising the discarded `V` matrix in `CohomologyAnalyzer` (needs an
+  ml-matrix API check for a values/thin variant — verify before editing). Both
+  safe in principle; both need a verification step first.
+- **#3 / #4 entropy decompositions.** Algorithmic changes (eigenvalues-only;
+  Johnson–Lindenstrauss projection for embedding entropy). Correct direction but
+  they touch numerical code with correctness tests (K_n gives ln(n−1), etc.) —
+  must be done against those tests, not blind.
+
+### 11.5 Verification note
+
+These edits were read off source and type-checked by inspection (imports,
+accessor, `EscalationResult` shape). They have **not** been run. The dev server
+hot-reloads on change (per project convention, not restarted here). Suggested
+check: run a multi-cycle session that previously slowed down and compare
+per-cycle wall-time, and run the LCM/escalation test suite to confirm the gate
+did not change compaction behaviour at the threshold boundary.
+
+---
+
+## 12. Why the obstruction never fires — and a two-level sheaf redesign
+
+> **Status:** Design proposal. Diagnosis is confirmed from a real run log
+> (`docs/conceptual-lineage-test/minimax-m2.7/final-cycle.md`); the construction
+> is proposed, not yet implemented.
+> **Conceptual basis:** Frauenfelder & Weber, _Hilbert Manifold Structures on
+> Path Spaces_ (arXiv:2507.03782) — specifically the **two-level manifold** motif,
+> NOT the Floer/Hilbert-manifold analysis, which does not transfer to a discrete
+> system. See §12.4 for the honest scope of the borrowing.
+
+### 12.1 The evidence
+
+From the iteration-11 state dump of a 705-node / 5263-edge run:
+
+```
+"sheaf_energy": 0,
+"gap_count": 0,
+"agent_count": 0,
+"communities": 10
+```
+
+`sheaf_energy: 0` means the Dirichlet energy `x^T L x` is exactly zero — the
+system sits at a perfect global section, so there is nothing for H¹ to detect.
+`gap_count: 0` and `agent_count: 0` across the whole run mean the obstruction
+handler and its agent-spawning path were **never once exercised**. The entire
+consensus/obstruction/agent machinery has been decorative in practice.
+
+### 12.2 Why it is structurally impossible as currently built
+
+The sheaf is constructed by `ComposeRootModule.buildSheafFromRegistry()` over the
+**subgraph registry** (≈10 vertices), not the concept graph. Three independent
+properties each force H¹ = 0, and all three must be fixed together:
+
+1. **Stalk dimension 1.** Every vertex and edge gets `stalkSpace: { dim: 1 }`. A
+   1-D stalk holds a scalar. Sheaf cohomology measures _multi-dimensional_
+   disagreement that cannot be reconciled around a cycle; a scalar cannot carry it.
+2. **Trivial restriction maps.** Each edge uses `entries: [1.0]` on the source
+   side and `[weight]` on the target side — i.e. scalar multiplication. Restriction
+   maps that are scalar multiples essentially never _conflict_: a global section
+   almost always exists, so the coboundary B has full rank and `h1 = N1 − rank = 0`.
+3. **Acyclic base graph.** An edge is emitted only when concept similarity > 0.7.
+   That high threshold makes the subgraph graph sparse — a forest or near-forest.
+   A graph with no independent cycles has H¹ = 0 _by topology alone_, regardless of
+   stalk/restriction content. (`b1 = E − V + C` cycles; if E ≲ V the cycle space is
+   empty.)
+
+**Good news from reading the code:** `CellularSheaf`, `SheafVertex`, `SheafEdge`,
+and `RestrictionMap` already fully support arbitrary stalk dimensions and arbitrary
+row-major restriction matrices (`entries.length === targetDim * sourceDim`). The
+core data structure is **not** the limitation. The fix is confined to
+`buildSheafFromRegistry()` — no surgery to the sheaf/cohomology core.
+
+### 12.3 The two-level construction (the proposed fix)
+
+The paper's transferable idea: a system carrying **two coupled levels** — a _weak_
+level (coarse, always defined) and a _strong_ level (fine, densely embedded in the
+weak one) — where the interesting object lives in the gap between them. Mapped to
+AGEM:
+
+- **Weak level** = each subgraph's concept _centroid_ (the L2-normalized mean
+  embedding already used to compute the 0.7 similarity edges). Coarse semantic
+  position.
+- **Strong level** = each subgraph's _internal embedding structure_ — not the mean
+  but the spread: the top-k principal directions of its node-embedding covariance
+  (a small k, e.g. 3–8). Fine structure.
+- **The obstruction lives in the gap.** Two subgraphs can **agree at the weak
+  level** (centroids close ⇒ an edge exists) while **disagreeing at the strong
+  level** (their principal subspaces are oriented incompatibly). That surface-
+  agreement-with-deep-conflict is a _meaningful_ reasoning failure: two lines of
+  argument that sound compatible but rest on incompatible commitments. It is
+  exactly the multi-dimensional, around-a-cycle conflict H¹ exists to find — and it
+  is invisible to a scalar stalk.
+
+Concretely, per the three failure modes:
+
+1. **Stalk dim k > 1.** Vertex stalk = the subgraph's top-k principal directions
+   (or the k-dim projection of its centroid into a shared basis). `dim: k`.
+2. **Non-trivial restriction maps.** For edge (A,B), the restriction map to the
+   edge stalk is the **linear map relating A's strong-level basis to the shared
+   edge frame** — e.g. the projection of A's principal subspace onto the edge's
+   reference subspace. When A's and B's subspaces disagree, the two restriction
+   maps cannot be simultaneously satisfied around a cycle ⇒ nonzero coboundary
+   residual ⇒ H¹ > 0. These are genuine k×k (or k×m) matrices, not scalars.
+3. **Cycles in the base graph.** Lower the edge threshold (or use k-nearest-
+   subgraph instead of a hard 0.7 cutoff) so the subgraph graph contains
+   independent cycles. No cycles ⇒ no H¹, so this is non-negotiable. A simple,
+   tunable rule: connect each subgraph to its m most weak-level-similar neighbors
+   (m ≥ 2), which guarantees a cycle space once there are ≥ 3 mutually-near
+   subgraphs.
+
+### 12.4 Honest scope of the borrowing
+
+- **Transferred:** the _two-level motif_ (weak/strong coupling; the obstruction
+  lives in the gap). This gives the redesign a principled target instead of "make
+  the stalks bigger and hope."
+- **NOT transferred:** the Hilbert-manifold analysis, the exponential-map failure,
+  Sobolev embeddings, Fredholm theory, and the tameness _estimate_ itself. AGEM is
+  discrete and finite-dimensional; none of that has a computable analog here.
+- **Tameness-closed-under-composition** is attractive (AGEM builds sheaves
+  incrementally, and one would _like_ "well-behaved pieces ⇒ well-behaved whole").
+  But the discrete analog is not derivable from this paper. Do **not** claim the
+  AGEM construction is "tame" — that would be the same borrowed-rigor overclaim we
+  rejected for "entanglement" in §2. The motif tells us _where_ obstructions should
+  come from; it does not prove they are well-defined.
+
+### 12.5 Open dependency before implementing — RESOLVED
+
+The construction needs the per-subgraph strong-level data. Verified in
+`SubgraphRegistry.getConceptVector()` / `conceptSimilarity()`:
+
+- **Weak level EXISTS.** `getConceptVector(id)` gathers a subgraph's item
+  embeddings (root summaries, or raw entries as fallback), sums → averages →
+  **L2-normalizes** into a single centroid. `conceptSimilarity` is the cosine of
+  two centroids. This is the weak level, already cached and proven.
+- **Strong level DOES NOT EXIST.** Only the mean survives the loop. The spread /
+  covariance / principal directions are computed and stored nowhere. The raw
+  material _is_ present — `sub.cache.getEmbedding(id)` yields each item's
+  embedding — but nothing captures their distribution.
+
+**Implication — clean, low-risk add.** Add a sibling method, e.g.
+`getConceptSubspace(id, k): Float64Array /* k×d */`, that reuses the exact same
+id-collection + cache-lookup loop as `getConceptVector`, but ends in a truncated
+PCA instead of a mean:
+
+1. Collect the same embeddings (reuse existing logic).
+2. **Subtract the centroid** (center the cloud) — the strong-level signal is the
+   variation _around_ the mean, not the mean. (Weak level = normalized mean;
+   strong level = principal axes of the mean-subtracted cloud. Do not conflate.)
+3. Take the **top-k principal directions** via a truncated/randomized SVD of the
+   stacked `count × d` matrix — never form the `d × d` covariance (avoids the d³
+   trap from §11.4 #4). k small (3–8); count is modest (often single-digit summary
+   roots), so this is cheap.
+4. Runs only on sheaf rebuild, which is itself gated on registry change (§11.4
+   #2) — so it is not a per-cycle cost.
+
+**Edge case that must be handled deliberately (else H¹ silently returns to 0):**
+when a subgraph has fewer than k+1 embeddings (common on the root-summary path —
+possibly 1–2 vectors), the covariance is rank-deficient and k principal directions
+do not exist. Define behaviour explicitly: reduce k to the available rank, or fall
+back to raw entries when summaries are too few. An unhandled low-count case
+produces degenerate stalks → trivial restriction maps → H¹ = 0, i.e. exactly the
+failure being fixed.
+
+**Adaptive-rank ladder (the correct handling).** With N = embedding count for the
+subgraph:
+
+- **N > k** → extract top-k principal components (the normal path).
+- **1 < N ≤ k** → set `k_eff = N − 1` and extract that many. The `−1` is exact,
+  not a safety margin: centering the cloud (subtracting the mean) spends one degree
+  of freedom, so N centered points span an at-most-(N−1)-dim subspace; the N-th
+  direction is numerically zero and extracting it yields noise.
+- **N = 1** → no spread to measure. Vertex degrades to a weak-level-only stalk
+  (the single embedding). This is a non-crashing fallback, NOT a preservation of
+  topological signal — a 1-D stalk cannot carry rich conflict. Such vertices simply
+  do not contribute obstruction structure; the richer vertices do.
+
+**CRITICAL — do NOT zero-pad heterogeneous stalks to a uniform width k.** This is
+the seductive-but-wrong fix. `CellularSheaf` already supports per-vertex stalk
+dimensions: its constructor sums `stalkSpace.dim` per vertex into `_c0Dimension`,
+so a `k_eff = 2` vertex should simply have `dim: 2`. Padding such a stalk up to k
+with zeros injects fake directions; when two vertices share zero-padded slots their
+restriction maps agree _trivially_ in those slots, manufacturing false consensus
+and pushing H¹ back toward 0 — a quieter rerun of the original failure. The SVD of
+the coboundary cannot tell a padded zero row from a genuine satisfiable constraint.
+**Let stalk dimensions vary; do not pad.**
+
+**Restriction maps across differing dimensions — projection, NOT padding/truncation.**
+For edge (A,B) with vertex stalk dims k_A, k_B (possibly unequal), choose an edge
+stalk dim m (e.g. `min(k_A, k_B)` or a fixed small m). Each restriction map is the
+genuine linear map from that vertex's principal subspace into the shared edge frame
+— an `m × k_A` matrix that projects A's directions onto the edge reference (and
+likewise `m × k_B` for B). A and B never need matched dimension because they meet
+_in the edge stalk_, not directly. The obstruction arises when A's and B's
+projections into that shared frame cannot be simultaneously satisfied around a
+cycle. (Padding/truncating A and B to equal width before comparing is the same
+false-consensus trap as stalk padding — avoid it.)
+
+**Implementation note.** AGEM is TypeScript; the sheaf layer already uses
+`ml-matrix` (`SingularValueDecomposition` in `CohomologyAnalyzer`) and `mathjs`.
+`getConceptSubspace` should use `ml-matrix`'s SVD on the `count × d` stacked,
+mean-centered embedding matrix — no new dependency. The truncated SVD on a small
+`count × d` matrix is cheap and avoids forming the `d × d` covariance (§11.4 #4).
+
+### 12.6 Relationship to the rest of this document
+
+This is the same theme as §2 (emergent bonds) and §4 (the graph as ground truth):
+the current sheaf is the Lewis-label situation again — structure assigned trivially
+rather than derived from real correlation. The two-level construction derives the
+restriction maps from actual embedding structure, exactly as emergent bonds derive
+bond type from mutual information. If both are built, the H¹ obstruction and the
+synergy/O-information cluster index (§2) become two independent detectors of the
+same "irreducible higher-order conflict," which is a strong cross-check.
