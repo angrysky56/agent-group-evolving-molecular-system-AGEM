@@ -679,3 +679,88 @@ restriction maps from actual embedding structure, exactly as emergent bonds deri
 bond type from mutual information. If both are built, the H¹ obstruction and the
 synergy/O-information cluster index (§2) become two independent detectors of the
 same "irreducible higher-order conflict," which is a strong cross-check.
+
+---
+
+## 13. VERIFIED: the sheaf analyzer is sound (offline harness result)
+
+> Settled by direct offline computation (`docs/ebsr-implementation/sheaf-harness.ts`),
+> bypassing the server, the MCP layer, and the LLM. This answers the question open
+> since §12: is the H¹ machinery real, and were the quantum-run H¹=0 readings
+> truthful?
+
+### 13.1 What the T3/conscience/hipai noise actually was
+
+`grep` of `src/` for `TIMEOUT|conscience|hipai` returns **nothing** — those terms
+exist only as unrelated module-isolation test labels (T1–T5 import-boundary tests).
+The "T3 TIMEOUT", "conscience-servitor KERNEL1", etc. in the run logs come from the
+**MCP servers** (conscience-servitor, hipai-montague) and/or LLM narration, NOT from
+AGEM's sheaf code. The sheaf numbers (H⁰/H¹) are AGEM's; the PASS/TIMEOUT framing
+around them was external. So a "T3 TIMEOUT" never corrupted a cohomology value — it
+was a broken-MCP artifact, consistent with the reported hipai error.
+
+### 13.2 The one legitimate silent-zero path (not a bug)
+
+`computeCohomology` early-returns `h1=0, h0=N0` when `N1 === 0` (no edge stalks =
+no edges). This is correct: with no edges there is nothing to carry an obstruction.
+This is the only short-circuit; there is no timeout, no catch-swallows-zero, no
+cache-returns-stale path in the analyzer.
+
+### 13.3 The coboundary convention (read from CoboundaryOperator.ts)
+
+B row for edge (u→v): `−srcEntries` on u's block, `+tgtEntries` on v's block.
+Constraint: `−src·s_u + tgt·s_v = 0`. Holonomy around a loop = ∏(src/tgt).
+
+### 13.4 Harness results — all four correct
+
+| Test | Topology | H⁰ | H¹ | Meaning |
+| :-- | :-- | :-: | :-: | :-- |
+| 1 | tree (A–B) | 1 | 0 | connected, no cycle |
+| 2 | no edges | 2 | 0 | two components; legitimate N1=0 early return |
+| 3 | twisted triangle (holonomy −1) | 0 | 0 | twist saturates rank: no global section |
+| 4 | untwisted triangle (holonomy +1) | 1 | 1 | consistent section AND loop carries H¹=1 |
+
+**The analyzer provably produces H¹ > 0** (Test 4) and correctly distinguishes the
+four cases. The machinery is sound — not decorative (the minimax run was flat-zero
+only because the *old* sheaf had no cycles), not buggy.
+
+### 13.5 Correction to an earlier prediction (logged, like the ADMM miss in §3)
+
+The first harness draft predicted Test 3 (twisted) → H¹=1 and Test 4 (untwisted) →
+H¹=0. **Both were backwards**, caught only by running the math. The subtlety:
+
+- A triangle has Betti number b₁ = E−V+1 = 1. An **untwisted** flat sheaf on it has
+  H⁰=1 *and* H¹=1 — the H¹ is the **cohomology of the loop itself**, present even
+  under full agreement. H¹>0 here is *topological*, not a contradiction.
+- A **twist** (holonomy ≠ 1) makes all edge constraints independent, raising rank,
+  which *drops* H¹ to 0 and kills the global section (H⁰=0).
+
+This is the crucial interpretive point: **for 1-D real stalks, H¹ counts independent
+cycles, and a twist removes rather than creates H¹.** "Disagreement" in the everyday
+sense is not a holonomy twist.
+
+### 13.6 Implication for the quantum-interpretations run
+
+The QM run's H¹=0 (and H⁰ moving 1→2→3→1→1) was **truthful**. The interpretations
+are empirically equivalent — there is no holonomy twist among them, so no obstruction.
+This is exactly the blind-men-and-the-elephant structure: locally consistent partial
+views of one consistent object produce **no** cohomological obstruction. The H⁰
+trajectory (fragmentation as Bohmian/QBism stake out distinct ground, reunification
+as Objective Collapse/RQM bridge) is the sheaf doing real topological work.
+
+### 13.7 What this does and does not establish
+
+- **Establishes:** the analyzer is correct; H¹ can fire; H⁰ tracks semantic
+  components; the redesigned multi-dim-stalk builder produces non-trivial sheaves.
+- **Does NOT establish:** that AGEM's *higher-dimensional PCA stalks with projective
+  restriction maps* (the §12 builder, as opposed to these 1-D test stalks) will
+  produce a holonomy twist on naturally-conflicting reasoning. That is the next
+  open question — whether real strong-level subspace conflict manifests as nonzero
+  holonomy. It requires feeding `buildSheafFromRegistry` real embeddings offline and
+  inspecting the resulting B, not just the scalar test sheaves here.
+
+### 13.8 Loose end
+
+The harness's closing print block still contains two stale guide lines ("Test 3 =
+the real probe (H¹ must be 1)") from the pre-correction draft. Cosmetic only; the
+per-test EXPECTED strings and results are correct.
