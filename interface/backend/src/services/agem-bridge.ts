@@ -761,12 +761,20 @@ class AgemBridge {
     const agentId = `challenger-${normalizedPersona}`;
 
     // Use predefined position or generate neutral challenger
-    const position = personaPositions[normalizedPersona] ?? {
+    let position = {
       last_assertion: -0.5,
       proposed_action: -0.5,
       trade_off_accepted: -0.5,
       means_employed: -0.5,
     };
+    if (
+      normalizedPersona !== "__proto__" &&
+      normalizedPersona !== "constructor" &&
+      normalizedPersona !== "prototype" &&
+      normalizedPersona in personaPositions
+    ) {
+      position = (personaPositions as any)[normalizedPersona] ?? position;
+    }
 
     return {
       success: true,
@@ -837,9 +845,11 @@ class AgemBridge {
       })) ?? [];
 
     // Node embeddings
-    const nodeEmbeddings: Record<string, number[]> = {};
+    const nodeEmbeddings: Record<string, number[]> = Object.create(null);
     for (const [key, vec] of orch.getNodeEmbeddings()) {
-      nodeEmbeddings[key] = Array.from(vec);
+      if (key !== "__proto__" && key !== "constructor" && key !== "prototype") {
+        nodeEmbeddings[key] = Array.from(vec);
+      }
     }
 
     // Version 2 additions: summary nodes & tagged embeddings (retained for backward compatibility and root-level fallback)
@@ -994,6 +1004,11 @@ class AgemBridge {
   /** Set the active session ID (for save targeting). */
   setActiveSession(sessionId: string): void {
     this.#activeSessionId = sessionId;
+  }
+
+  /** Get the currently active session ID. */
+  getActiveSessionId(): string {
+    return this.#activeSessionId;
   }
 
   /** Reset the engine by tearing down and re-creating the Orchestrator. */

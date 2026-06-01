@@ -21,6 +21,12 @@ import { settings } from "../config.js";
 
 export const chatRouter = Router();
 
+// Helper to neutralize user-provided inputs to prevent log forgery/injection
+function sanitizeLog(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  return String(value).replace(/[\r\n]/g, "_");
+}
+
 // ─── MCP Tool Parameter Normalization ───
 // Models using call_mcp_tool frequently guess wrong parameter names.
 // This maps common mistakes to correct names for known MCP tools.
@@ -135,7 +141,7 @@ chatRouter.post("/completions", async (req, res) => {
   let sessionId = body.session_id;
 
   console.log(
-    `[Chat] Request: model=${model}, provider=${providerType}, msg="${message?.slice(0, 60)}..."`,
+    `[Chat] Request: model=${sanitizeLog(model)}, provider=${sanitizeLog(providerType)}, msg="${sanitizeLog(message?.slice(0, 60))}..."`,
   );
 
   if (!message?.trim()) {
@@ -173,7 +179,12 @@ chatRouter.post("/completions", async (req, res) => {
     sendEvent("session", { session_id: sessionId });
 
     // Link engine state to this session for persistence
-    agemBridge.setActiveSession(sessionId);
+    if (agemBridge.getActiveSessionId() !== sessionId) {
+      console.log(
+        `[Chat] Session mismatch (loaded: ${sanitizeLog(agemBridge.getActiveSessionId())}, requested: ${sanitizeLog(sessionId)}) — restoring session state…`,
+      );
+      await agemBridge.loadSession(sessionId);
+    }
 
     // Persist user message
     const userMessage: ChatMessage = {
@@ -741,7 +752,7 @@ ${skillContent}`,
 
       turnCount++;
       console.log(
-        `[Chat] Turn ${turnCount}/${maxTurns} — sending to ${resolvedProvider}/${model}`,
+        `[Chat] Turn ${turnCount}/${maxTurns} — sending to ${sanitizeLog(resolvedProvider)}/${sanitizeLog(model)}`,
       );
 
       const result = await llmProvider.chat({
@@ -1017,17 +1028,22 @@ ${skillContent}`,
               const desc = args.description ?? "No description.";
               const body = args.content ?? "";
               try {
-                const skillDir = path.resolve(
-                  process.cwd(),
-                  "..",
-                  "..",
-                  "skills",
-                  skillName,
-                );
+                if (typeof skillName !== "string" || !/^[a-zA-Z0-9_-]+$/.test(skillName)) {
+                  throw new Error("Invalid skill name format. Only alphanumeric characters, hyphens, and underscores are allowed.");
+                }
+                const baseSkillsDir = path.resolve(process.cwd(), "..", "..", "skills");
+                const skillDir = path.normalize(path.join(baseSkillsDir, path.basename(skillName)));
+                if (!skillDir.startsWith(baseSkillsDir + path.sep)) {
+                  throw new Error("Invalid skill name (path traversal detected)");
+                }
+                const targetFilePath = path.normalize(path.join(skillDir, "SKILL.md"));
+                if (!targetFilePath.startsWith(baseSkillsDir + path.sep)) {
+                  throw new Error("Invalid skill path (path traversal detected)");
+                }
                 await fs.mkdir(skillDir, { recursive: true });
                 const frontmatter = `---\nname: "${skillName}"\ndescription: "${desc}"\n---\n\n`;
                 await fs.writeFile(
-                  path.join(skillDir, "SKILL.md"),
+                  targetFilePath,
                   frontmatter + body,
                   "utf8",
                 );
@@ -1199,8 +1215,16 @@ ${skillContent}`,
                 ]);
                 const extracted: Record<string, unknown> = {};
                 for (const [k, v] of Object.entries(args)) {
+                  if (k === "__proto__" || k === "constructor" || k === "prototype") {
+                    continue;
+                  }
                   if (!metaKeys.has(k)) {
-                    extracted[k] = v;
+                    Object.defineProperty(extracted, k, {
+                      value: v,
+                      writable: true,
+                      enumerable: true,
+                      configurable: true,
+                    });
                   }
                 }
                 if (Object.keys(extracted).length > 0) {
@@ -1265,6 +1289,28 @@ ${skillContent}`,
             output,
           };
           allTurnToolResults.push(toolResult);
+
+          // Locate the corresponding assistant message in history and append the marker/result
+          const currentAssistantMessage = [...historyMessages]
+            .reverse()
+            .find((m) => m.role === "assistant");
+          if (currentAssistantMessage) {
+            if (!currentAssistantMessage.metadata) {
+              currentAssistantMessage.metadata = {
+                model,
+                provider: providerType,
+                tool_results: [],
+              };
+            } else if (!currentAssistantMessage.metadata.tool_results) {
+              currentAssistantMessage.metadata.tool_results = [];
+            }
+
+            const toolIdx =
+              currentAssistantMessage.metadata.tool_results.length;
+            currentAssistantMessage.content += `\n\n:::tool_result[${toolIdx}]:::\n\n`;
+            currentAssistantMessage.metadata.tool_results.push(toolResult);
+          }
+
           sendEvent("tool_result", toolResult);
 
           // Format tool result per provider spec
@@ -1318,11 +1364,13 @@ ${skillContent}`,
       finalAssistantMessage.id = uuidv4();
       finalAssistantMessage.timestamp = Date.now();
       finalAssistantMessage.metadata = {
+        ...finalAssistantMessage.metadata,
         model,
         provider: providerType,
         usage: lastResult?.usage,
         thinking: lastResult?.thinking,
-        tool_results: allTurnToolResults,
+        tool_results:
+          finalAssistantMessage.metadata?.tool_results ?? allTurnToolResults,
       };
     }
 
@@ -1357,11 +1405,32 @@ ${skillContent}`,
  *
  * Get the message history for a specific session.
  */
-chatRouter.get("/history/:sessionId", (req, res) => {
-  const session = sessionStore.get(req.params.sessionId);
+chatRouter.get("/history/:sessionId", async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const session = sessionStore.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
   }
+
+  // Load the AGEM engine state for this session from disk
+  try {
+    const loaded = await agemBridge.loadSession(sessionId);
+    if (loaded) {
+      console.log(
+        `[Chat] Restored AGEM engine state for session: ${sanitizeLog(sessionId)}`,
+      );
+    } else {
+      console.warn(
+        `[Chat] No saved AGEM engine state found for session: ${sanitizeLog(sessionId)}, keeping current or default`,
+      );
+    }
+  } catch (err: any) {
+    console.error(
+      `[Chat] Failed to load AGEM engine state for session ${sanitizeLog(sessionId)}:`,
+      err,
+    );
+  }
+
   res.json(session.messages);
 });

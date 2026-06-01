@@ -2,7 +2,7 @@
  * ChatPanel — Main chat area with messages and input.
  */
 
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { Atom } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { useAgemStore } from "../../stores/agem";
@@ -13,12 +13,26 @@ import { InputBar } from "./InputBar";
 import { streamChat, createSession, getSession } from "../../api";
 import type { ChatMessage } from "@shared/types";
 
+const LOCAL_STRINGS = {
+  interfaceTitle: "AGEM Interface",
+  interfaceSubtitle: "Agent Group Evolving Molecular System",
+  thinking: "Thinking...",
+  assistant: "assistant",
+};
+
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const streamingContent = useChatStore((s) => s.streamingContent);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const chatAreaRef = useRef<HTMLDivElement>(null);
+  const [activeToolResults, setActiveToolResults] = useState<
+    Array<{
+      tool: string;
+      elapsed_ms: number;
+      output: string;
+    }>
+  >([]);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -52,6 +66,7 @@ export function ChatPanel() {
       chat.addMessage(userMessage);
       chat.setStreamingContent("");
       chat.setIsStreaming(true);
+      setActiveToolResults([]);
 
       // Collect all assistant text and structured metadata
       let assistantText = "";
@@ -78,7 +93,9 @@ export function ChatPanel() {
             console.log("[thinking]", text);
           },
           onToolResult: (tool, elapsedMs, output) => {
-            toolResults.push({ tool, elapsed_ms: elapsedMs, output });
+            const tr = { tool, elapsed_ms: elapsedMs, output };
+            toolResults.push(tr);
+            setActiveToolResults([...toolResults]);
             // For now, we still append a marker so the UI knows where tools happened
             // but we'll render it properly in MessageBubble
             const marker = `\n\n:::tool_result[${toolResults.length - 1}]:::\n\n`;
@@ -166,18 +183,18 @@ export function ChatPanel() {
             <div className="chat-area__empty-icon">
               <Atom size={32} />
             </div>
-            <div className="chat-area__empty-title">AGEM Interface</div>
+            <div className="chat-area__empty-title">{LOCAL_STRINGS.interfaceTitle}</div>
             <div className="chat-area__empty-subtitle">
-              Agent Group Evolving Molecular System — Ask me anything about
-              multi-agent coordination, sheaf-theoretic reasoning, or start an
-              orchestration cycle.
+              {LOCAL_STRINGS.interfaceSubtitle}
             </div>
           </div>
         ) : (
           <>
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
-            ))}
+            {messages
+              .filter((msg) => msg.role !== "tool" && msg.role !== "system")
+              .map((msg) => (
+                <MessageBubble key={msg.id} message={msg} />
+              ))}
             {isStreaming && streamingContent && (
               <MessageBubble
                 message={{
@@ -185,6 +202,9 @@ export function ChatPanel() {
                   role: "assistant",
                   content: streamingContent,
                   timestamp: Date.now(),
+                  metadata: {
+                    tool_results: activeToolResults,
+                  },
                 }}
               />
             )}
@@ -194,14 +214,14 @@ export function ChatPanel() {
                   <Atom size={16} />
                 </div>
                 <div className="message__body">
-                  <div className="message__role">assistant</div>
+                  <div className="message__role">{LOCAL_STRINGS.assistant}</div>
                   <div className="thinking">
                     <div className="thinking__dots">
                       <div className="thinking__dot" />
                       <div className="thinking__dot" />
                       <div className="thinking__dot" />
                     </div>
-                    <span>Thinking...</span>
+                    <span>{LOCAL_STRINGS.thinking}</span>
                   </div>
                 </div>
               </div>

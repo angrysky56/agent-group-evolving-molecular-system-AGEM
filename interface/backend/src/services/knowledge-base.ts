@@ -173,18 +173,25 @@ class KnowledgeBaseService {
     }
   }
 
-  /** Resolve the target directory for an artifact type. */
   #resolveArtifactDir(type: Artifact["type"]): string {
-    const dirMap: Record<Artifact["type"], string> = {
-      report: "reports",
-      analysis: "analysis",
-      graph_snapshot: "outputs",
-      agent_summary: "outputs",
-      code: "outputs",
-      markdown: "outputs",
-    };
-
-    return join(this.#basePath, dirMap[type] ?? "outputs");
+    let subDir = "outputs";
+    switch (type) {
+      case "report":
+        subDir = "reports";
+        break;
+      case "analysis":
+        subDir = "analysis";
+        break;
+      case "graph_snapshot":
+      case "agent_summary":
+      case "code":
+      case "markdown":
+        subDir = "outputs";
+        break;
+      default:
+        subDir = "outputs";
+    }
+    return join(this.#basePath, subDir);
   }
 }
 
