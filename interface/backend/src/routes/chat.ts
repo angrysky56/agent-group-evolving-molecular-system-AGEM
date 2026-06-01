@@ -237,25 +237,24 @@ CORE TOOLS (use directly):
 - search_context: Semantic search across the LCM store
 - spawn_agem_agent, reset_agem_engine: Agent and lifecycle management
 
-MCP SERVER ACCESS (use the 3 meta-tools to discover and call):
-1. list_mcp_servers → see available servers
-2. list_server_tools(server_name) → see tools on that server
-3. call_mcp_tool(server_name, tool_name, arguments) → invoke any tool
+MCP SERVER ACCESS & DYNAMIC SCHEMA LOADING:
+The system dynamically pulls the full JSON schemas of MCP tools when needed!
+To load a server's tools directly as first-class functions in your toolset, simply mention the server name (e.g., 'mcp-logic' or 'hipai-montague') or its purpose (e.g., 'logic', 'paraclete') in your thought/response. In the next turn, their full schemas will be injected!
+Alternatively, you can call them directly using 'call_mcp_tool(server_name, tool_name, arguments)' or using their direct first-class function names if they have been loaded (e.g., 'mcp__mcp_logic__prove').
+
+KEY MCP SERVERS & CORE TOOLS:
+- mcp-logic: Formal proofs & model finding. Tools: mcp__mcp_logic__prove, mcp__mcp_logic__find_counterexample, mcp__mcp_logic__abductive_explain, mcp__mcp_logic__find_model, mcp__mcp_logic__check_well_formed.
+- hipai-montague: World model & belief tracking. Tools: mcp__hipai_montague__add_belief, mcp__hipai_montague__evaluate_hypothesis, mcp__hipai_montague__check_action, mcp__hipai_montague__calibrate_belief, mcp__hipai_montague__list_protected_closure, mcp__hipai_montague__get_current_state, mcp__hipai_montague__query_graph.
+- advanced-reasoning: Multi-step thinking. Tools: mcp__advanced_reasoning__create_reasoning_session, mcp__advanced_reasoning__advanced_reasoning, mcp__advanced_reasoning__query_reasoning_memory.
+- conscience-servitor: Ethical evaluations. Tools: mcp__conscience_servitor__triage, mcp__conscience_servitor__evaluate.
+- sheaf-consistency-enforcer: Cohomological consistency. Tools: mcp__sheaf_consistency_enforcer__register_agent_state, mcp__sheaf_consistency_enforcer__run_admm_cycle, mcp__sheaf_consistency_enforcer__trigger_recovery, mcp__sheaf_consistency_enforcer__get_edge_report.
+- aseke-compass: Behavioral mapping. Tools: mcp__aseke_compass__analyze_behavior.
+- cognitive-diagram-nav: Navigating reasoning diagrams.
+- verifier-graph: DAG verification.
 
 CRITICAL: When calling call_mcp_tool, pass tool arguments INSIDE the "arguments" object:
   call_mcp_tool(server_name="hipai-montague", tool_name="add_belief", arguments={"text": "Socrates is mortal"})
-  call_mcp_tool(server_name="conscience-servitor", tool_name="triage", arguments={"content": "claim to evaluate"})
-  call_mcp_tool(server_name="conscience-servitor", tool_name="evaluate", arguments={"claims": ["claim1", "claim2"]})
-  call_mcp_tool(server_name="aseke-compass", tool_name="analyze_behavior", arguments={"description": "behavior pattern"})
 
-KEY MCP SERVERS:
-- advanced-reasoning: Deep multi-step reasoning with memory
-- sheaf-consistency-enforcer: Cross-agent consistency verification
-- conscience-servitor: Ethical risk triage and full EFHF evaluation
-- hipai-montague: World model knowledge graph with Paraclete Protocol
-- verifier-graph: Reasoning provenance chains
-- mcp-logic: Formal logic proofs (Prover9/Mace4)
-- aseke-compass: Behavioral analysis
 ${skillContent}`,
       cache_control: isCacheSupported ? { type: "ephemeral" } : undefined,
     } as any);
@@ -711,18 +710,92 @@ ${skillContent}`,
       },
     ];
 
-    // All providers get AGEM native tools + meta-tools (compact, ~13 total)
+    // --- Dynamic MCP Schema Injection ---
+    // Scan current prompt and conversation history for mentions of connected servers
+    const allTextToScan = [
+      message,
+      ...messages.slice(-6).map((m: any) => {
+        let text = m.content || "";
+        if (m.tool_calls) {
+          text += " " + JSON.stringify(m.tool_calls);
+        }
+        return text;
+      })
+    ].join(" ").toLowerCase();
+
+    const serverNames = mcpManager.getServerNames();
+    const activeServers = new Set<string>();
+
+    // Mapping of friendly keywords to server names
+    const keywordMap: Record<string, string> = {
+      "logic": "mcp-logic",
+      "prover": "mcp-logic",
+      "mace4": "mcp-logic",
+      "hipai": "hipai-montague",
+      "montague": "hipai-montague",
+      "belief": "hipai-montague",
+      "paraclete": "hipai-montague",
+      "reasoning": "advanced-reasoning",
+      "memory": "advanced-reasoning",
+      "ethics": "conscience-servitor",
+      "ethical": "conscience-servitor",
+      "conscience": "conscience-servitor",
+      "triage": "conscience-servitor",
+      "sheaf": "sheaf-consistency-enforcer",
+      "consistency": "sheaf-consistency-enforcer",
+      "enforcer": "sheaf-consistency-enforcer",
+      "compass": "aseke-compass",
+      "panksepp": "aseke-compass",
+      "behavior": "aseke-compass",
+      "diagram": "cognitive-diagram-nav",
+      "nav": "cognitive-diagram-nav",
+      "verifier": "verifier-graph",
+      "provenance": "verifier-graph"
+    };
+
+    // Match exact server names in prompt/history
+    for (const sName of serverNames) {
+      if (allTextToScan.includes(sName.toLowerCase())) {
+        activeServers.add(sName);
+      }
+    }
+
+    // Match keywords in prompt/history
+    for (const [kw, sName] of Object.entries(keywordMap)) {
+      if (allTextToScan.includes(kw) && serverNames.includes(sName)) {
+        activeServers.add(sName);
+      }
+    }
+
+    // Filter tools for the active servers and map them
+    const activeMcpTools: any[] = [];
+    for (const tool of mcpTools) {
+      const parts = tool.function.name.split("__");
+      const sName = parts[1];
+      if (activeServers.has(sName)) {
+        activeMcpTools.push(tool);
+      }
+    }
+
+    if (activeServers.size > 0) {
+      console.log(
+        `[Chat] Dynamically injected ${activeMcpTools.length} tools for active servers:`,
+        Array.from(activeServers)
+      );
+    }
+
+    // All providers get AGEM native tools + meta-tools + active MCP tools
     // Cloud providers additionally get skill tools for direct access
     let tools: any[];
     if (isOllama) {
-      tools = [...agemTools, ...metaTools];
+      tools = [...agemTools, ...metaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`,
+        `[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     } else {
-      tools = [...skillTools, ...agemTools, ...metaTools];
+      tools = [...skillTools, ...agemTools, ...metaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta = ${tools.length} total`,
+        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     }
 

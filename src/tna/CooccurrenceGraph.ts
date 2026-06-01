@@ -233,13 +233,24 @@ export class CooccurrenceGraph {
         });
       } else {
         // Node exists: add any new surface forms observed in this batch.
-        const existing = this.#nodeMetadata.get(token)!;
-        for (const sf of newSurfaces) {
-          existing.surfaceForms.add(sf);
-        }
-        // Update TF-IDF weight if we have a new score.
-        if (tfidfScores.get(token) !== undefined) {
-          existing.tfidfWeight = tfidfScores.get(token)!;
+        let existing = this.#nodeMetadata.get(token);
+        if (!existing) {
+          // Recover gracefully from missing rehydration metadata (TNA re-entry safety)
+          existing = {
+            id: token as TextNodeId,
+            lemma: token,
+            surfaceForms: new Set(newSurfaces),
+            tfidfWeight: tfidfScores.get(token) ?? 0,
+          };
+          this.#nodeMetadata.set(token, existing);
+        } else {
+          for (const sf of newSurfaces) {
+            existing.surfaceForms.add(sf);
+          }
+          // Update TF-IDF weight if we have a new score.
+          if (tfidfScores.get(token) !== undefined) {
+            existing.tfidfWeight = tfidfScores.get(token)!;
+          }
         }
       }
     }
@@ -336,8 +347,14 @@ export class CooccurrenceGraph {
       if (!a || !b) continue;
 
       // Ensure the phrase node exists with metadata.
-      if (!this.#graph.hasNode(phrase)) {
+      const hasNode = this.#graph.hasNode(phrase);
+      const hasMeta = this.#nodeMetadata.has(phrase);
+
+      if (!hasNode) {
         this.#graph.addNode(phrase);
+      }
+
+      if (!hasMeta) {
         const phraseTfidf =
           ((tfidfScores.get(a) ?? 0) + (tfidfScores.get(b) ?? 0)) / 2;
         this.#nodeMetadata.set(phrase, {
