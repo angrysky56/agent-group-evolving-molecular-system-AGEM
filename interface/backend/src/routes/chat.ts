@@ -720,7 +720,7 @@ ${skillContent}`,
 
     let isDone = false;
     let turnCount = 0;
-    const maxTurns = 15;
+    const maxTurns = settings.all.CHAT_MAX_TURNS;
     let lastResult: any = null;
     const requestStartTime = Date.now();
     const allTurnToolResults: any[] = [];
