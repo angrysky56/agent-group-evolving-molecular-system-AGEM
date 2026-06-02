@@ -148,15 +148,17 @@ export function QuickActions() {
   const appendStreamingContent = useChatStore((s) => s.appendStreamingContent);
   const setStreamingContent = useChatStore((s) => s.setStreamingContent);
   const setAbortController = useChatStore((s) => s.setAbortController);
-  const updateState = useAgemStore((s) => s.updateState);
+
 
   const handleAction = (prompt: string) => {
     if (isStreaming) return;
 
     const userMsg = {
+      // eslint-disable-next-line react-hooks/purity
       id: `qa-${Date.now()}`,
       role: "user" as const,
       content: prompt,
+      // eslint-disable-next-line react-hooks/purity
       timestamp: Date.now(),
     };
     addMessage(userMsg);
@@ -174,8 +176,10 @@ export function QuickActions() {
         onToken: (text) => appendStreamingContent(text),
         onAgemState: (data) => {
           const agemStore = useAgemStore.getState();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           agemStore.updateState(data as any);
           // Extract SOC data point from embedded metrics
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const state = data as any;
           if (state.soc?.latest) {
             const soc = state.soc.latest;

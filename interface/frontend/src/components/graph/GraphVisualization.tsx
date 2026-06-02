@@ -24,6 +24,7 @@ export function GraphVisualization() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [viewMode, setViewMode] = useState<ViewMode>("concepts");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function GraphVisualization() {
   }, [graphSummary]);
 
   // Custom node renderer for concept view
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const drawConceptNode = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
     const label = node.label as string;
     const size = (node.val as number) ?? 6;
@@ -182,6 +184,7 @@ export function GraphVisualization() {
             height={dimensions.height}
             graphData={conceptGraphData!}
             nodeCanvasObject={drawConceptNode}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             nodePointerAreaPaint={(node: any, color, ctx) => {
               const size = (node.val as number) ?? 6;
               ctx.beginPath();
@@ -190,12 +193,15 @@ export function GraphVisualization() {
               ctx.fill();
             }}
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             nodeLabel={(node: any) => {
               const members = (node.members as string[]) ?? [];
               return `${node.label}\n${members.length} nodes: ${members.slice(0, 10).join(", ")}${members.length > 10 ? "..." : ""}`;
             }}
             linkColor={() => "rgba(255, 255, 255, 0.25)"}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             linkWidth={(link: any) => Math.max(1, Math.sqrt(link.totalWeight ?? 1) * 0.5)}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             linkLabel={(link: any) =>
               `${link.edgeCount ?? 0} links (weight: ${(link.totalWeight ?? 0).toFixed(1)})`
             }
@@ -214,6 +220,7 @@ export function GraphVisualization() {
             linkColor={() => "rgba(255, 255, 255, 0.15)"}
             backgroundColor="transparent"
             nodeRelSize={5}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             linkWidth={(link: any) => Math.max(0.5, Math.sqrt(link.weight ?? 1) * 0.3)}
           />
         )

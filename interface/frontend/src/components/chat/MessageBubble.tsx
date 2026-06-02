@@ -37,8 +37,11 @@ export function MessageBubble({ message }: Props) {
         <div className="message__role">
           {message.role}
           {usage && (
-            <span className="message__usage">
-              <Cpu size={10} /> {usage.total_tokens} tokens
+            <span
+              className="message__usage"
+              title={`Prompt: ${usage.prompt_tokens} tokens | Response: ${usage.completion_tokens} tokens`}
+            >
+              <Cpu size={10} /> {usage.total_tokens} total tokens
             </span>
           )}
         </div>
@@ -46,11 +49,13 @@ export function MessageBubble({ message }: Props) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p({ children, ...props }) {
+              p({ children, className }: { children?: React.ReactNode; className?: string }) {
                 // Check if this paragraph contains a tool result marker
                 // We handle both string children and array of children (e.g. if some parts were already parsed)
                 const text = Array.isArray(children)
-                  ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+                  ? children
+                      .map((c) => (typeof c === "string" ? c : ""))
+                      .join("")
                   : typeof children === "string"
                     ? children
                     : "";
@@ -70,9 +75,9 @@ export function MessageBubble({ message }: Props) {
                     );
                   }
                 }
-                return <p {...props}>{children}</p>;
+                return <p className={className}>{children}</p>;
               },
-              code({ className, children, ...props }) {
+              code({ className, children }: { className?: string; children?: React.ReactNode }) {
                 const match = /language-(\w+)/.exec(className ?? "");
                 const codeStr = String(children).replace(/\n$/, "");
                 if (match) {
@@ -87,7 +92,7 @@ export function MessageBubble({ message }: Props) {
                   );
                 }
                 return (
-                  <code className={className} {...props}>
+                  <code className={className}>
                     {children}
                   </code>
                 );

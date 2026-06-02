@@ -21,13 +21,12 @@ const TOAST_TYPES = new Set([
   "sheaf:h1-obstruction-detected",
 ]);
 
-/** Hydrate SOC sparkline history from REST endpoint. */
 async function hydrateSOCHistory() {
   try {
     const soc = await getAgemSOC();
-    if (soc?.history?.length > 0) {
+    if (soc?.history && soc.history.length > 0) {
       const store = useAgemStore.getState();
-      const points: SOCDataPoint[] = soc.history.map((h: any) => ({
+      const points: SOCDataPoint[] = soc.history.map((h) => ({
         iteration: h.iteration ?? 0,
         vne: h.von_neumann_entropy ?? 0,
         ee: h.embedding_entropy ?? 0,
@@ -90,6 +89,7 @@ export function useSystemEvents() {
 
           // Route by event type
           if (event.type === "agem:state-update" && event.data?.state) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const state = event.data.state as any;
             if (state.iteration > 0 || !store.state) {
               store.updateState(state);

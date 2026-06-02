@@ -29,7 +29,7 @@ export function ToolResultBubble({ tool, elapsedMs, output }: Props) {
   }
 
   const isVdW = tool.toLowerCase().includes("vdw");
-  const isSOC = tool.toLowerCase().includes("soc");
+
 
   return (
     <div className={`tool-result ${isVdW ? "tool-result--vdw" : ""}`}>

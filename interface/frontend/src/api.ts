@@ -13,7 +13,8 @@ import type {
   KnowledgeFile,
   ModelInfo,
   SystemConfig,
-  SSEEvent,
+  AgemStateSnapshot,
+  SOCSnapshot,
 } from "@shared/types";
 
 const BASE = "/api/v1";
@@ -272,10 +273,10 @@ export async function readKnowledge(filePath: string): Promise<string> {
 
 /* ─── AGEM Engine State ─── */
 
-export async function getAgemState(): Promise<any> {
+export async function getAgemState(): Promise<AgemStateSnapshot> {
   return json(`${BASE}/system/state`);
 }
 
-export async function getAgemSOC(): Promise<any> {
+export async function getAgemSOC(): Promise<SOCSnapshot> {
   return json(`${BASE}/system/soc`);
 }

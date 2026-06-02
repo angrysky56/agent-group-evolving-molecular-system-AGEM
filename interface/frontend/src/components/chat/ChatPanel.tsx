@@ -10,7 +10,7 @@ import { useSettingsStore } from "../../stores/settings";
 import { useSessionStore } from "../../stores/sessions";
 import { MessageBubble } from "./MessageBubble";
 import { InputBar } from "./InputBar";
-import { streamChat, createSession, getSession } from "../../api";
+import { streamChat, createSession } from "../../api";
 import type { ChatMessage } from "@shared/types";
 
 const LOCAL_STRINGS = {
@@ -24,7 +24,7 @@ export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const streamingContent = useChatStore((s) => s.streamingContent);
   const isStreaming = useChatStore((s) => s.isStreaming);
-  const activeSessionId = useChatStore((s) => s.activeSessionId);
+
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const [activeToolResults, setActiveToolResults] = useState<
     Array<{
@@ -75,6 +75,7 @@ export function ChatPanel() {
         elapsed_ms: number;
         output: string;
       }> = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let finalUsage: any = null;
 
       const controller = streamChat(
@@ -114,6 +115,7 @@ export function ChatPanel() {
             const agemStore = useAgemStore.getState();
             agemStore.updateState(data as never);
             // Extract SOC data point from embedded metrics
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const state = data as any;
             if (state.soc?.latest) {
               const soc = state.soc.latest;
@@ -170,7 +172,7 @@ export function ChatPanel() {
 
       chat.setAbortController(controller);
     },
-    [activeSessionId],
+    [],
   );
 
   const isEmpty = messages.length === 0 && !isStreaming;
@@ -187,6 +189,18 @@ export function ChatPanel() {
             <div className="chat-area__empty-subtitle">
               {LOCAL_STRINGS.interfaceSubtitle}
             </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--text-secondary)",
+                maxWidth: "460px",
+                marginTop: "12px",
+                lineHeight: "1.5",
+                textAlign: "center",
+              }}
+            >
+              Collaborate with self-evolving agent groups to construct topological semantic graphs, detect logical gaps, and synthesize bridging insights.
+            </p>
           </div>
         ) : (
           <>
@@ -201,7 +215,7 @@ export function ChatPanel() {
                   id: "__streaming__",
                   role: "assistant",
                   content: streamingContent,
-                  timestamp: Date.now(),
+                  timestamp: 0,
                   metadata: {
                     tool_results: activeToolResults,
                   },

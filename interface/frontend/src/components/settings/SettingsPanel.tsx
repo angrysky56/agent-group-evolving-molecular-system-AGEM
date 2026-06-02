@@ -65,7 +65,9 @@ export function SettingsPanel({ onClose }: Props) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ LLM_PROVIDER: p }),
-    }).catch(() => { /* silent */ });
+    }).catch(() => {
+      /* silent */
+    });
     const key = p === "openrouter" ? draftKey : undefined;
     settings.fetchModels(p, key || undefined);
   };
@@ -85,7 +87,9 @@ export function SettingsPanel({ onClose }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [configKey]: draftKey }),
-      }).catch(() => { /* silent */ });
+      }).catch(() => {
+        /* silent */
+      });
     }
     if (settings.provider === "openrouter" && draftKey) {
       settings.fetchModels("openrouter", draftKey);
@@ -130,24 +134,41 @@ export function SettingsPanel({ onClose }: Props) {
           {/* ── Provider Toggle ── */}
           <div className="settings-group">
             <div className="settings-group__label">LLM Provider (Chat)</div>
+            <p
+              style={{
+                fontSize: "0.68rem",
+                color: "var(--color-text-muted, #64748b)",
+                marginTop: "-0.25rem",
+                marginBottom: "0.5rem",
+                lineHeight: "1.3",
+              }}
+            >
+              Select the primary language model provider to execute agent
+              reasoning cycles and TNA synthesis.
+            </p>
             <div className="provider-toggle">
-              {(["ollama", "openrouter", "anthropic", "minimax"] as LLMProviderType[]).map(
-                (p) => (
-                  <button
-                    key={p}
-                    className={`provider-toggle__btn ${settings.provider === p ? "provider-toggle__btn--active" : ""}`}
-                    onClick={() => handleProviderChange(p)}
-                  >
-                    {p === "ollama"
-                      ? "Ollama"
-                      : p === "openrouter"
-                        ? "OpenRouter"
-                        : p === "minimax"
-                          ? "MiniMax"
-                          : "Anthropic"}
-                  </button>
-                ),
-              )}
+              {(
+                [
+                  "ollama",
+                  "openrouter",
+                  "anthropic",
+                  "minimax",
+                ] as LLMProviderType[]
+              ).map((p) => (
+                <button
+                  key={p}
+                  className={`provider-toggle__btn ${settings.provider === p ? "provider-toggle__btn--active" : ""}`}
+                  onClick={() => handleProviderChange(p)}
+                >
+                  {p === "ollama"
+                    ? "Ollama"
+                    : p === "openrouter"
+                      ? "OpenRouter"
+                      : p === "minimax"
+                        ? "MiniMax"
+                        : "Anthropic"}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -163,6 +184,16 @@ export function SettingsPanel({ onClose }: Props) {
                   onChange={(e) => settings.setOllamaUrl(e.target.value)}
                   placeholder="http://localhost:11434"
                 />
+                <p
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--color-text-muted, #64748b)",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Local server endpoint. Ensure Ollama is running on your
+                  system.
+                </p>
               </div>
             </div>
           )}
@@ -205,7 +236,8 @@ export function SettingsPanel({ onClose }: Props) {
                     marginTop: "0.25rem",
                   }}
                 >
-                  Press Enter or click away to save and fetch models.
+                  API key is encrypted locally. Press Enter or click away to
+                  validate and retrieve the model fleet list.
                 </p>
               </div>
             </div>
@@ -238,7 +270,12 @@ export function SettingsPanel({ onClose }: Props) {
                 />
               </button>
               {settings.modelsLoading && (
-                <span style={{ fontSize: "0.65rem", color: "var(--color-text-muted, #64748b)" }}>
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--color-text-muted, #64748b)",
+                  }}
+                >
                   Fetching…
                 </span>
               )}
@@ -290,8 +327,7 @@ export function SettingsPanel({ onClose }: Props) {
                       key={subProvider}
                       open={hasSelected}
                       style={{
-                        borderBottom:
-                          "1px solid var(--color-border, #1e293b)",
+                        borderBottom: "1px solid var(--color-border, #1e293b)",
                       }}
                     >
                       <summary
@@ -314,15 +350,21 @@ export function SettingsPanel({ onClose }: Props) {
                         <span style={{ fontSize: "0.55rem" }}>▼</span>
                       </summary>
 
-                      <div style={{ padding: "0.25rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                      <div
+                        style={{
+                          padding: "0.25rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.15rem",
+                        }}
+                      >
                         {models.map((m) => {
                           const isSelected = m.id === settings.chatModel;
                           const promptPrice =
                             parsePrice(m.pricing?.prompt) * 1_000_000;
                           const complPrice =
                             parsePrice(m.pricing?.completion) * 1_000_000;
-                          const hasPricing =
-                            promptPrice > 0 || complPrice > 0;
+                          const hasPricing = promptPrice > 0 || complPrice > 0;
                           const ctxK = m.context_length
                             ? `${Math.round(m.context_length / 1000)}k`
                             : null;
@@ -388,8 +430,7 @@ export function SettingsPanel({ onClose }: Props) {
                                   <span
                                     style={{
                                       fontSize: "0.6rem",
-                                      color:
-                                        "var(--color-text-muted, #64748b)",
+                                      color: "var(--color-text-muted, #64748b)",
                                     }}
                                   >
                                     {ctxK} ctx
@@ -421,8 +462,7 @@ export function SettingsPanel({ onClose }: Props) {
                                   <span
                                     style={{
                                       fontSize: "0.55rem",
-                                      color:
-                                        "var(--color-text-muted, #64748b)",
+                                      color: "var(--color-text-muted, #64748b)",
                                     }}
                                   >
                                     per 1M tokens
@@ -458,6 +498,18 @@ export function SettingsPanel({ onClose }: Props) {
           {/* ── Embedding Provider Toggle ── */}
           <div className="settings-group">
             <div className="settings-group__label">Embedding Provider</div>
+            <p
+              style={{
+                fontSize: "0.68rem",
+                color: "var(--color-text-muted, #64748b)",
+                marginTop: "-0.25rem",
+                marginBottom: "0.5rem",
+                lineHeight: "1.3",
+              }}
+            >
+              Select the provider used to compute vector embeddings for concept
+              nodes and calculate semantic similarity.
+            </p>
             <div className="provider-toggle">
               {(["ollama", "openrouter", "minimax"] as LLMProviderType[]).map(
                 (p) => (

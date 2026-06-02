@@ -14,6 +14,7 @@ function Sparkline({
   color,
   label,
   currentValue,
+  description,
   width = 200,
   height = 32,
 }: {
@@ -21,15 +22,18 @@ function Sparkline({
   color: string;
   label: string;
   currentValue: string;
+  description?: string;
   width?: number;
   height?: number;
 }) {
   if (data.length < 1) {
     return (
-      <div className="spark">
+      <div className="spark" title={description}>
         <div className="spark__header">
           <span className="spark__label">{label}</span>
-          <span className="spark__value" style={{ color }}>—</span>
+          <span className="spark__value" style={{ color }}>
+            —
+          </span>
         </div>
         <div className="spark__empty">awaiting data</div>
       </div>
@@ -39,10 +43,12 @@ function Sparkline({
   // Single data point: show a dot at center
   if (data.length === 1) {
     return (
-      <div className="spark">
+      <div className="spark" title={description}>
         <div className="spark__header">
           <span className="spark__label">{label}</span>
-          <span className="spark__value" style={{ color }}>{currentValue}</span>
+          <span className="spark__value" style={{ color }}>
+            {currentValue}
+          </span>
         </div>
         <svg
           width={width}
@@ -70,10 +76,12 @@ function Sparkline({
     .join(" ");
 
   return (
-    <div className="spark">
+    <div className="spark" title={description}>
       <div className="spark__header">
         <span className="spark__label">{label}</span>
-        <span className="spark__value" style={{ color }}>{currentValue}</span>
+        <span className="spark__value" style={{ color }}>
+          {currentValue}
+        </span>
       </div>
       <svg
         width={width}
@@ -111,43 +119,58 @@ export function MetricsPanel() {
   return (
     <div className="metrics-panel">
       <div className="metrics-panel__section">
-        <div className="metrics-panel__title">SOC Metrics</div>
+        <div
+          className="metrics-panel__title"
+          title="Self-Organized Criticality (SOC) metrics evaluating system stability and complexity."
+        >
+          SOC Metrics
+        </div>
         <div className="metrics-panel__grid">
           <Sparkline
             data={vneData}
             color="var(--info)"
-            label="Von Neumann Entropy"
+            label="Von Neumann Entropy (VNE)"
             currentValue={latest?.vne.toFixed(3) ?? "—"}
+            description="Von Neumann Entropy: Measures the overall structural complexity of the concept graph. Higher values indicate a more diverse network of ideas."
           />
           <Sparkline
             data={eeData}
             color="var(--success)"
-            label="Embedding Entropy"
+            label="Embedding Entropy (EE)"
             currentValue={latest?.ee.toFixed(3) ?? "—"}
+            description="Embedding Entropy: Measures semantic similarity alignment in vector space. Higher values indicate more dispersed concepts, while lower values show tighter semantic clusters."
           />
           <Sparkline
             data={cdpData}
             color="var(--accent-secondary)"
             label="CDP (VNE − EE)"
             currentValue={latest?.cdp.toFixed(3) ?? "—"}
+            description="Critical Divergence Parameter (CDP): Measures the gap between structural complexity (VNE) and semantic alignment (EE)."
           />
           <Sparkline
             data={serData}
             color="var(--warning)"
-            label="Surprising Edge Ratio"
+            label="Surprising Edge Ratio (SER)"
             currentValue={latest?.ser.toFixed(3) ?? "—"}
+            description="Surprising Edge Ratio: Tracks the frequency of unexpected or non-obvious connections being formed, indicating creative leaps."
           />
           <Sparkline
             data={corrData}
             color="var(--error)"
             label="Correlation Coefficient"
             currentValue={latest?.correlation.toFixed(3) ?? "—"}
+            description="Correlation Coefficient: Strength of the linear relationship between graph nodes."
           />
         </div>
       </div>
 
       <div className="metrics-panel__section">
-        <div className="metrics-panel__title">Telemetry</div>
+        <div
+          className="metrics-panel__title"
+          title="LLM resource consumption tracking."
+        >
+          Telemetry
+        </div>
         <div className="metrics-panel__grid">
           <Sparkline
             data={usageData}
@@ -156,40 +179,70 @@ export function MetricsPanel() {
             currentValue={
               usageHistory[usageHistory.length - 1]?.total.toString() ?? "—"
             }
+            description="Tokens per Turn: Represents the total LLM token usage (prompt and completion) consumed during the last cycle step."
           />
         </div>
       </div>
 
       {state?.lumpability && (
         <div className="metrics-panel__section">
-          <div className="metrics-panel__title">Lumpability Auditing</div>
+          <div
+            className="metrics-panel__title"
+            title="Topological lumpability audits structural simplifications of the concept graph."
+          >
+            Lumpability Auditing
+          </div>
           <div className="metrics-panel__stats">
-            <div className="metrics-panel__stat">
-              <span className="metrics-panel__stat-label">Weak Rate</span>
-              <span className="metrics-panel__stat-value" style={{
-                color: state.lumpability.weak_compression_rate > 0.3
-                  ? "var(--warning)" : "var(--success)"
-              }}>
+            <div
+              className="metrics-panel__stat"
+              title="Weak Compression Rate: Percentage of concepts that can be simplified or grouped under a weaker, looser criteria."
+            >
+              <span className="metrics-panel__stat-label">
+                Weak Compression Rate
+              </span>
+              <span
+                className="metrics-panel__stat-value"
+                style={{
+                  color:
+                    state.lumpability.weak_compression_rate > 0.3
+                      ? "var(--warning)"
+                      : "var(--success)",
+                }}
+              >
                 {(state.lumpability.weak_compression_rate * 100).toFixed(1)}%
               </span>
             </div>
-            <div className="metrics-panel__stat">
-              <span className="metrics-panel__stat-label">Avg Entropy Preservation</span>
+            <div
+              className="metrics-panel__stat"
+              title="Average Entropy Preservation: Measures how well the semantic meaning is preserved during graph simplification."
+            >
+              <span className="metrics-panel__stat-label">
+                Avg Entropy Preservation
+              </span>
               <span className="metrics-panel__stat-value">
                 {isNaN(state.lumpability.avg_entropy_preservation)
                   ? "—"
                   : state.lumpability.avg_entropy_preservation.toFixed(3)}
               </span>
             </div>
-            <div className="metrics-panel__stat">
-              <span className="metrics-panel__stat-label">Last Classification</span>
-              <span className="metrics-panel__stat-value" style={{
-                color: state.lumpability.last_classification === "weak"
-                  ? "var(--warning)"
-                  : state.lumpability.last_classification === "strong"
-                    ? "var(--success)"
-                    : "var(--text-tertiary)"
-              }}>
+            <div
+              className="metrics-panel__stat"
+              title="Last Classification: Indicates the current structural simplification regime of the graph (strong, weak, or degenerate)."
+            >
+              <span className="metrics-panel__stat-label">
+                Last Classification
+              </span>
+              <span
+                className="metrics-panel__stat-value"
+                style={{
+                  color:
+                    state.lumpability.last_classification === "weak"
+                      ? "var(--warning)"
+                      : state.lumpability.last_classification === "strong"
+                        ? "var(--success)"
+                        : "var(--text-tertiary)",
+                }}
+              >
                 {state.lumpability.last_classification ?? "—"}
               </span>
             </div>
@@ -199,21 +252,37 @@ export function MetricsPanel() {
 
       {state?.regime && (
         <div className="metrics-panel__section">
-          <div className="metrics-panel__title">Regime Analysis</div>
+          <div
+            className="metrics-panel__title"
+            title="Analysis of system critical states and phase transitions."
+          >
+            Regime Analysis
+          </div>
           <div className="metrics-panel__stats">
-            <div className="metrics-panel__stat">
+            <div
+              className="metrics-panel__stat"
+              title="CDP Variance: Variation of CDP over iterations. Lower variance indicates system stabilization."
+            >
               <span className="metrics-panel__stat-label">CDP Variance</span>
               <span className="metrics-panel__stat-value">
                 {state.regime.cdp_variance.toFixed(4)}
               </span>
             </div>
-            <div className="metrics-panel__stat">
-              <span className="metrics-panel__stat-label">Corr. Consistency</span>
+            <div
+              className="metrics-panel__stat"
+              title="Correlation Consistency: Consistency of concept correlation properties across reasoning cycles."
+            >
+              <span className="metrics-panel__stat-label">
+                Corr. Consistency
+              </span>
               <span className="metrics-panel__stat-value">
                 {state.regime.correlation_consistency.toFixed(4)}
               </span>
             </div>
-            <div className="metrics-panel__stat">
+            <div
+              className="metrics-panel__stat"
+              title="Persistence: The number of iterations the system has continuously remained in the current stability regime."
+            >
               <span className="metrics-panel__stat-label">Persistence</span>
               <span className="metrics-panel__stat-value">
                 {state.regime.persistence_iterations} iter
