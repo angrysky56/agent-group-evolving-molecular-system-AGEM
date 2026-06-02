@@ -50,7 +50,7 @@ export function ChatPanel() {
       // Get or create session
       let sessionId = chat.activeSessionId;
       if (!sessionId) {
-        const session = await createSession({ title: content.slice(0, 60) });
+        const session = await createSession({});
         sessionId = session.id;
         chat.setActiveSessionId(sessionId);
         sessionState.addSession(session);
@@ -150,6 +150,8 @@ export function ChatPanel() {
             }
             chat.addMessage(message);
             chat.setAbortController(null);
+            // Refresh the session list in case the backend auto-titled it
+            void sessionState.fetchSessions();
           },
           onError: (error) => {
             chat.setIsStreaming(false);

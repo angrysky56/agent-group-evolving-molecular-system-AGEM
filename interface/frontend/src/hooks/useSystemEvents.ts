@@ -91,9 +91,7 @@ export function useSystemEvents() {
           if (event.type === "agem:state-update" && event.data?.state) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const state = event.data.state as any;
-            if (state.iteration > 0 || !store.state) {
-              store.updateState(state);
-            }
+            store.updateState(state);
             // Extract SOC data point from embedded metrics
             if (state.soc?.latest) {
               const soc = state.soc.latest;

@@ -36,22 +36,29 @@ AGEM ingests text into a concept graph and computes topological metrics. Each me
 | `search_context` | Semantic search across the LCM store. |
 | `spawn_agem_agent`, `reset_agem_engine`, `read_skill` | Agent/lifecycle/skill management. |
 
-## Verifying logical claims — mcp-logic
+## Verifying logical claims — mcp-logic (REQUIRED for contested topics)
 
-Whenever a question turns on whether claims are **consistent, contradictory, or entailing**, do not assert it from the graph — the graph cannot detect contradiction. Verify with formal logic. This is the one external reasoning tool you should reach for routinely.
+Whenever a corpus holds multiple positions, claims, or theories that might conflict, you **must** verify their logical relations with mcp-logic — the graph cannot detect contradiction, entailment, or consistency. Do not adjudicate "these are consistent / contradictory / the same axis" in prose; check it.
+
+Procedure: name the blocks (use the concept communities) → state each block's core claim as a single FOL proposition → test each related pair with mcp-logic → report the verdicts.
 
 ```
 call_mcp_tool(server_name="mcp-logic", tool_name="prove",
-  arguments={"premises": ["all x (Man(x) -> Mortal(x))", "Man(socrates)"],
-             "goal": "Mortal(socrates)"})
+  arguments={"premises": ["all x (man(x) -> mortal(x))", "man(socrates)"],
+             "conclusion": "mortal(socrates)"})
 ```
 
-- `prove` — does the goal follow from the premises?
-- `find_counterexample` — a model where premises hold but the goal fails.
-- `find_model` — a model satisfying the premises (consistency check).
-- `check_contingency` — is a propositional formula contingent?
+- `prove` — does the conclusion follow? Field is **`conclusion`** (singular), not `goal`.
+- `find_counterexample` — `{"premises":[...], "conclusion":"..."}` → a model where premises hold but conclusion fails (`model_found` ⇒ conclusion does not follow).
+- `check_well_formed` — `{"statements":[...]}` to syntax-check before proving.
 
-Write formulas as plain first-order-logic **strings**, one predicate per fact — never nested objects. If a call returns a validation error, fix the argument shape and retry once. Do not fabricate a result.
+**Consistency idiom:** to test whether claims can all hold together, `find_counterexample` with the claims as `premises` and `conclusion="$F"`. `model_found` ⇒ CONSISTENT; `no_model_found` ⇒ CONTRADICTORY.
+
+**Syntax (where calls fail — follow exactly):**
+- `premises` is an array, **one formula per element**. Never combine statements in one string; never use a newline inside a formula (a literal `\n` fails) — split into separate elements.
+- ASCII operators: `->` `<->` `&` `|` `~`. Quantifiers parenthesized: `all x (man(x) -> mortal(x))`.
+- Lowercase predicates/constants, one predicate per fact.
+- On a validation error, fix the shape (split newlines; `goal`→`conclusion`) and retry once. Never fabricate a result.
 
 ## MCP meta-tools — accessing servers
 

@@ -862,3 +862,65 @@ Designing a restriction map that encodes contradiction as holonomy (e.g. a signe
 or rotational map derived from entailment/negation relations rather than cosine
 geometry) is possible in principle but is a research task, not a fix, and risks
 re-introducing the "decoration" problem if the signing rule is arbitrary.
+
+---
+
+## 15. BUILT + VERIFIED: logic-based H¹ (the consistency complex)
+
+> The "next build" from the H¹ discussion. Geometric H¹ can't detect contradiction
+> (§14); this is a separate, genuinely logical object that can. Verified end-to-end
+> against real Prover9/Mace4, and the TypeScript engine port matches the Python
+> reference exactly.
+
+### 15.1 Construction
+
+Blocks (concept communities) are vertices. A set of blocks is a filled simplex iff
+their combined propositions are **jointly satisfiable** — every fill decision is a
+satisfiability check delegated to mcp-logic, no geometry. Then:
+
+- **H⁰** = connected components of the pairwise-consistency graph.
+- **H¹** = cycles of *pairwise*-consistent blocks that are *not jointly* consistent.
+
+H¹ > 0 is the genuine obstruction: positions fine in every pair but impossible all
+together — exactly what pairwise checking alone cannot find (blind-men-and-elephant
+[H¹=0] vs. genuine higher-order frustration [H¹>0]). Realizes the
+self-consistent → pairwise → further-evaluations sequence directly.
+
+### 15.2 Verified against real Mace4
+
+Minimal frustration triple — A=`p(a)`, B=`p(a) -> q(a)`, C=`-q(a)`:
+- Pair {A,B}: model_found (consistent). Pair {A,C}: model_found. Pair {B,C}: model_found.
+- Triple {A,B,C}: Mace4 exhausted all domain sizes 2–10 with current_models=0 → **no model** → inconsistent.
+- Homology of the resulting complex: **H⁰=1, H¹=1, obstruction=True.** ✓
+Control (three independent facts, triple jointly consistent): **H¹=0.** ✓
+
+The TypeScript engine module (`logicalCohomology.ts`) reproduces both exactly
+(`MATCH_PYTHON_OK`), so the homology is correct in the language it runs in.
+
+### 15.3 Two mcp-logic quirks the engine must handle (found while testing)
+
+1. **"timeout" that is really "exhausted".** A fast, clean Mace4 exhaustion
+   (`Exiting with failure ... exit (exhausted)`, current_models=0) is reported by the
+   wrapper as `result:"timeout"`. It is NOT a timeout — it means **no model exists**
+   (the set is contradictory). The oracle detects `exhausted`/`Exiting with failure`
+   in the raw output and reads it as consistent=false. Misreading this as a real
+   timeout would silently turn every genuine contradiction into "unknown" and H¹
+   would collapse to 0 — the exact §14 failure, reintroduced.
+2. **Bare propositional atoms fail to parse.** `~q` alone → `sread_term error`. Use
+   unary predicates over a constant and `-` for negation: `p(a)`, `-q(a)`,
+   `p(a) -> q(a)`. The prompt/skill already instruct lowercase predicate form; the
+   oracle additionally surfaces parse errors as `consistent=null` (a check failure)
+   rather than guessing.
+
+### 15.4 Status
+
+- `consistency_homology.py` — Python reference, proven against real Mace4.
+- `interface/backend/src/services/logicalCohomology.ts` — engine module:
+  `makeMcpLogicOracle` (satisfiability via find_counterexample + the quirk handling)
+  and `computeLogicalCohomology` (internal → pairwise → triple checks → H⁰/H¹).
+  Compiles clean; matches Python.
+- **Remaining:** register an `evaluate_logical_consistency` tool in the chat route so
+  the agent supplies blocks+propositions and the engine orchestrates the mcp-logic
+  calls (engine-side construction prevents the agent malforming them). This is the
+  last wiring step to make it a full agent-driven pipeline. Augments — does not
+  replace — the geometric sheaf's H⁰.

@@ -156,8 +156,18 @@ class SessionStore {
       message.role === "user" &&
       session.messages.filter((m) => m.role === "user").length === 1
     ) {
-      session.title = message.content.slice(0, 80).trim();
-      if (message.content.length > 80) session.title += "…";
+      let cleanTitle = message.content
+        .replace(/^[#*>-\s\d.]+/g, "") // remove leading markdown chars, numbers, spaces
+        .replace(/\n/g, " ")           // replace newlines with spaces
+        .replace(/\s+/g, " ")          // collapse multiple spaces
+        .trim();
+
+      if (!cleanTitle) {
+        cleanTitle = "Untitled Session";
+      }
+
+      session.title = cleanTitle.slice(0, 80).trim();
+      if (cleanTitle.length > 80) session.title += "…";
     }
 
     this.#writeSession(session);

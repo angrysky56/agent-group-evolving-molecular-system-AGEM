@@ -889,6 +889,9 @@ class AgemBridge {
     const orch = this.#orchestrator;
     const graph = orch.tnaGraph.getGraph();
 
+    // Clear existing graph before restoring to prevent cross-session contamination
+    graph.clear();
+
     // Restore TNA graph
     for (const node of snapshot.graph.nodes) {
       if (!graph.hasNode(node.key)) {
@@ -993,11 +996,55 @@ class AgemBridge {
 
   /** Load a saved session from disk. Returns true if state was restored. */
   async loadSession(sessionId: string): Promise<boolean> {
-    const snapshot = await loadEngineState(sessionId);
-    if (!snapshot) return false;
+    // Always save current session before switching away
+    if (
+      this.#activeSessionId !== sessionId &&
+      this.#activeSessionId !== "default"
+    ) {
+      await this.saveState().catch((err) =>
+        console.error("[AgemBridge] Pre-switch save failed:", err),
+      );
+    }
 
+    // Always update active session ID so saves target the right file
     this.#activeSessionId = sessionId;
+
+    const snapshot = await loadEngineState(sessionId);
+
+    // Abort if active session changed while we were waiting for disk IO
+    if (this.#activeSessionId !== sessionId) {
+      console.log(
+        `[AgemBridge] Session changed to ${this.#activeSessionId} while loading ${sessionId}, aborting restore.`,
+      );
+      return false;
+    }
+
+    if (!snapshot) {
+      // New session with no saved state — clear the engine to start fresh
+      console.log(
+        `[AgemBridge] No saved state for session ${sessionId}, starting fresh engine`,
+      );
+      await this.#clearEngineState();
+
+      this.#emitEvent(
+        "agem:state-update",
+        "info",
+        `Started fresh state for session ${sessionId}`,
+        { state: this.getState() },
+      );
+
+      return false;
+    }
+
     await this.restoreFromSnapshot(snapshot);
+
+    this.#emitEvent(
+      "agem:state-update",
+      "info",
+      `Restored state for session ${sessionId}`,
+      { state: this.getState() },
+    );
+
     return true;
   }
 
@@ -1020,6 +1067,48 @@ class AgemBridge {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
     });
     this.#grep = this.#buildGrep(embedder);
+
+    // Re-create MetaOrchestrator pointing at the NEW orchestrator instance
+    const config = settings.getLLMConfig();
+    const metaLlm = createProvider(config.provider);
+    this.#metaOrchestrator = new MetaOrchestrator(metaLlm, this.#orchestrator);
+
+    // Re-wire SSE event subscriptions to the new orchestrator's EventBus
+    this.#wireOrchestratorEvents();
+
+    // Clear cached histories from previous session
+    this.#restoredSocHistory = [];
+    this.#restoredEvolutionHistory = [];
+
+    console.log(
+      "[AgemBridge] Engine reset complete — MetaOrchestrator and events re-wired",
+    );
+
+    this.#emitEvent(
+      "agem:state-update",
+      "info",
+      "Engine reset to a clean state",
+      { state: this.getState() },
+    );
+  }
+
+  /**
+   * Clear engine state without full shutdown/re-create.
+   * Used when switching to a new session with no saved state.
+   */
+  async #clearEngineState(): Promise<void> {
+    // Clear graph
+    this.#orchestrator.tnaGraph.getGraph().clear();
+
+    // Reset iteration counter
+    this.#orchestrator.setIterationCount(0);
+
+    // Clear cached histories
+    this.#restoredSocHistory = [];
+    this.#restoredEvolutionHistory = [];
+
+    // Clear node embeddings
+    this.#orchestrator.setNodeEmbeddings(new Map());
   }
 
   /* ─────────────── Private Helpers ─────────────── */

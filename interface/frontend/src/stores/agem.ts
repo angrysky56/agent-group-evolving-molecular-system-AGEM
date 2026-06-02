@@ -52,7 +52,9 @@ export interface AgemSystemState {
   updateState: (state: AgemStateSnapshot) => void;
   addSOCDataPoint: (point: SOCDataPoint) => void;
   addEvent: (event: SystemEvent) => void;
-  spawnSubAgent: (info: Omit<SubAgentInfo, "startTime" | "status" | "steps">) => void;
+  spawnSubAgent: (
+    info: Omit<SubAgentInfo, "startTime" | "status" | "steps">,
+  ) => void;
   completeSubAgent: (id: string, success: boolean, steps: number) => void;
   setActiveTab: (tab: DashboardTab) => void;
   setSseConnected: (connected: boolean) => void;
@@ -61,6 +63,8 @@ export interface AgemSystemState {
   clearEvents: () => void;
   setSocHistory: (history: SOCDataPoint[]) => void;
   addUsageDataPoint: (total: number) => void;
+  /** Clear all session-scoped state (graph, metrics, events) for session switching. */
+  resetForSession: () => void;
 }
 
 let toastCounter = 0;
@@ -134,4 +138,14 @@ export const useAgemStore = create<AgemSystemState>((set) => ({
         { timestamp: Date.now(), total },
       ],
     })),
+
+  resetForSession: () =>
+    set({
+      state: null,
+      socHistory: [],
+      eventLog: [],
+      toasts: [],
+      activeSubAgents: [],
+      usageHistory: [],
+    }),
 }));

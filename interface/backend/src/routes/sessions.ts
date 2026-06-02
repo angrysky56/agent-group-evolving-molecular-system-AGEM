@@ -8,6 +8,7 @@ import { Router } from "express";
 import type { CreateSessionRequest } from "../../../shared/types.js";
 import { sessionStore } from "../services/session-store.js";
 import { deleteEngineState } from "../services/state/index.js";
+import { agemBridge } from "../services/agem-bridge.js";
 
 export const sessionsRouter = Router();
 
@@ -25,12 +26,18 @@ sessionsRouter.post("/", (req, res) => {
 });
 
 /** GET /:id — Get a session with full message history. */
-sessionsRouter.get("/:id", (req, res) => {
+sessionsRouter.get("/:id", async (req, res) => {
   const session = sessionStore.get(req.params.id);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
   }
+
+  // Load the session engine state to ensure the frontend graph syncs
+  if (agemBridge.getActiveSessionId() !== req.params.id) {
+    await agemBridge.loadSession(req.params.id);
+  }
+
   res.json(session);
 });
 

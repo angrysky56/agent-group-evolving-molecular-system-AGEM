@@ -15,6 +15,7 @@ export interface SessionState {
   addSession: (session: ChatSession) => void;
   removeSession: (id: string) => void;
   setIsLoading: (loading: boolean) => void;
+  fetchSessions: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -29,4 +30,13 @@ export const useSessionStore = create<SessionState>((set) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
     })),
   setIsLoading: (isLoading) => set({ isLoading }),
+  fetchSessions: async () => {
+    try {
+      const { listSessions } = await import("../../api");
+      const sessions = await listSessions();
+      set({ sessions });
+    } catch (err) {
+      console.error("Failed to load sessions:", err);
+    }
+  },
 }));

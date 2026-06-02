@@ -17,6 +17,10 @@ import { knowledgeBase } from "../services/knowledge-base.js";
 import { skillRegistry } from "../services/skills.js";
 import { mcpManager } from "../services/mcp.js";
 import { scenarioService } from "../services/scenarios.js";
+import {
+  computeLogicalCohomology,
+  makeMcpLogicOracle,
+} from "../services/logicalCohomology.js";
 import { settings } from "../config.js";
 
 export const chatRouter = Router();
@@ -249,18 +253,36 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 
 # Native AGEM tools (call directly)
 - run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
+- evaluate_logical_consistency (logic-based H⁰/H¹ — the real contradiction detector)
 - detect_gaps, generate_catalyst_questions, search_context
 - spawn_agem_agent, reset_agem_engine, read_skill
 
-# Formal logic — your one external reasoning tool (mcp-logic)
-Use this whenever a question turns on whether claims are consistent, contradictory, or entailing — this is the ONLY reliable contradiction detector available; the graph cannot do it.
-Call via: call_mcp_tool(server_name="mcp-logic", tool_name="<tool>", arguments={...})
-Useful tools and their argument shapes:
-- prove — arguments={"premises": ["all x (Man(x) -> Mortal(x))", "Man(socrates)"], "goal": "Mortal(socrates)"}
-- find_counterexample — arguments={"premises": [...], "goal": "..."} → finds a model where premises hold but goal fails
-- find_model — arguments={"premises": [...]} → finds a model satisfying the premises (consistency check)
-- check_contingency — arguments={"formula": "..."}
-Write formulas as plain first-order-logic STRINGS (not nested objects). One predicate per fact. If a call returns a validation error, fix the argument shape and retry once; do not invent results.
+# Formal logic — mcp-logic (REQUIRED for contested/multi-position topics)
+The graph cannot detect contradiction, entailment, or consistency — only formal logic can. So whenever a corpus contains multiple positions, claims, or theories that might conflict, you MUST verify their logical relations with mcp-logic. Do NOT adjudicate "these positions are consistent / contradictory / the same axis" in prose alone — that judgement has to be checked, not asserted.
+
+Required procedure for contested topics:
+1. After clustering, name the key blocks (use the concept communities as candidates).
+2. State each block's core claim as one or more SINGLE first-order-logic propositions.
+3. Call evaluate_logical_consistency with those blocks. The engine runs all the internal/pairwise/triple satisfiability checks via mcp-logic for you (so the calls can't be malformed) and returns logic-based H⁰/H¹: H¹ > 0 means blocks that are consistent in every pair but impossible all together — a genuine contradiction the graph's own H¹ cannot detect. It also lists frustratedTriples (the offending sets) and any checkFailures.
+4. Base any consistency claim on that result, and report frustratedTriples when H¹ > 0.
+
+You may also call mcp-logic directly for one-off proofs/counterexamples:
+
+Tools and EXACT argument shapes (verified — do not deviate):
+- prove → arguments={"premises": ["all x (man(x) -> mortal(x))", "man(socrates)"], "conclusion": "mortal(socrates)"}
+  Returns proved / unprovable. The field is "conclusion" (singular), NOT "goal".
+- find_counterexample → arguments={"premises": [...], "conclusion": "..."}
+  Finds a model where premises hold but conclusion fails. result="model_found" ⇒ the conclusion does NOT follow.
+- check_well_formed → arguments={"statements": [...]}  — syntax-check formulas before proving.
+
+Consistency check idiom: to test whether a set of claims can all be true together, call find_counterexample with the claims as "premises" and conclusion="$F". model_found ⇒ the set is CONSISTENT; no_model_found ⇒ the set is CONTRADICTORY.
+
+SYNTAX RULES (these are where calls fail — follow exactly):
+- "premises" is an ARRAY of strings, ONE formula per array element. NEVER put multiple statements in one string, and NEVER use newline characters inside a formula — a literal \\n will fail. Split into separate array elements instead.
+- Operators are ASCII: -> (implies), <-> (iff), & (and), | (or), ~ (not).
+- Quantifiers MUST be parenthesized: "all x (man(x) -> mortal(x))", "exists y (knows(y, socrates))".
+- One predicate per fact; lowercase predicate and constant names.
+- If a call returns a validation error, fix the shape (usually: split newlines into array elements, or rename "goal"→"conclusion") and retry ONCE. Never fabricate a result.
 
 # Utility servers (only if a task explicitly needs them)
 Reachable via call_mcp_tool but NOT part of normal reasoning: fetch (web fetch), sqlite/memory (storage), desktop-commander, playwright, docker. Other servers listed by list_mcp_servers exist but are experimental — ignore them unless the user names one.
@@ -349,6 +371,36 @@ ${skillContent}`,
             type: "object",
             properties: {},
             required: [],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "evaluate_logical_consistency",
+          description:
+            "LOGIC-BASED H⁰/H¹ (the real contradiction detector — the graph's H¹ cannot do this). You supply the key blocks of the corpus, each with its core claims as first-order-logic propositions; the engine checks internal, pairwise, and triple-wise satisfiability via mcp-logic (Prover9/Mace4) and computes the consistency complex. H¹ > 0 means a set of blocks that are consistent in every pair but impossible all together (genuine higher-order contradiction). Use this for contested/multi-position corpora instead of judging consistency in prose. Formula syntax: lowercase predicates over constants, '-' for negation, '->' implies, parenthesised quantifiers; one formula per array element, never newlines inside a formula. Example proposition: 'p(a) -> q(a)'.",
+          parameters: {
+            type: "object",
+            properties: {
+              blocks: {
+                type: "array",
+                description:
+                  "The blocks to test (use concept communities). Each: {name: string, propositions: string[]}. Provide at least 2 blocks.",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    propositions: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  required: ["name", "propositions"],
+                },
+              },
+            },
+            required: ["blocks"],
           },
         },
       },
@@ -1055,6 +1107,33 @@ ${skillContent}`,
               }
             } else if (fnName === "get_cohomology") {
               output = JSON.stringify(agemBridge.getCohomology(), null, 2);
+            } else if (fnName === "evaluate_logical_consistency") {
+              // Logic-based H⁰/H¹ over agent-supplied blocks. The ENGINE builds
+              // the mcp-logic calls (so they can't be malformed) and computes the
+              // consistency-complex homology. See logicalCohomology.ts / docs §15.
+              const rawBlocks = Array.isArray(args.blocks) ? args.blocks : [];
+              const blocks = rawBlocks
+                .map((b: any) => ({
+                  name: String(b?.name ?? "").trim(),
+                  propositions: Array.isArray(b?.propositions)
+                    ? b.propositions.map((p: any) => String(p)).filter(Boolean)
+                    : [],
+                }))
+                .filter(
+                  (b: any) => b.name && b.propositions.length > 0,
+                );
+              if (blocks.length < 2) {
+                output = JSON.stringify({
+                  error:
+                    "Provide at least 2 blocks, each with a name and a non-empty propositions array of first-order-logic strings (e.g. ['p(a)', 'p(a) -> q(a)']).",
+                });
+              } else {
+                const oracle = makeMcpLogicOracle((server, tool, a) =>
+                  mcpManager.executeTool(server, tool, a),
+                );
+                const result = await computeLogicalCohomology(blocks, oracle);
+                output = JSON.stringify(result, null, 2);
+              }
             } else if (fnName === "get_graph_topology") {
               const detail = args.detail ?? args.level ?? "concepts";
               const full = agemBridge.getGraphSummary();
