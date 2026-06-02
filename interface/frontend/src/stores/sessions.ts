@@ -32,7 +32,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setIsLoading: (isLoading) => set({ isLoading }),
   fetchSessions: async () => {
     try {
-      const { listSessions } = await import("../../api");
+      const { listSessions } = await import("../api");
       const sessions = await listSessions();
       set({ sessions });
     } catch (err) {

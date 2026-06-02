@@ -68,6 +68,9 @@ export function Sidebar() {
         if (activeSessionId === id) {
           setActiveSessionId(null);
           setMessages([]);
+          // Clear stale graph/metrics/events from the deleted session
+          useChatStore.getState().setAgemState(null);
+          useAgemStore.getState().resetForSession();
         }
       } catch (err) {
         console.error("Failed to delete session:", err);

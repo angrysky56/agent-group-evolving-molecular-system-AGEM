@@ -875,6 +875,7 @@ ${skillContent}`,
     const requestStartTime = Date.now();
     const allTurnToolResults: any[] = [];
     const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
+    let continuationNudgeSent = false; // Only nudge the model once per request
 
     while (!isDone && turnCount < maxTurns) {
       // Check overall request timeout
@@ -1500,8 +1501,29 @@ ${skillContent}`,
           }
         }
       } else {
-        // No tool calls, interaction is finished
-        isDone = true;
+        // No tool calls — but if the model stopped very early, nudge it to
+        // continue with deeper analysis before writing the final answer.
+        // This fires at most once per request to avoid infinite loops.
+        const MIN_TURNS_BEFORE_DONE = 4;
+        if (turnCount < MIN_TURNS_BEFORE_DONE && !continuationNudgeSent) {
+          continuationNudgeSent = true;
+          console.log(
+            `[Chat] Model stopped at turn ${turnCount}/${maxTurns} — injecting continuation nudge`,
+          );
+          historyMessages.push({
+            role: "user",
+            content:
+              "[SYSTEM] You stopped after only a few tool calls. Before writing your final answer, " +
+              "make sure you have completed the full analysis workflow: inspect the graph topology " +
+              "(get_graph_topology), check cohomology (get_cohomology), review SOC metrics " +
+              "(get_soc_metrics), and — for contested or multi-position topics — verify logical " +
+              "consistency (evaluate_logical_consistency or mcp-logic proofs). If you have already " +
+              "done all of these, proceed with your answer. Otherwise, continue your analysis now.",
+          });
+        } else {
+          // Genuinely done (enough turns used, or nudge already sent)
+          isDone = true;
+        }
       }
     }
 

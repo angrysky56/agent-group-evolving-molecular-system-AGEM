@@ -20,6 +20,7 @@ function getCommunityColor(id: number): string {
 export function GraphVisualization() {
   const agemStoreState = useAgemStore((s) => s.state);
   const chatStoreState = useChatStore((s) => s.agemState);
+  const activeSessionId = useChatStore((s) => s.activeSessionId);
   const graphSummary = agemStoreState?.graph_summary ?? chatStoreState?.graph_summary;
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -117,7 +118,7 @@ export function GraphVisualization() {
     );
   }, []);
 
-  const hasData = graphSummary && graphSummary.nodes.length > 0;
+  const hasData = activeSessionId != null && graphSummary && graphSummary.nodes.length > 0;
   const hasConcepts = conceptGraphData && conceptGraphData.nodes.length > 0;
 
   // Auto-select concept view when available
@@ -172,8 +173,9 @@ export function GraphVisualization() {
         <div className="graph-viz__empty">
           <Network size={48} className="graph-viz__empty-icon" />
           <div className="graph-viz__empty-text">
-            No graph data available. Start an orchestration cycle to see the
-            semantic network.
+            {activeSessionId == null
+              ? "Select or start a session to view the semantic network."
+              : "No graph data available. Start an orchestration cycle to see the semantic network."}
           </div>
         </div>
       ) : activeData && dimensions.width > 0 && dimensions.height > 0 ? (
