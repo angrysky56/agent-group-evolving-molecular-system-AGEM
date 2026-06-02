@@ -34,8 +34,8 @@ export class ErrorBoundary extends Component<Props, State> {
             alignItems: "center",
             justifyContent: "center",
             height: "100%",
-            color: "var(--text-danger)",
-            background: "var(--surface-sunken)",
+            color: "var(--error)",
+            background: "var(--bg-secondary)",
             fontFamily: "var(--font-mono)",
           }}
         >
@@ -55,11 +55,12 @@ export class ErrorBoundary extends Component<Props, State> {
               whiteSpace: "pre-wrap",
               marginTop: "1.5rem",
               textAlign: "left",
-              background: "var(--surface-raised)",
+              background: "var(--bg-tertiary)",
               padding: "1rem",
               borderRadius: "8px",
               fontSize: "12px",
               fontFamily: "var(--font-mono)",
+              border: "1px solid var(--glass-border)",
             }}
           >
             {this.state.error && this.state.error.toString()}
@@ -69,13 +70,15 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               marginTop: "2rem",
               padding: "0.5rem 1rem",
-              background: "var(--brand-primary)",
-              color: "white",
+              background: "var(--accent-primary)",
+              color: "var(--bg-void)",
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: 500,
+              fontSize: "12px",
+              fontWeight: 600,
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.06em",
             }}
           >
             Reload Component

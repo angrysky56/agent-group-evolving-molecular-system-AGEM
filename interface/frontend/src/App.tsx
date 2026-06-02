@@ -14,6 +14,7 @@ import { Dashboard } from "./components/dashboard/Dashboard";
 import { ToastNotifications } from "./components/dashboard/ToastNotifications";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useSystemEvents } from "./hooks/useSystemEvents";
+import "./App.css";
 import "./index.css";
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          background: "var(--bg-primary)",
         }}
       >
         <Header
@@ -48,11 +50,11 @@ export default function App() {
           {dashboardOpen && (
             <div
               style={{
-                width: "400px",
-                borderLeft: "1px solid var(--border-default)",
+                width: "380px",
+                borderLeft: "1px solid var(--glass-border)",
                 display: "flex",
                 flexDirection: "column",
-                background: "var(--surface-sunken)",
+                background: "var(--bg-primary)",
               }}
             >
               <ErrorBoundary>

@@ -764,3 +764,101 @@ as Objective Collapse/RQM bridge) is the sheaf doing real topological work.
 The harness's closing print block still contains two stale guide lines ("Test 3 =
 the real probe (H¹ must be 1)") from the pre-correction draft. Cosmetic only; the
 per-test EXPECTED strings and results are correct.
+
+---
+
+## 14. VERIFIED: the sheaf responds to topology, not to conflict (real-embedding probe)
+
+> Settled by `docs/ebsr-implementation/sheaf_real_embeddings.py` +
+> `run_real_probe.py`, which replicate AGEM's REAL `buildSheafFromRegistry` and
+> `computeCohomology` math (read line-by-line from `ComposeRootModule.ts` and
+> `CoboundaryOperator.ts`) but feed them REAL embeddings from the same model AGEM
+> uses in production (`embeddinggemma:latest` via local Ollama), instead of the
+> hash-random `MockEmbedder` that makes any semantic test meaningless.
+
+### 14.1 Why this probe was necessary
+
+`MockEmbedder` is `Math.sin(sha256(text)+i)` — every string maps to a random
+point on the sphere, with zero semantic structure. So no in-repo test, and no
+MockEmbedder-based harness, can tell whether semantic conflict affects the sheaf.
+Real embeddings are required. AGEM's production embedder (`ProviderEmbedder`)
+calls Ollama; the probe hits the same Ollama model directly.
+
+Separately confirmed during this probe: in the M3 "hard problem" run the sheaf
+had only ONE subgraph (the active one). One vertex ⇒ no edges ⇒ H¹=0 trivially.
+The "challenger" the agent described registering was a conscience-servitor MCP
+call, NOT an AGEM subgraph — and sheaf vertices ARE subgraphs
+(`subgraphRegistry.list()`). So that run could never have produced an obstruction
+regardless of agent behaviour.
+
+### 14.2 Result — three corpora, identical cohomology
+
+Each corpus = 3 subgraphs × 3 sentences, embedded with embeddinggemma:
+
+| Corpus | Character | sims (centroid cosine) | N0 | N1 | rank | H⁰ | H¹ |
+| :-- | :-- | :-- | :-: | :-: | :-: | :-: | :-: |
+| A | QM interps (empirically equivalent) | 0.74–0.75 | 6 | 6 | 6 | 0 | 0 |
+| B | direct contradictions (P vs ¬P) | 0.67–0.84 | 6 | 6 | 6 | 0 | 0 |
+| C | circular inconsistency (A→B→C→¬A) | 0.63–0.77 | 6 | 6 | 6 | 0 | 0 |
+
+**All three identical.** Semantic conflict (B, C) produced exactly the same
+cohomology as interpretive-only difference (A). Note B's *contradiction* pair
+scored the HIGHEST similarity (0.844) — "collapse is real" and "collapse is not
+real" are lexically near-identical — and the cohomology did not care.
+
+### 14.3 Mechanism — generic real vectors saturate the coboundary rank
+
+With real embeddings:
+1. Related passages all score cosine ≥ 0.4, so the subgraph graph is near-complete
+   and always has cycles. Topology is saturated by similarity alone.
+2. Restriction maps are PROJECTIONS of one subgraph's principal directions onto a
+   shared basis. Projections of generic high-dimensional real vectors are almost
+   always linearly independent.
+3. Independent projections ⇒ coboundary B reaches FULL RANK (rank = N1 = N0 = 6)
+   ⇒ H⁰ = N0 − rank = 0 and H¹ = N1 − rank = 0, every time, regardless of content.
+
+H¹ being nonzero requires rank-DEFICIENCY (restriction maps that fail to compose
+consistently around a loop — a holonomy twist). The §13 harness produced H¹>0
+only with hand-built degenerate SCALAR stalks. Real high-dimensional embeddings
+never produce that degeneracy under projection-based maps.
+
+### 14.4 What this establishes (and its boundary)
+
+**Establishes:** As currently built, the two-level sheaf does NOT detect semantic
+conflict. It detects whether enough subgraphs are similar enough to form cycles —
+a connectivity/topology signal — which is real but is NOT the intended meaning of
+"H¹ obstruction = irreconcilable disagreement." The restriction maps encode
+GEOMETRY (subspace projection) weighted by SIMILARITY; nothing in them encodes
+CONTRADICTION. Two subgraphs that flatly negate each other are, geometrically,
+just two different subspaces — and "different" is not "frustrated around a loop."
+The weight-on-target asymmetry scales but does not rotate, so it does not create
+frustration either.
+
+**Does NOT establish / boundary of the claim:**
+- Three tiny symmetric triangles (N0=N1=6, square B). Full-rank saturation is most
+  forced exactly when B is square. A different regime — many subgraphs, higher k,
+  SPARSE similarity so the graph is not near-complete (N1 ≠ N0) — was not tested
+  and could differ. This is a sharp probe, not a survey.
+- It does NOT overturn §13 (the analyzer is correct). It shows the CONSTRUCTION
+  feeding the analyzer does not translate conflict into rank-deficiency. Different
+  layers; both findings stand.
+
+### 14.5 The real design question this surfaces
+
+What would a restriction map have to encode for CONFLICT (not mere difference) to
+produce a holonomy twist? This is not a tuning fix — it is whether the sheaf
+formalism is the right tool for "detect contradictory reasoning" at all. Two
+honest options:
+- **Reframe the sheaf's job** as what it actually measures: semantic
+  connectivity / fragmentation. That is the H⁰ signal, which DID move meaningfully
+  (1→2→3→1→1) in the earlier quantum run. H⁰, not H¹, may be the sheaf's real
+  contribution.
+- **Detect contradiction elsewhere.** The logic layer already does this correctly:
+  in the M3 run, Mace4 genuinely found the `FunctionalComplete ∧ ¬Experience`
+  counterexample. Contradiction may belong to the logic/SAT layer, with the sheaf
+  reserved for connectivity.
+
+Designing a restriction map that encodes contradiction as holonomy (e.g. a signed
+or rotational map derived from entailment/negation relations rather than cosine
+geometry) is possible in principle but is a research task, not a fix, and risks
+re-introducing the "decoration" problem if the signing rule is arbitrary.
