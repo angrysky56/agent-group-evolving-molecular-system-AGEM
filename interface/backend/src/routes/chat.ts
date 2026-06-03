@@ -21,6 +21,7 @@ import {
   computeLogicalCohomology,
   makeMcpLogicOracle,
 } from "../services/logicalCohomology.js";
+import { createRunLogger } from "../services/run-logger.js";
 import { settings } from "../config.js";
 
 export const chatRouter = Router();
@@ -245,11 +246,13 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 
 # Workflow
 
-1. **run_agem_cycle** on the topic. Add a second/third cycle for contested or multi-part topics — each cycle grows the graph.
-2. Inspect with **get_graph_topology** (primary), then **get_cohomology** and **get_soc_metrics** as needed.
-3. For any claim of contradiction, entailment, or logical (in)consistency, do NOT assert it from the graph — verify it with formal logic.
-4. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next.
-5. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
+1. **run_agem_cycle** on the topic, passing the corpus / material to analyse as the 'prompt' argument. The cycle INGESTS that text into a persistent, accumulating graph.
+2. **A cycle only advances the graph if you feed it NEW, substantive content.** Running another cycle with no new text — or with a thin scrap, or by re-pasting the same material — does not progress the reasoning; it just piles duplicate co-occurrences on and degrades modularity. So run a second/third cycle ONLY when you genuinely have new material to add: your own synthesis so far, the answers to the catalyst questions, the next step of the argument, additional source text. To make the graph follow the reasoning forward, ingest the reasoning forward.
+3. If you have nothing substantively new to add, do NOT run another cycle — instead inspect and reason over what is already there (steps 4–6).
+4. Inspect with **get_graph_topology** (primary), then **get_cohomology** and **get_soc_metrics** as needed.
+5. For any claim of contradiction, entailment, or logical (in)consistency, do NOT assert it from the graph — verify it with **evaluate_logical_consistency**.
+6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back in via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
+7. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
 
 # Native AGEM tools (call directly)
 - run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
@@ -877,6 +880,15 @@ ${skillContent}`,
     const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
     let continuationNudgeSent = false; // Only nudge the model once per request
 
+    // Persistent, readable trace of this run (graph inputs + full tool I/O).
+    // Written to <KNOWLEDGE_BASE_PATH>/runs/<id>.{jsonl,md}. Never throws.
+    const runLog = createRunLogger({
+      model: String(model ?? "unknown"),
+      sessionId: typeof sessionId === "string" ? sessionId : undefined,
+      message,
+    });
+    sendEvent("system", { content: `[run-log: ${runLog.runId}]` });
+
     while (!isDone && turnCount < maxTurns) {
       // Check overall request timeout
       if (Date.now() - requestStartTime > REQUEST_TIMEOUT_MS) {
@@ -1025,6 +1037,7 @@ ${skillContent}`,
             `[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`,
             JSON.stringify(args),
           );
+          runLog.toolCall(fnName, args);
 
           try {
             if (fnName === "read_skill") {
@@ -1062,6 +1075,9 @@ ${skillContent}`,
                 args.topic ??
                 args.message ??
                 message;
+              // Log the EXACT text fed into the graph this cycle — the thing
+              // previously only visible in the terminal ("processed N tokens").
+              runLog.cycleIngest(typeof prompt === "string" ? prompt : String(prompt));
               const runResult = await agemBridge.runCycle(
                 prompt,
                 sendEvent,
@@ -1444,6 +1460,7 @@ ${skillContent}`,
           console.log(
             `[Chat] Tool ${fnName} completed in ${toolElapsed}ms (${output.length} chars)`,
           );
+          runLog.toolResult(fnName, output);
           if (toolElapsed > 10000) {
             console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
           }
@@ -1538,6 +1555,7 @@ ${skillContent}`,
     console.log(
       `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
     );
+    runLog.end({ turns: turnCount, elapsedSeconds: elapsed });
 
     // Send usage
     if (lastResult?.usage) {

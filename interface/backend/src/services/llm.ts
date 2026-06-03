@@ -979,8 +979,17 @@ class AnthropicProvider implements LLMProvider {
             evt.type === "content_block_delta" &&
             evt.delta.type === "input_json_delta"
           ) {
-            if (toolCalls[evt.index]) {
-              toolCalls[evt.index].function.arguments += evt.delta.partial_json;
+            // Guard against malformed deltas. MiniMax's "Anthropic-compatible"
+            // stream is not faithful: it can emit input_json_delta events with a
+            // missing/undefined partial_json. The naive `+= partial_json` then
+            // appends the literal "undefined" into the arguments string, which
+            // parses on the live call but fails JSON.parse forever after when the
+            // tool_call is replayed from history (seen as repeated
+            // "Failed to parse tool arguments in history for run_agem_cycle").
+            // Only append real string fragments; ignore undefined/null.
+            const fragment = evt.delta.partial_json;
+            if (toolCalls[evt.index] && typeof fragment === "string") {
+              toolCalls[evt.index].function.arguments += fragment;
             }
           } else if (evt.type === "message_delta") {
             usage.completion_tokens = evt.usage.output_tokens;
@@ -993,6 +1002,16 @@ class AnthropicProvider implements LLMProvider {
 
     usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
     let finalToolCalls = toolCalls.filter(Boolean);
+
+    // Normalize argument strings: an empty or whitespace-only accumulation means
+    // the model sent a tool_use block with no usable input_json_delta (common
+    // with MiniMax). Store "{}" so JSON.parse succeeds on both the live call and
+    // every later history replay, instead of "" → "Unexpected end of JSON input".
+    for (const tc of finalToolCalls) {
+      if (tc?.function && !tc.function.arguments.trim()) {
+        tc.function.arguments = "{}";
+      }
+    }
 
     if (finalToolCalls.length === 0 && fullContent.trim()) {
       // Fallback for models that output XML/JSON in text delta (like MiniMax M2.5)

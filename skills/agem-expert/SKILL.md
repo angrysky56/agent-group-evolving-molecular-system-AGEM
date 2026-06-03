@@ -28,7 +28,7 @@ AGEM ingests text into a concept graph and computes topological metrics. Each me
 
 | Tool | When to use |
 | :--- | :--- |
-| `run_agem_cycle` | First, on any new topic. Run 2–3 times for contested/multi-part topics — each cycle grows the graph. |
+| `run_agem_cycle` | First, on a new topic — pass the material to analyse as `prompt`; it ingests into a persistent, accumulating graph. Run again ONLY with genuinely new content (your synthesis, answers to catalyst questions, the next step). |
 | `get_agem_state` | Quick health check: iteration, graph size, H⁰/H¹, gaps. |
 | `get_graph_topology` | Primary inspection tool. `detail='concepts'` (default) or `'words'`. |
 | `get_cohomology`, `get_soc_metrics` | Secondary inspection — interpret per the table above. |

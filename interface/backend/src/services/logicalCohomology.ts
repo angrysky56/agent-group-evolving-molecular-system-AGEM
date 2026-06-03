@@ -48,6 +48,16 @@ export interface LogicalCohomologyResult {
   rankD2: number;
   /** mcp-logic calls that errored (parse failures etc.) — surfaced, not hidden. */
   checkFailures: string[];
+  /** Per-check audit trail for explainability: every satisfiability test run,
+   * what it tested, and the verdict. The mcp-logic calls happen inside the
+   * engine, so this is how they become inspectable rather than opaque. */
+  checkLog: {
+    kind: "internal" | "pair" | "triple";
+    blocks: string[];
+    formulas: string[];
+    verdict: "consistent" | "contradictory" | "undetermined";
+    note?: string;
+  }[];
 }
 
 /** A satisfiability oracle: true = consistent, false = contradictory.
@@ -153,12 +163,20 @@ export async function computeLogicalCohomology(
 ): Promise<LogicalCohomologyResult> {
   const checkFailures: string[] = [];
   const internallyInconsistent: string[] = [];
+  const checkLog: LogicalCohomologyResult["checkLog"] = [];
+
+  const verdictOf = (c: boolean | null) =>
+    c === true ? "consistent" : c === false ? "contradictory" : "undetermined";
 
   // 1) Internal consistency — "self-consistent tautologies" first.
   const vertices: string[] = [];
   const propsOf = new Map(blocks.map((b) => [b.name, b.propositions]));
   for (const b of blocks) {
     const r = await sat(b.propositions);
+    checkLog.push({
+      kind: "internal", blocks: [b.name], formulas: b.propositions,
+      verdict: verdictOf(r.consistent), note: r.note,
+    });
     if (r.consistent === true) vertices.push(b.name);
     else if (r.consistent === false) internallyInconsistent.push(b.name);
     else checkFailures.push(`internal(${b.name}): ${r.note ?? "unknown"}`);
@@ -170,7 +188,12 @@ export async function computeLogicalCohomology(
   for (let i = 0; i < vertices.length; i++) {
     for (let j = i + 1; j < vertices.length; j++) {
       const a = vertices[i], b = vertices[j];
-      const r = await sat([...propsOf.get(a)!, ...propsOf.get(b)!]);
+      const fs = [...propsOf.get(a)!, ...propsOf.get(b)!];
+      const r = await sat(fs);
+      checkLog.push({
+        kind: "pair", blocks: [a, b], formulas: fs,
+        verdict: verdictOf(r.consistent), note: r.note,
+      });
       if (r.consistent === true) {
         consistentPairs.push([a, b]);
         pairSet.add(key2(a, b));
@@ -190,9 +213,14 @@ export async function computeLogicalCohomology(
         const a = vertices[i], b = vertices[j], c = vertices[k];
         if (!pairSet.has(key2(a, b)) || !pairSet.has(key2(a, c)) ||
             !pairSet.has(key2(b, c))) continue; // not a 3-clique
-        const r = await sat([
+        const fs = [
           ...propsOf.get(a)!, ...propsOf.get(b)!, ...propsOf.get(c)!,
-        ]);
+        ];
+        const r = await sat(fs);
+        checkLog.push({
+          kind: "triple", blocks: [a, b, c], formulas: fs,
+          verdict: verdictOf(r.consistent), note: r.note,
+        });
         if (r.consistent === true) filledTriangles.push([a, b, c]);
         else if (r.consistent === false) frustratedTriples.push([a, b, c]);
         else checkFailures.push(`triple(${a},${b},${c}): ${r.note ?? "unknown"}`);
@@ -227,6 +255,6 @@ export async function computeLogicalCohomology(
   return {
     h0, h1, hasObstruction: h1 > 0,
     vertices, internallyInconsistent, consistentPairs, frustratedTriples,
-    rankD1, rankD2, checkFailures,
+    rankD1, rankD2, checkFailures, checkLog,
   };
 }
