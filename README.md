@@ -1,16 +1,16 @@
 # Agent Group Evolving Molecular System (AGEM)
 
 > [!TIP]
-> **TL;DR**: AGEM is a self-contained TypeScript reasoning engine. It ingests text into an evolving concept graph, tracks how that graph fragments and coheres (sheaf **H⁰**), measures whether the system is still developing or has prematurely converged (self-organized criticality), and — its distinctive capability — detects genuine **logical contradiction** in a body of claims by computing the homology of a *consistency complex* backed by a real theorem prover (**logic-based H¹**).
+> **TL;DR**: AGEM is a self-contained TypeScript reasoning engine. It ingests text into an evolving concept graph, tracks how that graph fragments and coheres (sheaf **H⁰**), measures whether the system is still developing or has prematurely converged (self-organized criticality), and — its distinctive capability — detects genuine **logical contradiction** in a body of claims by computing the homology of a _consistency complex_ backed by a real theorem prover (**logic-based H¹**).
 
 ## Quick-Start Card
 
-| Goal | Action | Target |
-| :--- | :--- | :--- |
-| **Launch System** | `./start.sh` | Full-stack UI + Backend |
-| **Run Analysis** | Open `localhost:5173` | Interactive Chat Dashboard |
-| **Add Knowledge** | Drop `.md` in `skills/` | Agent Skill Loading |
-| **Run Tests** | `npm test` | Core Engine Validation |
+| Goal              | Action                             | Target                             |
+| :---------------- | :--------------------------------- | :--------------------------------- |
+| **Launch System** | `./start.sh`                       | Full-stack UI + Backend            |
+| **Run Analysis**  | Open `localhost:5173`              | Interactive Chat Dashboard         |
+| **Add Knowledge** | Drop `.md` in `skills/`            | Agent Skill Loading                |
+| **Run Tests**     | `npm test`                         | Core Engine Validation             |
 | **Inspect a run** | Read `knowledge_base/runs/<id>.md` | Full tool I/O + graph-ingest trace |
 
 ## What AGEM does
@@ -25,7 +25,7 @@ Each reasoning cycle ingests text into a persistent, accumulating concept graph 
 - **Logic-based H¹ — genuine contradiction detection.** See below. This is AGEM's distinctive capability.
 
 > [!IMPORTANT]
-> **A note on metric honesty.** The *geometric* sheaf's H¹ reflects cycle topology in the cluster graph — it does **not** detect logical contradiction (real embeddings saturate the coboundary rank, so geometric H¹ ≈ 0 regardless of content). AGEM does not pretend otherwise. Contradiction is detected by the *separate* logic-based H¹ pipeline described next. H⁰ is for connectivity; logic-H¹ is for contradiction; the two are different machines.
+> **A note on metric honesty.** The _geometric_ sheaf's H¹ reflects cycle topology in the cluster graph — it does **not** detect logical contradiction (real embeddings saturate the coboundary rank, so geometric H¹ ≈ 0 regardless of content). AGEM does not pretend otherwise. Contradiction is detected by the _separate_ logic-based H¹ pipeline described next. H⁰ is for connectivity; logic-H¹ is for contradiction; the two are different machines.
 
 ## Logic-based H¹ — the distinctive capability
 
@@ -34,7 +34,7 @@ The question "are these claims actually consistent?" cannot be answered by graph
 - Each **block** of claims is a vertex.
 - A set of blocks is a "filled" simplex iff their combined propositions are **jointly satisfiable** — every such check is delegated to `mcp-logic` (Prover9/Mace4).
 - **H⁰** of this complex = groups of blocks that cannot even pairwise reconcile.
-- **H¹** of this complex = sets of blocks that are **consistent in every pair but impossible all together** — a genuine higher-order contradiction that pairwise checking alone cannot find (the difference between *blind-men-and-the-elephant*, which is consistent, and a genuinely *frustrated* set).
+- **H¹** of this complex = sets of blocks that are **consistent in every pair but impossible all together** — a genuine higher-order contradiction that pairwise checking alone cannot find (the difference between _blind-men-and-the-elephant_, which is consistent, and a genuinely _frustrated_ set).
 
 This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns H⁰/H¹, the offending `frustratedTriples`, and a full `checkLog` audit trail of every check run and its verdict.
 
@@ -44,7 +44,7 @@ It is verified end-to-end: the homology against a Python reference, the satisfia
 
 AGEM exposes its own capabilities as tools any connected LLM agent calls directly:
 
-- **`run_agem_cycle`** — ingest text into the accumulating concept graph and run a full analysis pass. A cycle only advances the graph if fed *new, substantive* content.
+- **`run_agem_cycle`** — ingest text into the accumulating concept graph and run a full analysis pass. A cycle only advances the graph if fed _new, substantive_ content.
 - **`get_graph_topology`** — concept communities and inter-community bridges (the primary inspection tool).
 - **`get_cohomology`** — geometric sheaf H⁰/H¹ (connectivity; see the honesty note above).
 - **`evaluate_logical_consistency`** — **logic-based H⁰/H¹** contradiction detection (the distinctive capability).
@@ -72,7 +72,7 @@ Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_
 AGEM does not require any MCP server other than `mcp-logic` (for contradiction detection). The meta-tools `list_mcp_servers`, `list_server_tools`, and `call_mcp_tool` let an agent reach any other server configured in `mcp.json` — useful utilities include `fetch`, `sqlite`, `memory`, `desktop-commander`, `playwright`, and `docker`. Other reasoning servers may be configured but are experimental and are not part of the standard workflow.
 
 > [!NOTE]
-> Earlier versions of AGEM were wired to an external "EFHF" suite of MCP servers (a second sheaf enforcer, an ethical-tier evaluator, a world-model, etc.). That coupling caused real confusion — notably *two independent sheaf systems* claiming the same job — and was never actually wired into the engine (the bridge class was defined but never instantiated). AGEM is now self-contained: the engine computes its own H⁰, `mcp-logic` provides contradiction detection, and everything else is optional. If you are looking for the EFHF servers, they live in their own repositories.
+> Earlier versions of AGEM were wired to an external "EFHF" suite of MCP servers (a second sheaf enforcer, an ethical-tier evaluator, a world-model, etc.). That coupling caused real confusion — notably _two independent sheaf systems_ claiming the same job — and was never actually wired into the engine (the bridge class was defined but never instantiated). AGEM is now self-contained: the engine computes its own H⁰, `mcp-logic` provides contradiction detection, and everything else is optional. If you are looking for the EFHF servers, they live in their own repositories. [Emergent Functional Hierarchies Framework](https://github.com/angrysky56/Emergent-Functional-Hierarchies-Framework)
 
 ## Key Features
 
@@ -93,6 +93,7 @@ AGEM does not require any MCP server other than `mcp-logic` (for contradiction d
 ## Tech Stack
 
 ### Core Engine
+
 - **Language**: [TypeScript](https://www.typescriptlang.org/) (ES2022) · **Runtime**: [Node.js](https://nodejs.org/) v20+
 - **Mathematics**: [mathjs](https://mathjs.org/), [ml-matrix](https://github.com/mljs/matrix)
 - **NLP**: [natural](https://github.com/NaturalNode/natural), [wink-lemmatizer](https://winkjs.org/), [stopword](https://github.com/fergiemcdowall/stopword)
@@ -100,10 +101,11 @@ AGEM does not require any MCP server other than `mcp-logic` (for contradiction d
 - **Testing**: [Vitest](https://vitest.dev/)
 
 ### Interface
+
 - **Backend**: [Express](https://expressjs.com/) + SSE streaming
 - **Frontend**: [React](https://react.dev/) + [Vite](https://vite.dev/) + TypeScript
 - **State**: [Zustand](https://zustand.docs.pmnd.rs/)
-- **LLM Providers**: Ollama (local), OpenRouter (cloud), Anthropic
+- **LLM Providers**: Ollama (local), OpenRouter (cloud), Anthropic, MiniMax
 
 ## Project Structure
 
@@ -133,6 +135,7 @@ agent-group-evolving-molecular-system-AGEM/
 ## Getting Started
 
 ### 1. Clone & Install
+
 ```bash
 git clone https://github.com/angrysky56/agent-group-evolving-molecular-system-AGEM.git
 cd agent-group-evolving-molecular-system-AGEM
@@ -140,32 +143,39 @@ npm install
 ```
 
 ### 2. Install mcp-logic (for contradiction detection)
+
 Only one external server is needed for the logic-based H¹ capability:
+
 ```bash
 cd ..  # parent directory of AGEM
 git clone https://github.com/angrysky56/mcp-logic.git
 # follow mcp-logic's README — it uses uv and vendors the LADR Prover9/Mace4 binaries
 ```
+
 The core engine and graph/SOC analysis run without it; only `evaluate_logical_consistency` requires it.
 
 ### 3. Configure Environment
+
 ```bash
 cp .env.example .env
 # Edit .env — set LLM_PROVIDER, API keys, model names
 ```
 
 ### 4. Configure MCP
+
 ```bash
 cp mcp.json.example mcp.json
 # Edit mcp.json — set the path to your mcp-logic checkout (and any optional utility servers)
 ```
 
 ### 5. Run the Tests
+
 ```bash
 npm test
 ```
 
 ### 6. Start the Interface
+
 ```bash
 ./start.sh            # full stack; frontend at http://localhost:5173
 # ./start.sh --backend / --frontend / --install
@@ -175,15 +185,15 @@ npm test
 
 All configuration lives in `.env`. Key settings:
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `LLM_PROVIDER` | `ollama` | Active provider (`ollama`, `openrouter`, `anthropic`) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `gemma3:latest` | Ollama chat model |
-| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text:latest` | Ollama embedding model |
-| `OPENROUTER_API_KEY` | — | OpenRouter API key |
-| `OPENROUTER_MODEL` | `google/gemini-2.5-flash-preview` | OpenRouter chat model |
-| `PORT` | `8000` | Backend server port |
+| Variable                 | Default                           | Description                                           |
+| ------------------------ | --------------------------------- | ----------------------------------------------------- |
+| `LLM_PROVIDER`           | `ollama`                          | Active provider (`ollama`, `openrouter`, `anthropic`) |
+| `OLLAMA_BASE_URL`        | `http://localhost:11434`          | Ollama API endpoint                                   |
+| `OLLAMA_MODEL`           | `gemma3:latest`                   | Ollama chat model                                     |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text:latest`         | Ollama embedding model                                |
+| `OPENROUTER_API_KEY`     | —                                 | OpenRouter API key                                    |
+| `OPENROUTER_MODEL`       | `google/gemini-2.5-flash-preview` | OpenRouter chat model                                 |
+| `PORT`                   | `8000`                            | Backend server port                                   |
 
 ## Architecture
 
@@ -207,12 +217,12 @@ All events flow through the central `EventBus`; modules communicate via typed ev
 
 ## Available Scripts
 
-| Command | Description |
-| --- | --- |
-| `npm run build` | Compile the TypeScript core engine. |
-| `npm test` | Run the full Vitest suite. |
-| `npm run test:watch` | Vitest in watch mode. |
-| `npm run typecheck` | TypeScript compiler, no emit. |
+| Command              | Description                         |
+| -------------------- | ----------------------------------- |
+| `npm run build`      | Compile the TypeScript core engine. |
+| `npm test`           | Run the full Vitest suite.          |
+| `npm run test:watch` | Vitest in watch mode.               |
+| `npm run typecheck`  | TypeScript compiler, no emit.       |
 
 ## License
 
