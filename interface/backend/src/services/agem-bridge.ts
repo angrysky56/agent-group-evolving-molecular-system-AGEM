@@ -550,6 +550,22 @@ class AgemBridge {
 
   /** Get current sheaf cohomology analysis. */
   getCohomology(): CohomologySnapshot {
+    // Honesty guard: on an empty graph the sheaf default would report
+    // h0=1 / coboundary_rank=1, which reads like "one consensus component"
+    // when in fact nothing has been analysed. Report a true-empty snapshot so
+    // an un-run engine can't be misread as a meaningful result.
+    const nodeCount = this.#orchestrator.tnaGraph.getGraph().order;
+    if (nodeCount === 0) {
+      return {
+        h0_dimension: 0,
+        h1_dimension: 0,
+        has_obstruction: false,
+        coboundary_rank: 0,
+        tolerance: 0,
+        note: "empty graph — no cycle has been run; run_agem_cycle first",
+      };
+    }
+
     const cohom = computeCohomology(this.#orchestrator.sheaf);
     return {
       h0_dimension: cohom.h0Dimension,

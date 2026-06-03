@@ -1,11 +1,29 @@
 {
+  "_comment": "AGEM MCP configuration template. mcp-logic is the only server required (powers evaluate_logical_consistency / logic-based H1). The rest are optional utilities reachable via the meta-tools. Update the mcp-logic --directory and --prover-path to match your checkout.",
   "mcpServers": {
+    "mcp-logic": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp-logic/src/mcp_logic",
+        "run",
+        "mcp_logic",
+        "--prover-path",
+        "/path/to/mcp-logic/ladr/bin"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
     "sqlite": {
       "command": "uvx",
       "args": [
         "mcp-server-sqlite",
         "--db-path",
-        "./knowledge_base/agem_test.db"
+        "./knowledge_base/agem.db"
       ]
     },
     "memory": {
@@ -15,10 +33,11 @@
         "@modelcontextprotocol/server-memory"
       ]
     },
-    "docker-mcp": {
-      "command": "uvx",
+    "desktop-commander": {
+      "command": "npx",
       "args": [
-        "docker-mcp"
+        "-y",
+        "@wonderwhy-er/desktop-commander@latest"
       ]
     },
     "playwright": {
@@ -29,101 +48,11 @@
         "chrome"
       ]
     },
-    "desktop-commander": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@wonderwhy-er/desktop-commander@latest"
-      ]
-    },
-    "fetch": {
+    "docker-mcp": {
       "command": "uvx",
       "args": [
-        "mcp-server-fetch"
+        "docker-mcp"
       ]
-    },
-    "data-forge": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/data-forge-mcp",
-        "run",
-        "-m",
-        "src.server"
-      ],
-      "env": {
-        "PYTHONUNBUFFERED": "1",
-        "LOG_LEVEL": "WARNING",
-        "NUMBA_DISABLE_CUDA": "1",
-        "NUMBA_ENABLE_CUDASIM": "1"
-      }
-    },
-    "mcp-logic": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/mcp-logic/src/mcp_logic",
-        "run",
-        "mcp_logic",
-        "--prover-path",
-        "/home/ty/Repositories/ai_workspace/mcp-logic/ladr/bin"
-      ]
-    },
-    "advanced-reasoning": {
-      "command": "node",
-      "args": ["/home/ty/Repositories/ai_workspace/advanced-reasoning-mcp/build/index.js"]
-    },
-    "cognitive-diagram-nav": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/cognitive-diagram-nav-mcp",
-        "run",
-        "cognitive-diagram-nav"
-      ]
-    },
-    "verifier-graph": {
-      "command": "node",
-      "args": ["/home/ty/Repositories/ai_workspace/vgcp-mcp-server/build/index.js"]
-    },
-    "hipai-montague": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/HiPAI-Montague-Semantic-Cognition",
-        "run",
-        "python",
-        "-m",
-        "hipai.mcp_server"
-      ],
-      "env": {
-        "PYTHONPATH": "src",
-        "HIPAI_CLIENT_ID": "agem",
-        "PYTHONUNBUFFERED": "1",
-        "HF_HUB_DISABLE_PROGRESS_BARS": "1"
-      }
-    },
-    "sheaf-consistency-enforcer": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/sheaf-consistency-enforcer",
-        "run",
-        "sheaf-enforcer"
-      ]
-    },
-    "conscience-servitor": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/home/ty/Repositories/ai_workspace/conscience-servitor",
-        "run",
-        "conscience-servitor"
-      ]
-    },
-    "aseke-compass": {
-      "command": "/home/ty/.nvm/versions/node/v22.21.0/bin/node",
-      "args": ["/home/ty/Repositories/ai_workspace/aseke-compass-mcp/dist/index.js"]
     }
   }
 }

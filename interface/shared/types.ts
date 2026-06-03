@@ -133,6 +133,8 @@ export interface CohomologySnapshot {
   has_obstruction: boolean;
   coboundary_rank: number;
   tolerance: number;
+  /** Set only in edge cases (e.g. empty graph) to explain a default-looking value. */
+  note?: string;
 }
 
 /** SOC metrics snapshot with regime analysis. */

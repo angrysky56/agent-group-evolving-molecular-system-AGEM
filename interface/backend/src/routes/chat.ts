@@ -1149,7 +1149,11 @@ ${skillContent}`,
                   mcpManager.executeTool(server, tool, a),
                 );
                 const result = await computeLogicalCohomology(blocks, oracle);
-                output = JSON.stringify(result, null, 2);
+                output = JSON.stringify(
+                  { runLogId: runLog.runId, ...result },
+                  null,
+                  2,
+                );
               }
             } else if (fnName === "get_graph_topology") {
               const detail = args.detail ?? args.level ?? "concepts";

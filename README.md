@@ -1,7 +1,7 @@
 # Agent Group Evolving Molecular System (AGEM)
 
 > [!TIP]
-> **TL;DR**: AGEM is a multi-agent framework that uses mathematical sheaf theory and molecular metaphors to manage group-evolving agent reasoning. It detects inconsistencies (cohomology), prevents context loss (lumpability), and ensures innovation through self-organized criticality (SOC).
+> **TL;DR**: AGEM is a self-contained TypeScript reasoning engine. It ingests text into an evolving concept graph, tracks how that graph fragments and coheres (sheaf **H⁰**), measures whether the system is still developing or has prematurely converged (self-organized criticality), and — its distinctive capability — detects genuine **logical contradiction** in a body of claims by computing the homology of a *consistency complex* backed by a real theorem prover (**logic-based H¹**).
 
 ## Quick-Start Card
 
@@ -9,316 +9,210 @@
 | :--- | :--- | :--- |
 | **Launch System** | `./start.sh` | Full-stack UI + Backend |
 | **Run Analysis** | Open `localhost:5173` | Interactive Chat Dashboard |
-| **Configure MCP** | Edit `mcp.json` | EFHF Server Integration |
 | **Add Knowledge** | Drop `.md` in `skills/` | Agent Skill Loading |
 | **Run Tests** | `npm test` | Core Engine Validation |
+| **Inspect a run** | Read `knowledge_base/runs/<id>.md` | Full tool I/O + graph-ingest trace |
 
-## Documentation
-- [Original Project Specification](docs/RLM-LCM-Molecular-CoT-Group-Evolving-Agents.md) — technical deep-dive into the core architecture
-- [Emergent Constraints & Development Plan](docs/emergent-constraints-and-development-plan.md) — theoretical foundation and development roadmap
+## What AGEM does
 
-AGEM is a multi-agent orchestration framework...
+AGEM is a single, self-contained engine. The core (`src/`) has **no external service dependencies** — it runs on its own. The chat interface adds one genuinely useful external reasoning tool (`mcp-logic`, a Prover9/Mace4 wrapper) and can optionally reach other MCP servers, but nothing in the engine requires them.
 
----
+Each reasoning cycle ingests text into a persistent, accumulating concept graph and computes a small set of **honestly-scoped** metrics:
 
-## EFHF System — Required MCP Servers
+- **Graph topology (TNA)** — concept communities (Louvain) and the bridges between them. The richest signal: which ideas cluster and how they connect.
+- **Sheaf H⁰ — connectivity / fragmentation.** H⁰ is the number of connected semantic components. Rising H⁰ means the discussion is fragmenting into separate topic-islands; falling H⁰ means a new idea bridged previously separate clusters. This is the geometric sheaf's real, reliable contribution.
+- **Self-Organized Criticality (SOC)** — von Neumann entropy, embedding entropy, CDP, and a regime classifier (nascent / stable / critical). A measure of how much the graph is still developing, and a detector for "conclusion precedes logic" (embedding entropy stabilizing before structural entropy).
+- **Logic-based H¹ — genuine contradiction detection.** See below. This is AGEM's distinctive capability.
 
-AGEM's cognitive architecture is built on the **Emergent Functional Hierarchy Framework (EFHF)** — [a system of coordinated MCP servers](https://github.com/angrysky56/Emergent-Functional-Hierarchies-Framework) that provide mathematical consistency guarantees, ethical constraint enforcement, and reasoning provenance tracking across agent sessions.
+> [!IMPORTANT]
+> **A note on metric honesty.** The *geometric* sheaf's H¹ reflects cycle topology in the cluster graph — it does **not** detect logical contradiction (real embeddings saturate the coboundary rank, so geometric H¹ ≈ 0 regardless of content). AGEM does not pretend otherwise. Contradiction is detected by the *separate* logic-based H¹ pipeline described next. H⁰ is for connectivity; logic-H¹ is for contradiction; the two are different machines.
 
-| Server                         | Role                                                                                                                                          | Repository                                                                                                      |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **sheaf-consistency-enforcer** | Enforces Kernel 1 causal closure across agents via ADMM. Detects H^1 obstructions when agent states become inconsistent.                      | [angrysky56/sheaf-consistency-enforcer](https://github.com/angrysky56/sheaf-consistency-enforcer)               |
-| **conscience-servitor**        | EFHF L2–L5 ethical evaluation with triage, intent decoding, and audit logging. Implements the Paraclete Protocol for harm prevention.         | [angrysky56/conscience-servitor](https://github.com/angrysky56/conscience-servitor)                             |
-| **hipai-montague**             | Montague-grammar world model with belief tracking, hypothesis evaluation, and the Paraclete Protocol's calibrate/escalate pipeline.           | [angrysky56/HiPAI-Montague-Semantic-Cognition](https://github.com/angrysky56/HiPAI-Montague-Semantic-Cognition) |
-| **advanced-reasoning**         | Meta-cognitive reasoning with confidence tracking, hypothesis testing, graph-based memory libraries, and SystemJSON structured storage.       | [angrysky56/advanced-reasoning-mcp](https://github.com/angrysky56/advanced-reasoning-mcp)                       |
-| **verifier-graph**             | DAG-structured reasoning provenance. Every claim traces back to its premises via the causal light cone.                                       | [angrysky56/vgcp-mcp-server](https://github.com/angrysky56/vgcp-mcp-server)                                     |
-| **mcp-logic**                  | Formal logic: Prover9/Mace4 theorem proving, abductive explanation, contingency checking, categorical diagram commutativity.                  | [angrysky56/mcp-logic](https://github.com/angrysky56/mcp-logic)                                                 |
-| **cognitive-diagram-nav**      | Diagram creation, navigation, reachability analysis, pattern matching, and semantic search over cognitive structures.                         | [angrysky56/cognitive-diagram-nav-mcp](https://github.com/angrysky56/cognitive-diagram-nav-mcp)                 |
-| **aseke-compass**              | ASEKE behavioral analysis: maps Panksepp primary emotional systems, matches behavioral patterns, bridges to political orientation tendencies. | [angrysky56/aseke-compass-mcp](https://github.com/angrysky56/aseke-compass-mcp)                                 |
+## Logic-based H¹ — the distinctive capability
 
-### Utility MCP Servers (included in `mcp.json`)
+The question "are these claims actually consistent?" cannot be answered by graph geometry — similarity is not consistency ("collapse is real" and "collapse is not real" are nearly identical vectors and flatly contradictory). AGEM answers it with a genuinely logical construction, the **consistency complex**:
 
-| Server            | Source                                      |
-| ----------------- | ------------------------------------------- |
-| sqlite            | `uvx mcp-server-sqlite` (PyPI)              |
-| memory            | `@modelcontextprotocol/server-memory` (npm) |
-| desktop-commander | `@wonderwhy-er/desktop-commander` (npm)     |
-| fetch             | `uvx mcp-server-fetch` (PyPI)               |
-| playwright        | `@playwright/mcp` (npm)                     |
-| docker-mcp        | `uvx docker-mcp` (PyPI)                     |
+- Each **block** of claims is a vertex.
+- A set of blocks is a "filled" simplex iff their combined propositions are **jointly satisfiable** — every such check is delegated to `mcp-logic` (Prover9/Mace4).
+- **H⁰** of this complex = groups of blocks that cannot even pairwise reconcile.
+- **H¹** of this complex = sets of blocks that are **consistent in every pair but impossible all together** — a genuine higher-order contradiction that pairwise checking alone cannot find (the difference between *blind-men-and-the-elephant*, which is consistent, and a genuinely *frustrated* set).
 
----
+This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns H⁰/H¹, the offending `frustratedTriples`, and a full `checkLog` audit trail of every check run and its verdict.
 
-## System Tools Available to Users
+It is verified end-to-end: the homology against a Python reference, the satisfiability against real Mace4, and the live pipeline against a calibrated corpus (`docs/logic-corpus/`) — a 3-wise-inconsistent set yields H¹=1 with the right frustrated triple, a pairwise contradiction yields a component split (H⁰) not a false H¹, and a fully-consistent set yields H¹=0 with the triple verified consistent. See `docs/emergent-bonds-and-stateless-reconstruction.md` §13–§15 for the full derivation and verification.
 
-AGEM exposes its capabilities through MCP tools that any connected LLM agent can call natively. These tools fall into five functional categories:
+## Native tools
 
-### Consistency & Coordination (sheaf-consistency-enforcer)
+AGEM exposes its own capabilities as tools any connected LLM agent calls directly:
 
-- **`register_agent_state`** — Register or update an agent's current state snapshot (assertions, confidence, hypotheses). The enforcer tracks all active agents and runs ADMM to detect inconsistencies.
-- **`get_closure_status`** — Check whether the system is in Kernel 1 (full causal closure). Returns H^1 obstruction flags, edge health, convergence status, and actionable interpretation.
-- **`set_restriction_map`** — Define how one agent's state maps to another's on the sheaf edge. Both directions of a bidirectional edge must use the same `to_key` names.
-- **`get_edge_report`** — Detailed consistency report for a specific agent pair: dual variables, primal/dual residuals, projected states, and convergence status.
-- **`trigger_recovery`** — Execute a recovery strategy when obstructions are detected. Strategies: `kernel_retreat`, `re_partition`, `admm_reset`, `soft_relax`, `fusion`.
+- **`run_agem_cycle`** — ingest text into the accumulating concept graph and run a full analysis pass. A cycle only advances the graph if fed *new, substantive* content.
+- **`get_graph_topology`** — concept communities and inter-community bridges (the primary inspection tool).
+- **`get_cohomology`** — geometric sheaf H⁰/H¹ (connectivity; see the honesty note above).
+- **`evaluate_logical_consistency`** — **logic-based H⁰/H¹** contradiction detection (the distinctive capability).
+- **`get_soc_metrics`** — SOC metrics and regime classification.
+- **`detect_gaps` / `generate_catalyst_questions`** — structural gaps and the questions that would bridge them.
+- **`search_context`** — semantic search over the LCM store.
+- **`get_agem_state`, `spawn_agem_agent`, `reset_agem_engine`, `read_skill`** — state, lifecycle, and skill management.
 
-### Ethical Constraint Enforcement (conscience-servitor + hipai-montague)
+## Formal logic dependency — mcp-logic
 
-- **`triage`** — Classify any prompt or response by ethical risk level before generation. Returns cluster, confidence, risk level, and whether full L2–L5 evaluation is needed.
-- **`evaluate`** — Run full EFHF L2–L5 evaluation on a list of claims. Returns KERNEL status, consistency scores, tier-by-tier pass/fail, and pre-response guidance.
-- **`decode_intent`** — Read the LLM's predicted response from the embedding _before_ generating it. Use when triage flags high-risk content for pre-generation inspection.
-- **`add_belief`** — Add a fact to the HiPAI world model in natural language (e.g., "Socrates is a man"). Beliefs persist across the session and are used for hypothesis evaluation.
-- **`evaluate_hypothesis`** — Test a hypothesis against the current knowledge graph. Returns supporting/contradicting evidence from the world model.
-- **`calibrate_belief`** / **`escalate_block`** — The Paraclete Protocol pipeline: when an action is blocked by an ethical axiom, `calibrate_belief` seeks disconfirming evidence for the factual premises, and `escalate_block` resolves the epistemic status to a final ruling.
+The one external reasoning tool AGEM relies on for contradiction detection is [`mcp-logic`](https://github.com/angrysky56/mcp-logic), a wrapper around the LADR Prover9/Mace4 theorem prover. The relevant tools:
 
-### Reasoning & Provenance (advanced-reasoning + verifier-graph)
+- **`prove`** — does a conclusion follow from premises? (field is `conclusion`, not `goal`)
+- **`find_counterexample`** — a model where premises hold but the conclusion fails; with `conclusion="$F"` this is the satisfiability/consistency check the consistency complex is built on.
+- **`check_well_formed`** — syntax-check formulas.
 
-- **`advanced_reasoning`** — Multi-step meta-cognitive reasoning with confidence tracking, hypothesis formulation, branching/revision, and automatic memory integration. Each thought step is stored in a graph-based memory system.
-- **`query_reasoning_memory`** — Search past reasoning sessions for related insights, hypotheses, and evidence. Builds on previous reasoning without losing context.
-- **`create_memory_library`** / **`switch_memory_library`** — Manage separate reasoning libraries per project or domain for clean context separation.
-- **`create_system_json`** / **`get_system_json`** — Structured data storage for workflows, instructions, and domain-specific knowledge alongside the reasoning graph.
-- **`propose_thought`** — Add a verified node to the verifier-graph reasoning DAG. The Graph Kernel validates constraints before committing.
-- **`get_reasoning_chain`** — Trace the full provenance path from root premises to a specific claim. Shows exactly which reasoning steps led to a conclusion.
-- **`get_context`** — Retrieve the causal ancestors of a node (the "causal light cone") that should be loaded when reasoning about that node.
+Formulas use ASCII first-order logic: `->` `<->` `&` `|` `-` (negation), parenthesized quantifiers (`all x (p(x) -> q(x))`), one formula per array element. `mcp-logic` normalizes `~`→`-` and reports a clean Mace4 exhaustion as "no model" rather than a false timeout (both fixed at the source; see that repo's regression tests).
 
-### Formal Logic & Proofs (mcp-logic)
+## Run logging & observability
 
-- **`prove`** — Prove a logical statement using Prover9 or HCC. Accepts premises and goals in first-order logic syntax.
-- **`find_counterexample`** — Use Mace4 to find a finite counterexample that disproves a conjecture.
-- **`find_model`** — Use Mace4 to find a finite model satisfying given premises.
-- **`abductive_explain`** — Find the VFE-minimizing abductive explanation for an observation from a list of candidate hypotheses.
-- **`check_contingency`** — Check if a propositional formula is truth-functionally contingent.
-- **`verify_commutativity`** — Verify categorical diagram commutativity.
-- **`get_category_axioms`** — Get FOL axioms for category theory structures (category, functor, group, etc.).
+Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_<id>.jsonl` and a `.md` transcript alongside it: the **exact text fed into the graph each cycle**, the **full input and output of every tool call** (including the `checkLog` from `evaluate_logical_consistency`), and a run-end summary. The run-log id is also surfaced in tool output. This makes after-the-fact debugging a matter of reading one file rather than reconstructing from terminal scrollback.
 
-### Behavioral & Cognitive Analysis (aseke-compass + cognitive-diagram-nav)
+## Optional MCP servers
 
-- **`analyze_behavior`** — Perform a structured ASEKE analysis of a behavioral pattern, situation, or conflict. Maps to Panksepp primary emotional systems.
-- **`match_patterns`** — Given observed behavioral signals, return matching patterns from the library with confidence scores.
-- **`bridge_to_political`** — Given active primary emotional systems, assess probable political orientation tendencies.
-- **`diagram_create`** / **`diagram_save`** / **`diagram_load`** — Create, persist, and retrieve cognitive diagrams.
-- **`navigate_guided`** / **`navigate_breadth_first`** — Navigate reasoning spaces within diagrams.
-- **`explore_reasoning_space`** — Explore equivalent states and reasoning alternatives within a diagram structure.
+AGEM does not require any MCP server other than `mcp-logic` (for contradiction detection). The meta-tools `list_mcp_servers`, `list_server_tools`, and `call_mcp_tool` let an agent reach any other server configured in `mcp.json` — useful utilities include `fetch`, `sqlite`, `memory`, `desktop-commander`, `playwright`, and `docker`. Other reasoning servers may be configured but are experimental and are not part of the standard workflow.
 
----
+> [!NOTE]
+> Earlier versions of AGEM were wired to an external "EFHF" suite of MCP servers (a second sheaf enforcer, an ethical-tier evaluator, a world-model, etc.). That coupling caused real confusion — notably *two independent sheaf systems* claiming the same job — and was never actually wired into the engine (the bridge class was defined but never instantiated). AGEM is now self-contained: the engine computes its own H⁰, `mcp-logic` provides contradiction detection, and everything else is optional. If you are looking for the EFHF servers, they live in their own repositories.
 
 ## Key Features
 
-- **Sheaf-Theoretic Coordination**: Uses `CellularSheaf` to track agent states and restriction maps, enabling robust multi-agent consensus via the Sheaf Laplacian and ADMM.
-- **Topological Obstruction Detection**: Employs `CohomologyAnalyzer` to identify structural gaps (H^1) in agent communication and knowledge via SVD of the coboundary operator.
-- **Lumpability Auditing**: The `LumpabilityAuditor` detects information loss at LCM compaction boundaries by comparing embedding entropy profiles of source entries vs summary nodes — classifying compressions as strongly or weakly lumpable.
-- **System 1 Override Detection**: `RegimeValidator.detectEarlyConvergence()` flags when embedding entropy stabilizes before structural entropy has developed — the mathematical signature of "conclusion precedes logic."
-- **Text Network Analysis (TNA)**: Semantic graph processing including community detection (Louvain), centrality analysis, structural gap detection, ForceAtlas2 layout, and catalyst question generation.
-- **Lifecycle Context Model (LCM)**: Lossless context management with embedding-based search, three-level escalation protocol, and guaranteed convergence via deterministic fallback.
-- **Self-Organized Criticality (SOC)**: Real-time tracking of system criticality (CDP, VNE, EE, SER) with dynamic phase transition detection, regime validation, and stability classification.
-- **Molecular Chain-of-Thought**: Reasoning topology using covalent bonds (strong logical dependency), hydrogen bonds (self-reflection), and Van der Waals forces (exploration) with enforced behavioral invariants.
-- **MCP Bridge**: Optional cross-session coordination that maps internal lumpability auditing to external sheaf-consistency-enforcer, verifier-graph, and hipai-montague MCP servers.
-- **Full-Stack Chat Interface**: React + Express interface with SSE streaming, session history, knowledge base persistence, and interactive settings.
-- **Interactive System Dashboard**: Real-time vitals strip (iteration, regime, state, CDP, H¹), tabbed content (Graph visualization, SOC sparklines, event log), quick action buttons with explanatory tooltips, and toast notifications for critical events (System 1, weak lumpability, phase transitions). Independent SSE event stream at `/api/v1/system/events`.
-- **Meta-Tool MCP Access**: Instead of flooding models with 50+ tool schemas, 3 meta-tools (`list_mcp_servers`, `list_server_tools`, `call_mcp_tool`) give every model dynamic access to all connected MCP servers through a compact 13-tool interface. Pattern adapted from the mcp_coordinator project.
-- **Provider Embeddings**: `ProviderEmbedder` calls Ollama (`/api/embeddings` with nomic-embed-text) or OpenRouter (`/embeddings` with gemini-embedding-001) for real semantic similarity. Graceful dimension-aware fallback to hash-based mock. `/api/v1/system/embeddings` endpoint for external consumers.
-- **Interactive CLI**: Commander.js-based terminal REPL for quick chat interactions and system management.
-- **Tri-Provider LLM Support**: Ollama (local), OpenRouter (cloud), and Anthropic with provider-correct tool calling formats, model capability detection via `/api/show`, and content fallback parsing for models that output tool calls as text.
-- **Agent Skills System**: YAML-frontmatter based dynamic skill definition loaded natively into the prompt.
+- **Logic-based contradiction detection** — the consistency-complex H¹ pipeline (above), verified end-to-end against a real theorem prover.
+- **Sheaf H⁰ connectivity** — `CellularSheaf` + `CohomologyAnalyzer` track how the concept graph fragments and coheres via SVD of the coboundary operator.
+- **Text Network Analysis (TNA)** — co-occurrence graph, Louvain community detection, centrality, structural gap detection, ForceAtlas2 layout, catalyst-question generation.
+- **Self-Organized Criticality (SOC)** — CDP, VNE, EE, SER tracking with phase-transition detection, regime classification, and System-1 ("conclusion precedes logic") detection via `RegimeValidator`.
+- **Lifecycle Context Model (LCM)** — append-only immutable store, embedding cache, hierarchical summary DAG, and a three-level escalation protocol with guaranteed convergence.
+- **Lumpability auditing** — `LumpabilityAuditor` detects information loss at LCM compaction boundaries by comparing embedding-entropy profiles of source entries vs summary nodes.
+- **Molecular Chain-of-Thought** — reasoning topology using covalent (strong dependency), hydrogen (self-reflection), and Van der Waals (exploration) bond metaphors.
+- **Run logging** — full per-run trace (graph inputs + tool I/O) to `knowledge_base/runs/`.
+- **Full-stack chat interface** — React + Express with SSE streaming, session history, knowledge-base persistence, and a real-time system dashboard (vitals strip, SOC sparklines, event log, graph visualization).
+- **Meta-Tool MCP Access** — 3 meta-tools give models dynamic access to any configured MCP server without flooding context with raw schemas.
+- **Provider Embeddings** — `ProviderEmbedder` calls Ollama or OpenRouter for real semantic similarity, with dimension-aware fallback.
+- **Tri-Provider LLM Support** — Ollama (local), OpenRouter (cloud), and Anthropic, with provider-correct tool-calling formats.
+- **Agent Skills System** — YAML-frontmatter `.md` skills loaded natively into the prompt.
 
 ## Tech Stack
 
 ### Core Engine
-
-- **Language**: [TypeScript](https://www.typescriptlang.org/) (ES2022)
-- **Runtime**: [Node.js](https://nodejs.org/) v20+
+- **Language**: [TypeScript](https://www.typescriptlang.org/) (ES2022) · **Runtime**: [Node.js](https://nodejs.org/) v20+
 - **Mathematics**: [mathjs](https://mathjs.org/), [ml-matrix](https://github.com/mljs/matrix)
 - **NLP**: [natural](https://github.com/NaturalNode/natural), [wink-lemmatizer](https://winkjs.org/), [stopword](https://github.com/fergiemcdowall/stopword)
 - **Graph Theory**: [graphology](https://graphology.github.io/) (Louvain, Metrics, Layout)
-- **AI/ML**: [@huggingface/transformers](https://huggingface.co/docs/transformers.js/)
 - **Testing**: [Vitest](https://vitest.dev/)
 
 ### Interface
-
 - **Backend**: [Express](https://expressjs.com/) + SSE streaming
 - **Frontend**: [React](https://react.dev/) + [Vite](https://vite.dev/) + TypeScript
-- **State**: [Zustand](https://zustand.docs.pmnd.rs/) (persisted to localStorage)
-- **LLM Providers**: Ollama (local), OpenRouter (cloud)
+- **State**: [Zustand](https://zustand.docs.pmnd.rs/)
+- **LLM Providers**: Ollama (local), OpenRouter (cloud), Anthropic
 
 ## Project Structure
 
 ```
 agent-group-evolving-molecular-system-AGEM/
-├── src/                       # Core AGEM engine
-│   ├── orchestrator/          # Central coordination + obstruction handling
-│   │   ├── ComposeRootModule  #   Composition root — wires all modules
-│   │   ├── ObstructionHandler #   H^1 → gap detection → agent spawn pipeline
-│   │   ├── VdWAgentSpawner    #   Van der Waals exploratory agent management
-│   │   └── EventBus           #   Central typed event coordination
-│   ├── sheaf/                 # CellularSheaf + CohomologyAnalyzer
-│   │   ├── CellularSheaf      #   Graph topology with validated restriction maps
-│   │   ├── CohomologyAnalyzer #   SVD-based H^0/H^1 computation + events
-│   │   ├── SheafLaplacian     #   B^T B assembly and eigenspectrum
-│   │   └── ADMMSolver         #   Gradient descent toward consensus
-│   ├── tna/                   # Text Network Analysis pipeline
-│   │   ├── CooccurrenceGraph  #   4-gram weighted semantic network
-│   │   ├── LouvainDetector    #   Community detection + modularity
-│   │   ├── CentralityAnalyzer #   Betweenness centrality time series
-│   │   ├── GapDetector        #   Structural hole identification
-│   │   └── LayoutComputer     #   ForceAtlas2 visualization
-│   ├── soc/                   # Self-Organized Criticality tracker
-│   │   ├── SOCTracker         #   All 5 SOC metrics + phase transitions
-│   │   └── RegimeValidator    #   Regime stability + System 1 detection
-│   ├── lcm/                   # Lifecycle Context Model
-│   │   ├── ImmutableStore     #   Append-only ground truth
-│   │   ├── ContextDAG         #   Hierarchical summary DAG
-│   │   └── EscalationProtocol #   Three-level guaranteed convergence
-│   ├── lumpability/           # Lumpability auditing (NEW)
-│   │   ├── LumpabilityAuditor #   Entropy ratio + centroid drift detection
-│   │   ├── entropyProfile     #   Embedding entropy computation
-│   │   └── MCPBridge          #   Cross-session MCP coordination
-│   └── types/                 # Shared type definitions + events
+├── src/                       # Core AGEM engine (self-contained, no external deps)
+│   ├── orchestrator/          #   Central coordination + obstruction handling
+│   ├── sheaf/                 #   CellularSheaf + CohomologyAnalyzer (geometric H⁰/H¹)
+│   ├── tna/                   #   Text Network Analysis pipeline
+│   ├── soc/                   #   Self-Organized Criticality tracker
+│   ├── lcm/                   #   Lifecycle Context Model
+│   ├── lumpability/           #   Lumpability auditing
+│   └── types/                 #   Shared type definitions + events
 ├── interface/                 # Full-stack chat interface
-│   ├── backend/               #   Express API + SSE streaming
-│   │   └── src/services/      #   LLM providers, agem-bridge, provider-embedder, MCP manager
-│   ├── frontend/              #   React + Vite + TypeScript
-│   │   └── src/
-│   │       ├── components/dashboard/  # SystemVitals, MetricsPanel, EventLog, QuickActions, Toasts
-│   │       ├── hooks/                 # useSystemEvents (SSE connection)
-│   │       └── stores/                # chat.ts, agem.ts (system state), settings.ts
+│   ├── backend/src/services/  #   LLM providers, agem-bridge, logicalCohomology, run-logger, MCP manager
+│   ├── frontend/              #   React + Vite dashboard
 │   └── shared/                #   FE ↔ BE type contract
-├── cli/                       # Interactive terminal REPL
+├── cli/                       # Interactive terminal REPL (thin HTTP client)
 ├── skills/                    # YAML-frontmatter agent skill definitions
-├── knowledge_base/            # Persistent outputs (reports, analysis)
-├── mcp.json                   # MCP server configuration
-└── mcp.json.example           # Template MCP config
+├── docs/
+│   ├── emergent-bonds-and-stateless-reconstruction.md  # Logic-H¹ derivation + verification (§13–15)
+│   └── logic-corpus/          # Calibrated test corpus for logic-based H¹
+├── knowledge_base/runs/       # Per-run traces (graph inputs + full tool I/O)
+└── mcp.json                   # MCP server configuration (mcp-logic + optional utilities)
 ```
 
 ## Getting Started
 
 ### 1. Clone & Install
-
 ```bash
 git clone https://github.com/angrysky56/agent-group-evolving-molecular-system-AGEM.git
 cd agent-group-evolving-molecular-system-AGEM
 npm install
 ```
 
-### 2. Install EFHF MCP Servers
-
-Clone the required MCP servers into a sibling directory:
-
+### 2. Install mcp-logic (for contradiction detection)
+Only one external server is needed for the logic-based H¹ capability:
 ```bash
 cd ..  # parent directory of AGEM
-git clone https://github.com/angrysky56/sheaf-consistency-enforcer.git
-git clone https://github.com/angrysky56/conscience-servitor.git
-git clone https://github.com/angrysky56/HiPAI-Montague-Semantic-Cognition.git
-git clone https://github.com/angrysky56/advanced-reasoning-mcp.git
-git clone https://github.com/angrysky56/vgcp-mcp-server.git
 git clone https://github.com/angrysky56/mcp-logic.git
-git clone https://github.com/angrysky56/cognitive-diagram-nav-mcp.git
-git clone https://github.com/angrysky56/aseke-compass-mcp.git
+# follow mcp-logic's README — it uses uv and vendors the LADR Prover9/Mace4 binaries
 ```
-
-Each server has its own setup instructions in its README. Most Python servers use `uv`; Node servers use `npm install && npm run build`.
+The core engine and graph/SOC analysis run without it; only `evaluate_logical_consistency` requires it.
 
 ### 3. Configure Environment
-
 ```bash
 cp .env.example .env
 # Edit .env — set LLM_PROVIDER, API keys, model names
 ```
 
-### 4. Configure MCP Servers
-
+### 4. Configure MCP
 ```bash
 cp mcp.json.example mcp.json
-# Edit mcp.json — update paths to match your MCP server locations
+# Edit mcp.json — set the path to your mcp-logic checkout (and any optional utility servers)
 ```
 
-### 5. Run the Core Engine Tests
-
+### 5. Run the Tests
 ```bash
 npm test
 ```
 
 ### 6. Start the Interface
-
 ```bash
-./start.sh
-```
-
-This installs dependencies (if needed), copies `.env.example` → `.env` (if missing), and starts both servers. The frontend will be available at `http://localhost:5173` with API proxy to the backend on port 8000. Press `Ctrl+C` to stop both.
-
-```bash
-# Or start individually:
-./start.sh --backend    # Backend only
-./start.sh --frontend   # Frontend only
-./start.sh --install    # Force reinstall dependencies
+./start.sh            # full stack; frontend at http://localhost:5173
+# ./start.sh --backend / --frontend / --install
 ```
 
 ## Configuration
 
-All configuration lives in `.env` at the project root. Key settings:
+All configuration lives in `.env`. Key settings:
 
-| Variable                    | Default                           | Description                                |
-| --------------------------- | --------------------------------- | ------------------------------------------ |
-| `LLM_PROVIDER`              | `ollama`                          | Active provider (`ollama`, `openrouter`, or `anthropic`) |
-| `OLLAMA_BASE_URL`           | `http://localhost:11434`          | Ollama API endpoint                        |
-| `OLLAMA_MODEL`              | `gemma3:latest`                   | Ollama chat model                          |
-| `OLLAMA_EMBEDDING_MODEL`    | `nomic-embed-text:latest`         | Ollama embedding model                     |
-| `OPENROUTER_API_KEY`        | —                                 | OpenRouter API key                         |
-| `OPENROUTER_BASE_URL`       | `https://openrouter.ai/api/v1`    | OpenRouter API endpoint                    |
-| `OPENROUTER_MODEL`          | `google/gemini-2.5-flash-preview` | OpenRouter chat model                      |
-| `OPENROUTER_EMBEDDING_MODEL`| `google/gemini-embedding-001`     | OpenRouter embedding model                 |
-| `PORT`                      | `8000`                            | Backend server port                        |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `ollama` | Active provider (`ollama`, `openrouter`, `anthropic`) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `gemma3:latest` | Ollama chat model |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text:latest` | Ollama embedding model |
+| `OPENROUTER_API_KEY` | — | OpenRouter API key |
+| `OPENROUTER_MODEL` | `google/gemini-2.5-flash-preview` | OpenRouter chat model |
+| `PORT` | `8000` | Backend server port |
 
 ## Architecture
-
-### How the Modules Interact
 
 ```
 User Prompt → Orchestrator.runReasoning()
     │
     ├─→ TNA: preprocess → co-occurrence graph → Louvain → centrality → gaps
     ├─→ LCM: append to ImmutableStore → ProviderEmbedder → embedding cache
-    ├─→ Sheaf: cohomology analysis → H^0 (consensus) or H^1 (obstruction)
-    ├─→ SOC: VNE + EE + CDP + SER + correlation → phase transitions → regime
+    ├─→ Sheaf: cohomology analysis → H⁰ (connectivity / fragmentation)
+    ├─→ SOC: VNE + EE + CDP + SER → phase transitions → regime
     ├─→ Lumpability: audit compaction → entropy ratio → strong/weak classification
     │
-    ├─→ [H^1 detected] → ObstructionHandler → GapDetector → VdW agent spawn
-    ├─→ [Weak lumpability] → EventBus → recovery via lcm_expand
-    ├─→ [System 1 override] → soc:system1-early-convergence event
+    ├─→ evaluate_logical_consistency: blocks → mcp-logic satisfiability checks
+    │   → consistency complex → logic-based H⁰/H¹ + checkLog
     │
-    ├─→ MCP Meta-Tools: list_mcp_servers → list_server_tools → call_mcp_tool
-    │   (dynamic discovery of sheaf-enforcer, advanced-reasoning, hipai, etc.)
-    │
-    ├─→ Dashboard SSE: /api/v1/system/events → SystemVitals + Sparklines + EventLog
-    │
-    └─→ MCP Bridge (optional): register states with sheaf-consistency-enforcer,
-        log provenance in verifier-graph, track beliefs in hipai-montague
+    ├─→ Dashboard SSE: /api/v1/system/events → vitals + sparklines + event log
+    └─→ Run logger: knowledge_base/runs/<id>.{jsonl,md}
 ```
 
-All events flow through the central `EventBus`. Modules communicate exclusively via typed events — only `ComposeRootModule` imports from multiple modules.
-
-### Module Isolation
-
-Each module (sheaf, lcm, tna, soc, lumpability) has **zero cross-imports** to other modules. This is statically enforced by isolation tests in each module. Only the orchestrator's `ComposeRootModule` is permitted to import from multiple modules simultaneously. The lumpability module imports narrowly from `lcm/interfaces` (IEmbedder, ITokenCounter) and `soc/entropy` (embeddingEntropy, cosineSimilarity).
+All events flow through the central `EventBus`; modules communicate via typed events. Each engine module (sheaf, lcm, tna, soc, lumpability) has **zero cross-imports** — statically enforced by isolation tests — and only `ComposeRootModule` may import from multiple modules.
 
 ## Available Scripts
 
-| Command              | Description                                    |
-| -------------------- | ---------------------------------------------- |
-| `npm run build`      | Compiles the TypeScript project (core engine). |
-| `npm test`           | Runs the full Vitest suite.                    |
-| `npm run test:watch` | Runs Vitest in watch mode.                     |
-| `npm run typecheck`  | Runs the TypeScript compiler in no-emit mode.  |
-
-## Interface
-
-The interface wraps the AGEM engine with a chat-like experience:
-
-- **Backend** serves a REST + SSE API on port 8000. Chat completions stream tokens via Server-Sent Events. A separate `/system/events` SSE endpoint streams engine state, SOC metrics, phase transitions, and obstructions to the dashboard in real-time. Sessions persist as JSON files.
-- **Frontend** is a React SPA with a dark glassmorphism theme. The left panel shows chat; the right panel is an interactive dashboard with system vitals, SOC sparklines, event log, graph visualization, and quick action buttons. Uses Zustand for state management with separate stores for chat and system state.
-- **Dashboard** shows real-time engine state: iteration count, regime classification, operational state, CDP, H¹ obstructions, graph stats. Metrics tab renders SOC sparklines (VNE, EE, CDP, SER, Correlation). Events tab shows a filtered stream of system events. Toast notifications surface critical events (System 1 override, weak lumpability, phase transitions).
-- **Meta-Tool Access** lets the LLM dynamically discover and invoke any connected MCP server through 3 compact meta-tools, instead of overwhelming the context with 50+ tool schemas.
-- **CLI** provides a fully interactive terminal REPL for quick querying, testing, and managing the server.
-- **Agent Skills** system traverses the `skills/` directory, extracts context from YAML frontmatter in `.md` files, and exposes them as selectable knowledge areas to the agent.
-- **MCP Integration** connects to configured external Model Context Protocol servers (see `mcp.json`) to dynamically register tools that the LLM agent can call natively.
+| Command | Description |
+| --- | --- |
+| `npm run build` | Compile the TypeScript core engine. |
+| `npm test` | Run the full Vitest suite. |
+| `npm run test:watch` | Vitest in watch mode. |
+| `npm run typecheck` | TypeScript compiler, no emit. |
 
 ## License
 
