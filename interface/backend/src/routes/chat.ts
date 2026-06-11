@@ -23,6 +23,7 @@ import {
 } from "../services/logicalCohomology.js";
 import { createRunLogger } from "../services/run-logger.js";
 import { settings } from "../config.js";
+import { compress } from "headroom-ai";
 
 export const chatRouter = Router();
 
@@ -907,8 +908,10 @@ ${skillContent}`,
         `[Chat] Turn ${turnCount}/${maxTurns} — sending to ${sanitizeLog(resolvedProvider)}/${sanitizeLog(model)}`,
       );
 
+      const compressResult = await compress(historyMessages as any[], { model: String(model) });
+
       const result = await llmProvider.chat({
-        messages: historyMessages,
+        messages: compressResult.messages as any[],
         model,
         tools,
         apiKey,

@@ -1,6 +1,13 @@
 {
   "_comment": "AGEM MCP configuration template. mcp-logic is the only server required (powers evaluate_logical_consistency / logic-based H1). The rest are optional utilities reachable via the meta-tools. Update the mcp-logic --directory and --prover-path to match your checkout.",
   "mcpServers": {
+    "headroom": {
+      "command": "/your-path-to/.local/bin/headroom",
+      "args": [
+        "mcp",
+        "serve"
+      ]
+    },
     "mcp-logic": {
       "command": "uv",
       "args": [
