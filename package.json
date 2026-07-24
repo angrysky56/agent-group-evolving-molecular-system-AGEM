@@ -26,6 +26,16 @@
   "devDependencies": {
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vitest": "4.0.18"
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "onnxruntime-node@1.21.0": true,
+    "protobufjs@7.6.5": true,
+    "sharp@0.34.5": true,
+    "esbuild@0.28.1": true
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "sharp": "^0.35.3"
   }
 }

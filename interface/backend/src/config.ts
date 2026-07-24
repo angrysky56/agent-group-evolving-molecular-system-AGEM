@@ -69,6 +69,28 @@ const ConfigSchema = z.object({
   VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
   /** Maximum tool execution turns in a chat session before forcing completion. Default: 30 */
   CHAT_MAX_TURNS: z.coerce.number().default(30),
+
+  // Tool execution: bounded recovery + side-effect-aware dispatch
+  /**
+   * Level-1 retry budget per (tool, arguments) pair, for transient faults only
+   * (network, timeout, rate limit, 5xx). Excludes the first attempt. Set to 0
+   * to disable engine-side retries and escalate every failure to the model.
+   * Default: 2
+   */
+  TOOL_RETRY_BUDGET: z.coerce.number().min(0).default(2),
+  /**
+   * Maximum read-only tool calls dispatched concurrently within one turn.
+   * Mutating tools are always serial regardless of this value. Default: 4
+   */
+  TOOL_MAX_CONCURRENCY: z.coerce.number().min(1).default(4),
+  /**
+   * Enforce the workflow output contract (ingest → inspect → verify) before a
+   * run may finish. When false, the model decides when it is done. Default: true
+   */
+  CHAT_ENFORCE_WORKFLOW_CONTRACT: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false" && v !== "0"),
 });
 
 type Config = z.infer<typeof ConfigSchema>;

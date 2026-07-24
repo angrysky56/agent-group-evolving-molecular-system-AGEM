@@ -142,6 +142,12 @@ cd agent-group-evolving-molecular-system-AGEM
 npm install
 ```
 
+Approve native lifecycle scripts required by dependencies (`onnxruntime-node`, `protobufjs`, `esbuild`, `sharp`):
+
+```bash
+npm install-scripts approve onnxruntime-node protobufjs esbuild sharp
+```
+
 ### 2. Install mcp-logic (for contradiction detection)
 
 Only one external server is needed for the logic-based H¹ capability:

@@ -22,6 +22,13 @@ import {
   makeMcpLogicOracle,
 } from "../services/logicalCohomology.js";
 import { createRunLogger } from "../services/run-logger.js";
+import { RecoveryProtocol } from "../services/recovery-protocol.js";
+import {
+  dispatchBatch,
+  isRetrySafe,
+  sideEffectClass,
+} from "../services/tool-dispatch.js";
+import { createWorkflowContract } from "../services/workflow-contract.js";
 import { settings } from "../config.js";
 import { compress } from "headroom-ai";
 
@@ -879,16 +886,33 @@ ${skillContent}`,
     const requestStartTime = Date.now();
     const allTurnToolResults: any[] = [];
     const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
-    let continuationNudgeSent = false; // Only nudge the model once per request
 
     // Persistent, readable trace of this run (graph inputs + full tool I/O).
     // Written to <KNOWLEDGE_BASE_PATH>/runs/<id>.{jsonl,md}. Never throws.
+    // This file IS the diagnostic context C_diag: full failure detail goes
+    // here and NOT into historyMessages.
     const runLog = createRunLogger({
       model: String(model ?? "unknown"),
       sessionId: typeof sessionId === "string" ? sessionId : undefined,
       message,
     });
     sendEvent("system", { content: `[run-log: ${runLog.runId}]` });
+
+    // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
+    // every tool call in this run, so the retry budget is per-run, not per-call.
+    const recovery = new RecoveryProtocol({
+      retryBudget: settings.all.TOOL_RETRY_BUDGET,
+      runId: runLog.runId,
+    });
+
+    // Output contract κ — replaces the old turn-count completion heuristic.
+    // "Contested" is read from the engine's own clustering: two or more concept
+    // communities means a multi-position corpus, which requires formal
+    // verification before any consistency claim.
+    const workflowContract = createWorkflowContract({
+      enabled: settings.all.CHAT_ENFORCE_WORKFLOW_CONTRACT,
+      isContested: () => (agemBridge.getState().communities ?? 0) >= 2,
+    });
 
     while (!isDone && turnCount < maxTurns) {
       // Check overall request timeout
@@ -991,8 +1015,11 @@ ${skillContent}`,
       historyMessages.push(assistantMessage);
 
       if (result.tool_calls && result.tool_calls.length > 0) {
-        // Execute tools
-        for (const tc of result.tool_calls) {
+        // ─── Tool execution ───
+        // parseToolArgs: recover the argument object from whatever the model
+        // emitted. Separated from execution so the scheduler can classify a
+        // call's side-effect profile before deciding how to dispatch it.
+        const parseToolArgs = (tc: any): Record<string, unknown> => {
           const fnName = tc.function.name;
           let args: any = {};
           if (typeof tc.function.arguments === "string") {
@@ -1031,18 +1058,26 @@ ${skillContent}`,
           ) {
             args = tc.function.arguments;
           }
+          return args as Record<string, unknown>;
+        };
+
+        /**
+         * runToolOnce — a SINGLE attempt at one tool call.
+         *
+         * Contract: throws on failure. It must not swallow errors into its
+         * return value, because the recovery protocol classifies the thrown
+         * error to decide whether a retry (transient) or an argument repair
+         * (schema) is warranted. A stringified error returned as output would
+         * look like success and bypass the ladder entirely.
+         */
+        const runToolOnce = async (
+          fnName: string,
+          args: any,
+        ): Promise<{ output: string; label: string }> => {
           let output = "";
           let toolLabel = fnName; // Descriptive label for tool_result event
 
-          sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
-          const toolStart = Date.now();
-          console.log(
-            `[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`,
-            JSON.stringify(args),
-          );
-          runLog.toolCall(fnName, args);
-
-          try {
+          {
             if (fnName === "read_skill") {
               output = skillRegistry.executeTool(fnName, args);
             } else if (fnName === "get_agem_state") {
@@ -1444,40 +1479,174 @@ ${skillContent}`,
               tArgs = normalizeMcpToolArgs(sName, tName, tArgs);
 
               toolLabel = `${sName}/${tName}`;
-              try {
-                output = await mcpManager.executeTool(sName, tName, tArgs);
-              } catch (e: any) {
-                output = `Error calling ${sName}/${tName}: ${e.message}`;
-              }
+              // No inner catch: MCP failures are exactly the ones that benefit
+              // from the recovery ladder (transient transport faults retry,
+              // schema faults get patched). Swallowing them here would hide
+              // both from the protocol.
+              output = await mcpManager.executeTool(sName, tName, tArgs);
             } else if (fnName.startsWith("mcp__")) {
               const parts = fnName.split("__");
               const serverName = parts[1];
               const toolName = parts.slice(2).join("__");
               toolLabel = `${serverName}/${toolName}`;
-              output = await mcpManager.executeTool(serverName, toolName, args);
+              // Same normalization the call_mcp_tool path gets. These two
+              // branches reach the identical MCP tools; only the calling
+              // convention differs, so they must not disagree on arg shape.
+              const directArgs = normalizeMcpToolArgs(
+                serverName,
+                toolName,
+                args,
+              );
+              output = await mcpManager.executeTool(
+                serverName,
+                toolName,
+                directArgs,
+              );
             } else {
-              output = `Error: Unknown tool ${fnName}`;
+              throw new Error(`Unknown tool ${fnName}`);
             }
-          } catch (err: any) {
-            output = `Error executing tool: ${err.message}`;
-            console.error(`[Chat] Tool ${fnName} failed: ${err.message}`);
           }
 
-          const toolElapsed = Date.now() - toolStart;
-          console.log(
-            `[Chat] Tool ${fnName} completed in ${toolElapsed}ms (${output.length} chars)`,
-          );
-          runLog.toolResult(fnName, output);
-          if (toolElapsed > 10000) {
-            console.warn(`[Chat] Slow tool: ${fnName} took ${toolElapsed}ms`);
-          }
+          return { output, label: toolLabel };
+        };
 
-          // Stream structured tool result to frontend
-          // Frontend renders as collapsible accordion with server/tool label
+        // ─── Batch dispatch ───
+        // Parse every call up front so the scheduler can see side-effect
+        // classes before anything runs, then execute: consecutive read-only
+        // calls concurrently, mutating calls serially and in order. Results
+        // come back indexed by original position, so history order is
+        // deterministic regardless of completion order.
+        const parsedCalls = result.tool_calls.map((tc: any) => ({
+          tc,
+          fnName: tc.function.name as string,
+          args: parseToolArgs(tc),
+        }));
+
+        type ExecutedCall = {
+          tc: any;
+          fnName: string;
+          toolLabel: string;
+          output: string;
+          elapsedMs: number;
+          ok: boolean;
+        };
+
+        const executed = await dispatchBatch<
+          (typeof parsedCalls)[number],
+          ExecutedCall
+        >(
+          parsedCalls,
+          async ({ tc, fnName, args }) => {
+            sendEvent("system", { content: `\n[Executing: ${fnName}]\n` });
+            const toolStart = Date.now();
+            console.log(
+              `[Chat] Executing tool ${fnName} (id: ${tc.id}) with args:`,
+              JSON.stringify(args),
+            );
+            runLog.toolCall(fnName, args);
+
+            const outcome = await recovery.execute(fnName, args, {
+              run: (a) => runToolOnce(fnName, a),
+              // Non-idempotent calls are never blind-retried. run_agem_cycle
+              // ingests into a persistent accumulating graph: a silent retry
+              // would double-count the same co-occurrences.
+              retryBudget: isRetrySafe(fnName, args)
+                ? undefined
+                : 0,
+              // Level-2 repair: the same deterministic normalizer used
+              // pre-emptively on the MCP paths, now also wired as a
+              // failure-triggered patch.
+              patch: (a) => {
+                const target =
+                  fnName === "call_mcp_tool"
+                    ? {
+                        server: String(
+                          (a as any).server_name ?? (a as any).server ?? "",
+                        ),
+                        tool: String(
+                          (a as any).tool_name ?? (a as any).tool ?? "",
+                        ),
+                      }
+                    : fnName.startsWith("mcp__")
+                      ? {
+                          server: fnName.split("__")[1] ?? "",
+                          tool: fnName.split("__").slice(2).join("__"),
+                        }
+                      : null;
+                if (!target || !target.server || !target.tool) return null;
+                if (fnName === "call_mcp_tool") {
+                  const inner = (a as any).arguments ?? (a as any).args;
+                  if (inner && typeof inner === "object") {
+                    return {
+                      ...a,
+                      arguments: normalizeMcpToolArgs(
+                        target.server,
+                        target.tool,
+                        inner as Record<string, unknown>,
+                      ),
+                    };
+                  }
+                  return null;
+                }
+                return normalizeMcpToolArgs(target.server, target.tool, a);
+              },
+              // Diagnostic context C_diag. Full detail lands in the run log
+              // only — never in historyMessages, and therefore never in the
+              // graph.
+              onDiagnostic: (event) => runLog.event("recovery", event),
+            });
+
+            const elapsedMs = Date.now() - toolStart;
+            if (!outcome.ok) {
+              console.error(
+                `[Chat] Tool ${fnName} failed after ${outcome.attempts} attempt(s) ` +
+                  `(class=${outcome.diagnosis?.errorClass}, L${outcome.level}): ${outcome.diagnosis?.phi}`,
+              );
+            }
+            // The run log gets the real story; history gets the terse notice.
+            runLog.toolResult(
+              fnName,
+              outcome.ok ? outcome.output : (outcome.detail ?? outcome.output),
+            );
+            if (elapsedMs > 10000) {
+              console.warn(`[Chat] Slow tool: ${fnName} took ${elapsedMs}ms`);
+            } else if (outcome.ok) {
+              console.log(
+                `[Chat] Tool ${fnName} completed in ${elapsedMs}ms (${outcome.output.length} chars)`,
+              );
+            }
+
+            // Only successful calls count toward the output contract.
+            if (outcome.ok) workflowContract.record(fnName, outcome.label);
+
+            return {
+              tc,
+              fnName,
+              toolLabel: outcome.label,
+              output: outcome.output,
+              elapsedMs,
+              ok: outcome.ok,
+            };
+          },
+          {
+            classify: ({ fnName, args }) => sideEffectClass(fnName, args),
+            maxConcurrency: settings.all.TOOL_MAX_CONCURRENCY,
+            onWave: (wave, i) => {
+              if (wave.kind === "pure" && wave.calls.length > 1) {
+                console.log(
+                  `[Chat] Wave ${i}: dispatching ${wave.calls.length} read-only tools in parallel`,
+                );
+              }
+            },
+          },
+        );
+
+        // Emit results and extend history in ORIGINAL call order.
+        for (const r of executed) {
           const toolResult = {
-            tool: toolLabel,
-            elapsed_ms: toolElapsed,
-            output,
+            tool: r.toolLabel,
+            elapsed_ms: r.elapsedMs,
+            output: r.output,
           };
           allTurnToolResults.push(toolResult);
 
@@ -1510,42 +1679,43 @@ ${skillContent}`,
             // We also include tool_call_id for cross-provider session stability (e.g. switching to Anthropic)
             historyMessages.push({
               role: "tool",
-              tool_call_id: tc.id,
-              tool_name: fnName,
-              content: output,
+              tool_call_id: r.tc.id,
+              tool_name: r.fnName,
+              content: r.output,
             });
           } else {
             // OpenRouter/Anthropic/MiniMax: {role: "tool", tool_call_id: "...", content: "..."}
             historyMessages.push({
               role: "tool",
-              tool_call_id: tc.id,
-              name: fnName,
-              content: output,
+              tool_call_id: r.tc.id,
+              name: r.fnName,
+              content: r.output,
             });
           }
         }
       } else {
-        // No tool calls — but if the model stopped very early, nudge it to
-        // continue with deeper analysis before writing the final answer.
-        // This fires at most once per request to avoid infinite loops.
-        const MIN_TURNS_BEFORE_DONE = 4;
-        if (turnCount < MIN_TURNS_BEFORE_DONE && !continuationNudgeSent) {
-          continuationNudgeSent = true;
+        // No tool calls — the model believes it is finished. Validate that
+        // against the output contract rather than against a turn count: a run
+        // that completed the workflow in three turns is done, and one that
+        // burned six turns without ingesting anything is not.
+        const contractNudge = workflowContract.nudge();
+        if (contractNudge) {
+          const unmet = workflowContract
+            .evaluate()
+            .unmet.map((i) => i.id)
+            .join(", ");
           console.log(
-            `[Chat] Model stopped at turn ${turnCount}/${maxTurns} — injecting continuation nudge`,
+            `[Chat] Contract unmet at turn ${turnCount}/${maxTurns} (${unmet}) — nudging`,
           );
-          historyMessages.push({
-            role: "user",
-            content:
-              "[SYSTEM] You stopped after only a few tool calls. Before writing your final answer, " +
-              "make sure you have completed the full analysis workflow: inspect the graph topology " +
-              "(get_graph_topology), check cohomology (get_cohomology), review SOC metrics " +
-              "(get_soc_metrics), and — for contested or multi-position topics — verify logical " +
-              "consistency (evaluate_logical_consistency or mcp-logic proofs). If you have already " +
-              "done all of these, proceed with your answer. Otherwise, continue your analysis now.",
+          runLog.event("contract_nudge", {
+            turn: turnCount,
+            unmet,
+            contract: workflowContract.summary(),
           });
+          historyMessages.push({ role: "user", content: contractNudge });
         } else {
-          // Genuinely done (enough turns used, or nudge already sent)
+          // Contract satisfied, nudge budget spent, or the same gap was
+          // already raised once — either way, stop. Bounded by construction.
           isDone = true;
         }
       }
@@ -1562,7 +1732,12 @@ ${skillContent}`,
     console.log(
       `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
     );
-    runLog.end({ turns: turnCount, elapsedSeconds: elapsed });
+    runLog.end({
+      turns: turnCount,
+      elapsedSeconds: elapsed,
+      contract: workflowContract.summary(),
+      recoveryLedger: recovery.snapshot(),
+    });
 
     // Send usage
     if (lastResult?.usage) {
