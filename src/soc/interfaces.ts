@@ -201,6 +201,28 @@ export interface SOCConfig {
 
   /** Phase 6: RegimeAnalyzer configuration overrides. */
   readonly regimeAnalyzerConfig?: Partial<RegimeAnalyzerConfig>;
+
+  /**
+   * Node count above which von Neumann entropy switches from the exact dense
+   * eigendecomposition to the linear-time FINGER approximation.
+   *
+   * The exact solver is O(n³) time and O(n²) memory. Measured on this repo:
+   * 121 nodes → 0.33 s, 201 → 1.7 s, 382 → 14.5 s, ~800 → ~2.8 min. Because
+   * AGEM's graph is persistent and accumulates across every cycle of a
+   * session, that cost is per-cycle and rising, and a session stalls after a
+   * few real corpora.
+   *
+   * FINGER (Chen et al., ICML 2019) computes the same quantity in O(n+m) via a
+   * quadratic approximation, is a LOWER bound on the exact value, and becomes
+   * MORE accurate as the graph grows (relative error 1/(n−1) on Kₙ). Below the
+   * threshold the exact solver is cheap, so it is kept for fidelity.
+   *
+   * Set to 0 to always approximate, or Infinity to always use the exact
+   * solver (not recommended for long sessions).
+   *
+   * Default: 250
+   */
+  readonly exactEntropyMaxNodes?: number;
 }
 
 // ---------------------------------------------------------------------------

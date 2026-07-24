@@ -91,6 +91,14 @@ const ConfigSchema = z.object({
     .string()
     .default("true")
     .transform((v) => v !== "false" && v !== "0"),
+  /**
+   * User-message size (characters) at or above which a run counts as an
+   * analysis even before the model has touched the engine. Below it, the
+   * contract only activates once an analysis tool is actually used — so a
+   * short maintenance command like "reset the engine" is never nudged to
+   * ingest a corpus it does not have. Default: 600
+   */
+  CHAT_CONTRACT_MATERIAL_CHARS: z.coerce.number().min(0).default(600),
 });
 
 type Config = z.infer<typeof ConfigSchema>;

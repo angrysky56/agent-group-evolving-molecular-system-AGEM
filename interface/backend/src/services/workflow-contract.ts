@@ -63,11 +63,39 @@ export interface WorkflowContractOptions {
    * post-cycle engine state.
    */
   isContested: () => boolean;
+  /**
+   * Size of the material the user supplied this run. A pasted corpus activates
+   * the contract even before the model has touched the engine; a one-line
+   * command does not. See `#isAnalysisRun`.
+   */
+  materialChars?: number;
+  /** Minimum user-message size that counts as "a corpus was supplied". */
+  materialThreshold?: number;
   /** Maximum number of nudges per run. */
   maxNudges?: number;
   /** Disable contract nudging entirely (falls back to "model decides"). */
   enabled?: boolean;
 }
+
+/**
+ * Tools whose use means "this run is doing analysis".
+ *
+ * Deliberately excludes maintenance and status calls — `reset_agem_engine`,
+ * `get_agem_state`, `list_mcp_servers`, `read_skill`. Resetting the engine is
+ * not an analysis, and a run that only resets has nothing to ingest.
+ */
+const ANALYSIS_SURFACE = new Set([
+  "run_agem_cycle",
+  "get_graph_topology",
+  "get_cohomology",
+  "get_soc_metrics",
+  "detect_gaps",
+  "generate_catalyst_questions",
+  "search_context",
+  "evaluate_logical_consistency",
+  "mcp-logic/prove",
+  "mcp-logic/find_counterexample",
+]);
 
 /** Tool names that satisfy the "verify logical consistency" requirement. */
 const LOGIC_TOOLS = new Set([
@@ -86,8 +114,35 @@ export class WorkflowContract {
     this.#options = {
       maxNudges: 2,
       enabled: true,
+      materialChars: 0,
+      materialThreshold: 600,
       ...options,
     };
+  }
+
+  /**
+   * Is this run an analysis at all?
+   *
+   * The contract validates HOW an analysis was done, not whether the user
+   * wanted one. "Use reset_agem_engine to reset to a clean state" is a
+   * maintenance command: there is no corpus, and demanding an ingest forces
+   * the model into an extra round trip to re-explain that it has nothing to
+   * ingest. (Observed: run 2026-07-24T23-08-48 — a 73-character command took
+   * three turns because the contract nudged a run that had no material.)
+   *
+   * Two activation signals, both deterministic:
+   *   1. The model touched the analysis surface.
+   *   2. The user supplied enough text to be a corpus.
+   * Neither ⇒ the contract stays dormant and the model decides when it is done.
+   */
+  #isAnalysisRun(): boolean {
+    if (this.#options.materialChars >= this.#options.materialThreshold) {
+      return true;
+    }
+    for (const tool of ANALYSIS_SURFACE) {
+      if (this.count(tool) > 0) return true;
+    }
+    return false;
   }
 
   /**
@@ -113,8 +168,9 @@ export class WorkflowContract {
 
   /** Evaluate κ against what the run has done so far. */
   evaluate(): ContractEvaluation {
+    const analysisRun = this.#isAnalysisRun();
     const ranCycle = this.count("run_agem_cycle") > 0;
-    const contested = ranCycle && this.#safeIsContested();
+    const contested = analysisRun && ranCycle && this.#safeIsContested();
     const logicRuns = [...LOGIC_TOOLS].reduce(
       (sum, name) => sum + this.count(name),
       0,
@@ -126,14 +182,14 @@ export class WorkflowContract {
         requirement: "At least one run_agem_cycle",
         hint: "You have not ingested the material into the graph yet — call run_agem_cycle with the text to analyse.",
         satisfied: ranCycle,
-        applicable: true,
+        applicable: analysisRun,
       },
       {
         id: "inspect",
         requirement: "At least one get_graph_topology",
         hint: "You have not inspected the graph — call get_graph_topology to see the concept communities and bridges before answering.",
         satisfied: this.count("get_graph_topology") > 0,
-        applicable: true,
+        applicable: analysisRun,
       },
       {
         id: "verify",
@@ -199,6 +255,7 @@ export class WorkflowContract {
     const { satisfied, items } = this.evaluate();
     return {
       satisfied,
+      analysisRun: this.#isAnalysisRun(),
       nudges: this.#nudgeCount,
       items: items.map((i) => ({
         id: i.id,

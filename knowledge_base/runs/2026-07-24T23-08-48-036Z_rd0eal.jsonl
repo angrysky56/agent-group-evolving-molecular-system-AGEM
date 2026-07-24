@@ -1,0 +1,5 @@
+{"t":"2026-07-24T23:08:48.036Z","type":"run_start","runId":"2026-07-24T23-08-48-036Z_rd0eal","model":"deepseek/deepseek-v4-pro","sessionId":"a551de1f-8c56-49bf-bc2b-d16330eaf908","messageChars":73}
+{"t":"2026-07-24T23:08:51.000Z","type":"tool_call","name":"reset_agem_engine","args":{}}
+{"t":"2026-07-24T23:08:51.002Z","type":"tool_result","name":"reset_agem_engine","output":"AGEM engine reset."}
+{"t":"2026-07-24T23:08:57.209Z","type":"contract_nudge","turn":2,"unmet":"ingest, inspect","contract":{"satisfied":false,"nudges":1,"items":[{"id":"ingest","applicable":true,"satisfied":false},{"id":"inspect","applicable":true,"satisfied":false},{"id":"verify","applicable":false,"satisfied":false}],"toolCounts":{"reset_agem_engine":1}}}
+{"t":"2026-07-24T23:09:04.811Z","type":"run_end","turns":3,"elapsedSeconds":17,"contract":{"satisfied":false,"nudges":1,"items":[{"id":"ingest","applicable":true,"satisfied":false},{"id":"inspect","applicable":true,"satisfied":false},{"id":"verify","applicable":false,"satisfied":false}],"toolCounts":{"reset_agem_engine":1}},"recoveryLedger":{}}

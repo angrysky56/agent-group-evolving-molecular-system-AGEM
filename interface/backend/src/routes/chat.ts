@@ -909,9 +909,14 @@ ${skillContent}`,
     // "Contested" is read from the engine's own clustering: two or more concept
     // communities means a multi-position corpus, which requires formal
     // verification before any consistency claim.
+    // It stays dormant on runs that are not analyses at all — a bare
+    // "reset the engine" has no corpus, and nudging it to ingest just costs a
+    // round trip.
     const workflowContract = createWorkflowContract({
       enabled: settings.all.CHAT_ENFORCE_WORKFLOW_CONTRACT,
       isContested: () => (agemBridge.getState().communities ?? 0) >= 2,
+      materialChars: typeof message === "string" ? message.length : 0,
+      materialThreshold: settings.all.CHAT_CONTRACT_MATERIAL_CHARS,
     });
 
     while (!isDone && turnCount < maxTurns) {

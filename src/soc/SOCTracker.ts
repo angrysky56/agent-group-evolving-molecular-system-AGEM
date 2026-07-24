@@ -55,6 +55,7 @@ import {
   embeddingEntropy,
   cosineSimilarity,
 } from "./entropy.js";
+import { fingerVonNeumannEntropy } from "./fingerEntropy.js";
 import { pearsonCorrelation, linearSlope } from "./correlation.js";
 import { RegimeValidator, RegimeAnalyzer } from "./RegimeValidator.js";
 
@@ -66,6 +67,12 @@ const DEFAULT_CONFIG: SOCConfig = {
   correlationWindowSize: 10,
   surprisingEdgeSimilarityThreshold: 0.3,
   trendWindowSize: 5,
+  /*
+   * Above 250 nodes the exact dense eigendecomposition stops being affordable
+   * (382 nodes measured at 14.5 s per cycle, growing as n^3.3), so VNE
+   * switches to the linear-time FINGER approximation. See SOCConfig docs.
+   */
+  exactEntropyMaxNodes: 250,
 };
 
 // ---------------------------------------------------------------------------
@@ -128,6 +135,73 @@ export class SOCTracker extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // Von Neumann entropy — exact below the threshold, FINGER above it
+  // ---------------------------------------------------------------------------
+
+  /** Tracks whether the estimator switch has already been announced. */
+  #announcedApproximation = false;
+
+  /**
+   * Compute VNE with the affordable estimator for the current graph size.
+   *
+   * Returns the same quantity either way; only the method differs. FINGER is a
+   * lower bound on the exact value, so the metric errs conservative rather
+   * than over-claiming structure.
+   */
+  #vonNeumannEntropy(
+    nodeCount: number,
+    edges: SOCInputs["edges"],
+    iteration: number,
+  ): number {
+    const threshold = this.#config.exactEntropyMaxNodes ?? 250;
+    if (nodeCount <= threshold) return vonNeumannEntropy(nodeCount, edges);
+
+    const result = fingerVonNeumannEntropy(nodeCount, edges);
+
+    if (!this.#announcedApproximation) {
+      this.#announcedApproximation = true;
+      // FINGER is a LOWER bound, so switching estimators mid-session steps the
+      // series down. VNE feeds a rolling correlation and a regime classifier,
+      // both of which read trends — an unexplained step could be mistaken for
+      // a phase transition. So on the ONE iteration where the switch happens,
+      // pay for the exact value too and report the offset. This costs a few
+      // seconds once, and turns a hidden discontinuity into a measured one.
+      let offsetNote = "";
+      if (nodeCount <= 2 * threshold) {
+        try {
+          const exact = vonNeumannEntropy(nodeCount, edges);
+          this.#approximationOffset = exact - result.entropy;
+          offsetNote =
+            ` One-off crossover check: exact=${exact.toFixed(4)}, ` +
+            `approx=${result.entropy.toFixed(4)}, step=${this.#approximationOffset.toFixed(4)} nats ` +
+            `(${((this.#approximationOffset / (exact || 1)) * 100).toFixed(2)}% low).`;
+        } catch {
+          offsetNote = " Crossover comparison unavailable.";
+        }
+      }
+      console.log(
+        `[SOC] Iteration ${iteration}: graph has ${nodeCount} nodes (> ${threshold}); ` +
+          `von Neumann entropy now uses the FINGER linear-time approximation ` +
+          `(lower bound on exact; solver error ≤ ~${(result.q * result.relativeResidual).toExponential(1)} nats).` +
+          offsetNote,
+      );
+    }
+    return result.entropy;
+  }
+
+  /**
+   * Exact-minus-approximate VNE measured at the crossover iteration, if it was
+   * measured. Exposed so a caller can report or compensate for the step rather
+   * than discovering it as a phantom phase transition.
+   */
+  #approximationOffset: number | undefined;
+
+  /** The measured estimator-switch step, in nats, or undefined. */
+  getApproximationOffset(): number | undefined {
+    return this.#approximationOffset;
+  }
+
+  // ---------------------------------------------------------------------------
   // computeAndEmit — main computation method
   // ---------------------------------------------------------------------------
 
@@ -155,8 +229,12 @@ export class SOCTracker extends EventEmitter {
       iteration,
     } = inputs;
 
-    // Step 1: Von Neumann entropy
-    const vne = vonNeumannEntropy(nodeCount, edges);
+    // Step 1: Von Neumann entropy.
+    // Exact dense eigendecomposition while the graph is small enough for it to
+    // be free; linear-time FINGER approximation once it is not. The switch is
+    // logged rather than silent, because which estimator produced a metric is
+    // exactly the kind of thing that must not be invisible.
+    const vne = this.#vonNeumannEntropy(nodeCount, edges, iteration);
 
     // Step 2: Embedding entropy
     const ee = embeddingEntropy(Array.from(embeddings.values()));
