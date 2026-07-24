@@ -12,6 +12,7 @@
 | **Add Knowledge** | Drop `.md` in `skills/`            | Agent Skill Loading                |
 | **Run Tests**     | `npm test`                         | Core Engine Validation             |
 | **Inspect a run** | Read `knowledge_base/runs/<id>.md` | Full tool I/O + graph-ingest trace |
+| **Benchmark**     | `npx tsx benchmarks/phase-timing.bench.ts` | Per-phase cycle cost vs graph size |
 
 ## What AGEM does
 
@@ -21,7 +22,7 @@ Each reasoning cycle ingests text into a persistent, accumulating concept graph 
 
 - **Graph topology (TNA)** — concept communities (Louvain) and the bridges between them. The richest signal: which ideas cluster and how they connect.
 - **Sheaf H⁰ — connectivity / fragmentation.** H⁰ is the number of connected semantic components. Rising H⁰ means the discussion is fragmenting into separate topic-islands; falling H⁰ means a new idea bridged previously separate clusters. This is the geometric sheaf's real, reliable contribution.
-- **Self-Organized Criticality (SOC)** — von Neumann entropy, embedding entropy, CDP, and a regime classifier (nascent / stable / critical). A measure of how much the graph is still developing, and a detector for "conclusion precedes logic" (embedding entropy stabilizing before structural entropy).
+- **Self-Organized Criticality (SOC)** — von Neumann entropy, embedding entropy, CDP, and a regime classifier (nascent / stable / critical). A measure of how much the graph is still developing, and a detector for "conclusion precedes logic" (embedding entropy stabilizing before structural entropy). VNE is computed exactly on small graphs and via the linear-time **FINGER** approximation once the graph outgrows a dense eigendecomposition — see [Scaling: linear-time graph entropy](#scaling-linear-time-graph-entropy).
 - **Logic-based H¹ — genuine contradiction detection.** See below. This is AGEM's distinctive capability.
 
 > [!IMPORTANT]
@@ -67,6 +68,46 @@ Formulas use ASCII first-order logic: `->` `<->` `&` `|` `-` (negation), parenth
 
 Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_<id>.jsonl` and a `.md` transcript alongside it: the **exact text fed into the graph each cycle**, the **full input and output of every tool call** (including the `checkLog` from `evaluate_logical_consistency`), and a run-end summary. The run-log id is also surfaced in tool output. This makes after-the-fact debugging a matter of reading one file rather than reconstructing from terminal scrollback.
 
+## Scaling: linear-time graph entropy
+
+Von Neumann entropy was originally computed by eigendecomposing a dense n×n normalized Laplacian — O(n³) time, O(n²) memory. Because AGEM's graph is **persistent and accumulates across every cycle of a session**, that cost is not per-corpus but per-cycle and rising. Measured (`benchmarks/phase-timing.bench.ts`): 382 nodes → **14.5 s per cycle**, scaling as ≈n^3.3, so ~800 nodes → ~2.8 min and ~2000 nodes → ~57 min. A session ingesting a few real corpora would stall.
+
+AGEM now uses **FINGER** ([Chen et al., ICML 2019](#references)) above a configurable node threshold, replacing the whole eigenspectrum with a single trace:
+
+```
+Q = 1 − tr(ρ²)          Ĥ = −Q · ln λ_max          both O(n + m)
+```
+
+| nodes | before | after |
+| ----: | -----: | ----: |
+|   382 | 14 498 ms | **19.8 ms** |
+|   682 | ~64 s | **15.0 ms** |
+|  2082 | ~57 min | **84.3 ms** |
+
+**This is a re-derivation, not a transcription.** FINGER publishes its closed form for the _combinatorial_ Laplacian scaled by its trace; AGEM uses the _symmetric normalized_ Laplacian `I − D^(−1/2) A D^(−1/2)`. Applying the published formula directly would have silently computed a different quantity that still looked plausible. What generalises is the identity `Q = 1 − tr(ρ²)`; only the closed form for `tr(ρ²)` is matrix-specific. The AGEM derivation is anchored on Kₙ (`Q = (n−2)/(n−1)`, `λ_max(ρ) = 1/(n−1)`) and every accuracy test asserts against the **real exact solver**, not hand-copied numbers.
+
+Properties that made it safe to adopt, all under test in `src/soc/fingerEntropy.test.ts`:
+
+- **Lower bound on the exact value** — the metric errs conservative, never over-claiming structure.
+- **Error shrinks as the graph grows** — relative error `1/(n−1)` on Kₙ; most accurate exactly where it is needed.
+- **Deterministic** — fixed power-iteration start vector, never `Math.random`, matching the seeded-Louvain precedent.
+- **Ordering preserved** — SOC reads VNE as a trend, so monotonicity matters more than absolute value.
+
+> [!NOTE]
+> Because FINGER is a lower bound, crossing the threshold **steps the VNE series down**, and SOC's rolling correlation and regime classifier read trends — an unexplained step could register as a phantom phase transition. So on the single iteration where the switch happens, `SOCTracker` also computes the exact value and logs the offset (`getApproximationOffset()`). The discontinuity is a measured number, not a surprise.
+
+Threshold: `SOCConfig.exactEntropyMaxNodes` (default 250). Below it the exact solver is cheap enough to be worth the fidelity. Full write-up in `docs/tool-execution-controllability.md`.
+
+## Tool execution: bounded recovery and side-effect-aware dispatch
+
+The chat tool loop has an explicit controllability layer rather than leaving failure handling to the model's judgement. Design vocabulary from [Hu Wei's scheduler-theoretic framework](#references); its central prescription — the static DAG — was **deliberately rejected**, since that paper disqualifies its own architecture for open-ended exploration and dynamic goal evolution, which is precisely AGEM's domain. Only the controllability primitives transferred.
+
+- **Bounded three-level recovery** (`recovery-protocol.ts`) — L1 engine-side retry for transient faults (network, timeout, rate limit, 5xx), L2 deterministic argument repair for schema faults, L3 escalation to the model. The escalation invariant is enforced mechanically by a per-call `pristine → retried → patched` counter, not by convention. Replaces an unbounded loop whose only rule was the words "retry ONCE" in a prompt.
+- **Non-idempotent calls are never blind-retried** — `run_agem_cycle` ingests into the accumulating graph, so a silent retry would double-count the same co-occurrences. Those failures escalate with a notice saying why.
+- **Context partition** — full failure detail (stack, response body, every attempt) goes to the run log only. Chat history receives a terse, length-capped, structured notice. Failure text never becomes implicit input to later reasoning, and never reaches the concept graph.
+- **Side-effect-aware parallel dispatch** (`tool-dispatch.ts`) — consecutive read-only calls run concurrently; every mutating call is a wave of its own, so read/write order is preserved and results return in original call order. Unknown tools default to *mutating*: misclassifying a read as a write costs latency, the reverse corrupts the graph.
+- **Output contract** (`workflow-contract.ts`) — a run completes when the workflow demonstrably happened (ingest → inspect → verify-if-multi-position), not when a turn counter says so. "Multi-position" is read from AGEM's own clustering (≥2 concept communities), not keyword-matched. Only *successful* calls count. Stays dormant on non-analysis runs, so "reset the engine" is never nudged to ingest a corpus it does not have.
+
 ## Optional MCP servers
 
 AGEM does not require any MCP server other than `mcp-logic` (for contradiction detection). The meta-tools `list_mcp_servers`, `list_server_tools`, and `call_mcp_tool` let an agent reach any other server configured in `mcp.json` — useful utilities include `fetch`, `sqlite`, `memory`, `desktop-commander`, `playwright`, and `docker`. Other reasoning servers may be configured but are experimental and are not part of the standard workflow.
@@ -80,6 +121,10 @@ AGEM does not require any MCP server other than `mcp-logic` (for contradiction d
 - **Sheaf H⁰ connectivity** — `CellularSheaf` + `CohomologyAnalyzer` track how the concept graph fragments and coheres via SVD of the coboundary operator.
 - **Text Network Analysis (TNA)** — co-occurrence graph, Louvain community detection, centrality, structural gap detection, ForceAtlas2 layout, catalyst-question generation.
 - **Self-Organized Criticality (SOC)** — CDP, VNE, EE, SER tracking with phase-transition detection, regime classification, and System-1 ("conclusion precedes logic") detection via `RegimeValidator`.
+- **Linear-time graph entropy (FINGER)** — O(n+m) von Neumann entropy above a node threshold, replacing an O(n³) dense eigendecomposition; 382-node cycles went 14.5 s → 19.8 ms, and previously-impossible 2000-node graphs now cost 84 ms.
+- **Bounded tool recovery** — three-level escalation (retry → patch → escalate) with the invariant enforced by a per-call state counter, non-idempotent calls protected from silent retry, and full failure detail kept out of chat history and the concept graph.
+- **Side-effect-aware tool dispatch** — read-only tools run concurrently, mutating tools serially and in order; unknown tools default to the safe side.
+- **Workflow output contract** — completion validated against what the run actually did, not a turn counter, and dormant on non-analysis runs.
 - **Lifecycle Context Model (LCM)** — append-only immutable store, embedding cache, hierarchical summary DAG, and a three-level escalation protocol with guaranteed convergence.
 - **Lumpability auditing** — `LumpabilityAuditor` detects information loss at LCM compaction boundaries by comparing embedding-entropy profiles of source entries vs summary nodes.
 - **Molecular Chain-of-Thought** — reasoning topology using covalent (strong dependency), hydrogen (self-reflection), and Van der Waals (exploration) bond metaphors.
@@ -116,17 +161,24 @@ agent-group-evolving-molecular-system-AGEM/
 │   ├── sheaf/                 #   CellularSheaf + CohomologyAnalyzer (geometric H⁰/H¹)
 │   ├── tna/                   #   Text Network Analysis pipeline
 │   ├── soc/                   #   Self-Organized Criticality tracker
+│   │   ├── entropy.ts         #     Exact VNE + embedding entropy
+│   │   └── fingerEntropy.ts   #     FINGER linear-time VNE (O(n+m))
 │   ├── lcm/                   #   Lifecycle Context Model
 │   ├── lumpability/           #   Lumpability auditing
 │   └── types/                 #   Shared type definitions + events
 ├── interface/                 # Full-stack chat interface
 │   ├── backend/src/services/  #   LLM providers, agem-bridge, logicalCohomology, run-logger, MCP manager
+│   │   ├── recovery-protocol.ts  #  Bounded three-level tool recovery
+│   │   ├── tool-dispatch.ts      #  Side-effect classification + parallel dispatch
+│   │   └── workflow-contract.ts  #  Output contract κ for run completion
 │   ├── frontend/              #   React + Vite dashboard
 │   └── shared/                #   FE ↔ BE type contract
+├── benchmarks/                # Phase-timing benchmark (settles perf questions with data)
 ├── cli/                       # Interactive terminal REPL (thin HTTP client)
 ├── skills/                    # YAML-frontmatter agent skill definitions
 ├── docs/
 │   ├── emergent-bonds-and-stateless-reconstruction.md  # Logic-H¹ derivation + verification (§13–15)
+│   ├── tool-execution-controllability.md               # Recovery/contract layer + FINGER derivation
 │   └── logic-corpus/          # Calibrated test corpus for logic-based H¹
 ├── knowledge_base/runs/       # Per-run traces (graph inputs + full tool I/O)
 └── mcp.json                   # MCP server configuration (mcp-logic + optional utilities)
@@ -201,6 +253,18 @@ All configuration lives in `.env`. Key settings:
 | `OPENROUTER_MODEL`       | `google/gemini-2.5-flash-preview` | OpenRouter chat model                                 |
 | `PORT`                   | `8000`                            | Backend server port                                   |
 
+Tool-execution settings:
+
+| Variable                         | Default | Description                                                                                                    |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------- |
+| `CHAT_MAX_TURNS`                 | `30`    | Hard cap on tool turns per request.                                                                             |
+| `TOOL_RETRY_BUDGET`              | `2`     | L1 retries for **transient** faults on **idempotent** calls only. `0` escalates every failure to the model.      |
+| `TOOL_MAX_CONCURRENCY`           | `4`     | Max simultaneous read-only tool calls. Mutating tools are always serial regardless of this value.                |
+| `CHAT_ENFORCE_WORKFLOW_CONTRACT` | `true`  | Require ingest → inspect → verify-if-multi-position before a run may finish.                                    |
+| `CHAT_CONTRACT_MATERIAL_CHARS`   | `600`   | User-message size at which a run counts as an analysis, so short maintenance commands are never nudged.          |
+
+Engine setting (`SOCConfig`, not env): `exactEntropyMaxNodes` (default `250`) — node count above which VNE switches from the exact solver to FINGER.
+
 ## Architecture
 
 ```
@@ -229,6 +293,29 @@ All events flow through the central `EventBus`; modules communicate via typed ev
 | `npm test`           | Run the full Vitest suite.          |
 | `npm run test:watch` | Vitest in watch mode.               |
 | `npm run typecheck`  | TypeScript compiler, no emit.       |
+
+Benchmark (not part of the test suite):
+
+```bash
+npx tsx benchmarks/phase-timing.bench.ts   # per-phase cycle cost vs graph size
+```
+
+## References
+
+Work AGEM builds on directly. Where an idea was adapted rather than adopted wholesale, the difference is stated — the adaptations are AGEM's responsibility, not the original authors'.
+
+**FINGER — linear-time von Neumann graph entropy**
+Pin-Yu Chen, Lingfei Wu, Sijia Liu, Indika Rajapakse. *Fast Incremental von Neumann Graph Entropy Computation: Theory, Algorithm, and Applications.* ICML 2019. [arXiv:1805.11769](https://arxiv.org/abs/1805.11769)
+
+> Used for `src/soc/fingerEntropy.ts`. The quadratic-approximation insight — collapse the eigenspectrum into `Q = 1 − tr(ρ²)` and pair it with `λ_max` alone — is entirely theirs, and it is what turns an O(n³) metric into an O(n+m) one. **Adaptation:** the paper's closed form is derived for the combinatorial Laplacian scaled by its trace; AGEM's VNE is defined over the symmetric normalized Laplacian, so the closed form for `tr(ρ²)` was re-derived for that matrix and validated against AGEM's exact solver. Their Theorem 2 incremental update is not implemented — recomputing `Q` is already microseconds at these sizes. Any error in the re-derivation is ours.
+
+**Scheduler-theoretic framework for LLM agent execution**
+Hu Wei. *From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution.* 2026. [arXiv:2604.11378](https://arxiv.org/abs/2604.11378)
+
+> Provided the vocabulary and the design discipline for the tool-execution layer: bounded three-level recovery with a mechanically enforced escalation invariant, execution/diagnostic context partition, output-contract validation, and side-effect classification. **Deliberately not adopted:** the paper's central prescription, the static pre-planned DAG. Its own §9.7 and §10.2 disqualify that architecture for open-ended exploration and dynamic goal evolution — which is exactly what AGEM does — so only the controllability primitives, which are orthogonal to static planning, were taken. Note also that the paper is a position paper: it states plainly that its performance predictions are untested, and nothing here treats them as evidence.
+
+**Formal logic**
+Prover9/Mace4 (LADR), William McCune — the theorem prover and model finder underneath every satisfiability check in the consistency complex, via [`mcp-logic`](https://github.com/angrysky56/mcp-logic).
 
 ## License
 
