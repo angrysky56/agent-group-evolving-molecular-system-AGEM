@@ -8,7 +8,7 @@ live in `generalization-trilemma-KEY.md` — do not feed that one to the model.
 Feed the four stages **as four separate `run_agem_cycle` calls, in order**, one
 stage per cycle. Between cycles, inspect (`get_graph_topology`,
 `get_cohomology`, `get_soc_metrics`). The staging is the point: this corpus is
-designed so that the *trajectory* of the metrics matters more than any single
+designed so that the _trajectory_ of the metrics matters more than any single
 reading.
 
 Only after all four stages, run `evaluate_logical_consistency`.
@@ -27,7 +27,7 @@ does**. If AGEM's central claim is true — that H⁰ is for connectivity and
 logic-H¹ is for contradiction, and the two are different machines — then this
 corpus should make the two machines visibly disagree.
 
-Three specific traps are set. They are described here by *mechanism*, not by
+Three specific traps are set. They are described here by _mechanism_, not by
 outcome, so you can watch for them without knowing the answer:
 
 1. **Lexical clustering that cross-cuts the logical structure.** Two positions

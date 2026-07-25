@@ -27,6 +27,11 @@ load-bearing assumption"). An evaluation advocate genuinely holds it; they
 accept the conditional and deny the antecedent by asserting that dispositions
 travel too. That denial is what collides with Stage 2.
 
+> [!CAUTION]
+> **The "pairwise consistent" claim below is WRONG, and the error was mine.**
+> See "Correction" at the end of this section. The formalization above omits a
+> sentence Stage 3 actually contains. Keep reading before trusting the table.
+
 **Verified with Mace4** (`find_counterexample`, conclusion `$F`; `model_found` =
 consistent, `no_model_found` = contradictory):
 
@@ -38,7 +43,28 @@ consistent, `no_model_found` = contradictory):
 | `BEHAVIORAL` + `EVALFIRST` | model_found |
 | all three | **no_model_found — contradictory** |
 
-Pairwise consistent, jointly impossible. That is the H¹ signature.
+### Correction (after run 2026-07-25, 12 turns / 611s)
+
+That verification was rigorous about the formulas and wrong about whether the
+formulas match the prose. Stage 3 does not merely hold the conditional and stay
+silent on the antecedent — it says outright:
+
+> "Dispositions travel with capabilities, because they are learned by the same
+> mechanism at the same time."
+
+which is `travels(alignment)`, the flat negation of Stage 2's "the thing
+installed does not travel". So `BEHAVIORAL + EVALFIRST` is **contradictory at
+arity 2**, not consistent. Confirmed with Mace4.
+
+I verified a formalization I wrote against a prover, and never checked that the
+formalization covered the text I had also written. That is the same
+under-formalization failure `analyzeFormalization` now catches in the model —
+committed by me, under the banner "verified against Mace4".
+
+**The corpus therefore contains a pairwise contradiction plus a 3-wise one, not
+a clean pairwise-consistent trilemma.** It is still a good test — arguably a
+better one, since it exercises both arities — but it is not the structure this
+document originally described.
 
 ## Expected result
 
@@ -114,9 +140,29 @@ logical relation to any block.
 
 Stage 4 is written to connect the separated clusters lexically: it deliberately
 uses both registers, names the interpretability material as "connective tissue,"
-and concludes the disagreement is "more terminological than substantive." It
-asserts nothing that bears on `travels(capability)`, `travels(alignment)`, or
-`predicts(evaluation)`.
+and concludes the disagreement is "more terminological than substantive."
+
+> [!CAUTION]
+> **The original claim here — that Stage 4 "asserts nothing" logically — was
+> also wrong.** It contains:
+>
+> > "capabilities and dispositions are not two kinds of thing at all. They are
+> > the same kind of thing"
+>
+> which is a **biconditional**, `generalizes(capability) <-> generalizes(disposition)`,
+> and it is load-bearing. Combined with Stage 1 (`generalizes(capability)`) and
+> Stage 2 (`-generalizes(disposition)`) it produces a genuine arity-3
+> frustration: each pair satisfiable, the triple impossible. Verified with
+> Mace4 after the fact.
+>
+> This is the most interesting thing the corpus produced, and it was an
+> accident: **the reconciliation is what makes the contradiction formally
+> undeniable.** Stage 4 tries to dissolve the disagreement by identifying the
+> two objects, and identifying them is exactly what forces the collision. The
+> peacemaker supplies the premise that makes peace impossible.
+>
+> So Stage 4 is not a pure vocabulary bridge. It fragments the graph *and*
+> carries a logical claim. The intent was inert; the prose was not.
 
 **Predicted: H⁰ falls. Observed: H⁰ ROSE, 1 → 2 → 3. The prediction was wrong.**
 
