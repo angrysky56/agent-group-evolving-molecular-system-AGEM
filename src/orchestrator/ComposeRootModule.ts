@@ -528,12 +528,30 @@ export class Orchestrator {
     // Step 1: Increment iteration counter
     this.#iterationCounter++;
 
+    /*
+     * Per-phase wall-clock, because "the cycle took 14 minutes" is not an
+     * actionable fact. The in-process phases (TNA, Louvain, sheaf, SOC) are
+     * milliseconds; the cost is in the phases that leave the process — LCM
+     * compaction and per-node embedding, both of which are network round trips
+     * to a model provider. Those were invisible until this existed.
+     */
+    const phaseMs: Record<string, number> = {};
+    const cycleStart = Date.now();
+    let phaseMark = cycleStart;
+    const lap = (label: string): void => {
+      const now = Date.now();
+      phaseMs[label] = (phaseMs[label] ?? 0) + (now - phaseMark);
+      phaseMark = now;
+    };
+
     // Step 2: Preprocess text via TNA
     const preprocessed = this.tnaPreprocessor.preprocess(prompt);
+    lap("preprocess");
 
     // Step 3: Build co-occurrence graph from preprocessed tokens
     // ingest() handles both lemmatization and sliding window internally
     this.tnaGraph.ingest(prompt, this.#iterationCounter);
+    lap("graph_ingest");
 
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: TNA processed ` +
@@ -559,9 +577,11 @@ export class Orchestrator {
         this.tnaLayout.computeIfDue(this.#iterationCounter);
       }
     }
+    lap("louvain_centrality_layout");
 
     // Step 5: Append prompt to LCM
     const entryId = await this.lcmClient.append(prompt, signal);
+    lap("lcm_append");
     if (signal?.aborted) throw new Error("Aborted");
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`,
@@ -671,6 +691,8 @@ export class Orchestrator {
       }
     }
 
+    lap("lcm_compaction");
+
     // Step 6: Run Sheaf cohomology analysis
     // Dynamically construct CellularSheaf base graph from SubgraphRegistry (Move B2)
     const dynamicSheaf = await this.buildSheafFromRegistry();
@@ -686,6 +708,8 @@ export class Orchestrator {
     );
     // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
     // (and are forwarded to eventBus via #wireEventBus handlers above)
+
+    lap("sheaf");
 
     // Step 7: Compute SOC metrics
     // Build SOCInputs from TNA graph outputs.
@@ -708,8 +732,11 @@ export class Orchestrator {
       }
     });
 
+    lap("soc_inputs");
+
     // Build node embeddings for SOC (cache new nodes only)
     await this.#updateNodeEmbeddings(graphInstance, signal);
+    lap("embeddings");
     if (signal?.aborted) throw new Error("Aborted");
 
     const socInputs: SOCInputs = {
@@ -725,6 +752,7 @@ export class Orchestrator {
     this.#previousSocInputs = socInputs;
 
     this.socTracker.computeAndEmit(socInputs);
+    lap("soc_metrics");
     // Events 'soc:metrics' and optionally 'phase:transition' fire here
 
     // Step 8: Evolve reasoning paths via Price equation
@@ -748,6 +776,26 @@ export class Orchestrator {
       learningRate: this.priceEvolver.getCurrentLearningRate(),
       exploreExploitRatio: this.priceEvolver.getExploreExploitRatio(),
     } as AnyEvent);
+    lap("evolution");
+
+    // Report where the cycle actually went, slowest phase first.
+    const totalMs = Date.now() - cycleStart;
+    this.#lastPhaseTimings = { ...phaseMs, total: totalMs };
+    const ranked = Object.entries(phaseMs)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`)
+      .join(" ");
+    console.log(
+      `[ORCH] Iteration ${this.#iterationCounter}: cycle took ${(totalMs / 1000).toFixed(1)}s — ${ranked}`,
+    );
+  }
+
+  /** Per-phase wall-clock of the most recent cycle, in ms. */
+  #lastPhaseTimings: Record<string, number> = {};
+
+  /** Where the last cycle spent its time. Empty before the first cycle. */
+  getLastPhaseTimings(): Readonly<Record<string, number>> {
+    return this.#lastPhaseTimings;
   }
 
   // -------------------------------------------------------------------------

@@ -88,9 +88,9 @@ const ConfigSchema = z.object({
    * run may finish. When false, the model decides when it is done. Default: true
    */
   CHAT_ENFORCE_WORKFLOW_CONTRACT: z
-    .string()
+    .union([z.boolean(), z.string()])
     .default("true")
-    .transform((v) => v !== "false" && v !== "0"),
+    .transform((v) => (typeof v === "boolean" ? v : v !== "false" && v !== "0")),
   /**
    * User-message size (characters) at or above which a run counts as an
    * analysis even before the model has touched the engine. Below it, the
