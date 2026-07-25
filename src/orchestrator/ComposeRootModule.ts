@@ -250,12 +250,27 @@ export class Orchestrator {
         level3KTokens: number;
         coherenceSimilarityThreshold: number;
       }>;
+      /** Overrides for when consolidation fires; see runReasoning. */
+      lcmCompaction?: Partial<{
+        ceilingTokens: number;
+        minNewTokens: number;
+        targetRatio: number;
+      }>;
     },
   ) {
     this.eventBus = new EventBus();
     this.#embedder = embedder;
     this.#vdwAgentMaxIterations = options?.vdwAgentMaxIterations;
     this.#lcmThresholdOverrides = options?.lcmThresholds;
+    if (options?.lcmCompaction?.ceilingTokens !== undefined) {
+      this.#lcmCompactionCeilingTokens = options.lcmCompaction.ceilingTokens;
+    }
+    if (options?.lcmCompaction?.minNewTokens !== undefined) {
+      this.#lcmCompactionMinNewTokens = options.lcmCompaction.minNewTokens;
+    }
+    if (options?.lcmCompaction?.targetRatio !== undefined) {
+      this.#lcmCompactionTargetRatio = options.lcmCompaction.targetRatio;
+    }
 
     this.#initLcm(embedder, compressor);
     this.#initSheaf();
@@ -323,6 +338,9 @@ export class Orchestrator {
 
     this.eventBus.subscribe("regime:classification", (event: AnyEvent) => {
       const regimeEvent = event as unknown as { regime: string };
+      // Compaction gates on this: consolidate what has settled, not what is
+      // merely long. See the decision block in runReasoning.
+      this.#currentRegime = regimeEvent.regime;
       this.obstructionHandler.updateRegime(regimeEvent.regime);
     });
 
@@ -646,12 +664,65 @@ export class Orchestrator {
       compressorUsed: false,
     };
 
-    if (estimatedTokens > this.lcmEscalation.level1TokenLimit) {
-      const concatenatedText = allEntries.map((e) => e.content).join("\n\n");
-      result = await this.lcmEscalation.escalate(concatenatedText);
+    /*
+     * Compaction decision. Three defects in the old `estimatedTokens > limit`
+     * trigger, all of which this replaces:
+     *
+     * 1. CONTENT-BLIND. A token count is not a memory bottleneck. The theory
+     *    this mechanism implements says pressure forces hierarchy over settled
+     *    structure; consolidating material that is still actively developing
+     *    destroys articulation that is still needed — which is exactly what
+     *    the LumpabilityAuditor calls weak compression. Every run to date sat
+     *    in `nascent` while compaction fired on every cycle.
+     *
+     * 2. MONOTONE. The LCM store is append-only, so `estimatedTokens` never
+     *    decreases. Once the threshold was crossed it stayed crossed forever,
+     *    and the trigger fired every subsequent cycle for the life of the
+     *    session.
+     *
+     * 3. QUADRATIC. Each of those firings re-compacted the ENTIRE accumulated
+     *    history, so cost grew with session length — the measured 49s of a
+     *    53s cycle, still climbing.
+     *
+     * Now: consolidate material that has SETTLED (previous cycle's regime is
+     * stable — this runs before SOC, so the regime available is last cycle's,
+     * which is the right question anyway: "has what I have accumulated
+     * settled?"), or when a genuine ceiling forces it. Only ever over entries
+     * not already folded into a summary, which keeps each compaction bounded
+     * and builds an actual hierarchy in the DAG instead of repeatedly
+     * flattening the whole history.
+     */
+    const unconsolidated = allEntries.filter(
+      (e) => !this.#consolidatedEntryIds.has(e.id),
+    );
+    const newTokens = unconsolidated.reduce((sum, e) => sum + e.tokenCount, 0);
+
+    const settled =
+      this.#currentRegime === "stable" || this.#currentRegime === "transitioning";
+    const atCeiling = estimatedTokens >= this.#lcmCompactionCeilingTokens;
+    const worthConsolidating = newTokens >= this.#lcmCompactionMinNewTokens;
+
+    const shouldCompact = worthConsolidating && (settled || atCeiling);
+
+    if (shouldCompact && unconsolidated.length > 0) {
+      const concatenatedText = unconsolidated.map((e) => e.content).join("\n\n");
+      const target = Math.max(
+        64,
+        Math.floor(newTokens * this.#lcmCompactionTargetRatio),
+      );
+      console.log(
+        `[ORCH] Iteration ${this.#iterationCounter}: consolidating ${unconsolidated.length} entries ` +
+          `(${newTokens} new tokens → target ${target}) — reason: ${
+            atCeiling ? "ceiling" : `regime settled (${this.#currentRegime})`
+          }`,
+      );
+      result = await this.lcmEscalation.escalate(concatenatedText, target);
     }
     if (result.level > 0) {
-      const originalEntryIds = allEntries.map((e) => e.id);
+      const originalEntryIds = unconsolidated.map((e) => e.id);
+      // Mark folded-in entries so the next consolidation covers only what is
+      // genuinely new. Without this the trigger can never un-fire.
+      for (const id of originalEntryIds) this.#consolidatedEntryIds.add(id);
 
       // Generate reflections at compaction (Move C1)
       let reflections: Array<{ question: string; answer: string }> = [];
@@ -825,6 +896,26 @@ export class Orchestrator {
 
   /** Per-phase wall-clock of the most recent cycle, in ms. */
   #lastPhaseTimings: Record<string, number> = {};
+
+  /**
+   * Regime as of the last classification. Compaction reads this to decide
+   * whether the accumulated material has settled enough to consolidate.
+   */
+  #currentRegime = "nascent";
+
+  /**
+   * Entries already folded into a summary node. The LCM store is append-only,
+   * so without this the compaction trigger can never un-fire and every cycle
+   * re-compacts the whole history.
+   */
+  readonly #consolidatedEntryIds = new Set<string>();
+
+  /** Force consolidation at this total size regardless of regime. */
+  #lcmCompactionCeilingTokens = 32000;
+  /** Below this much NEW material, there is nothing worth consolidating. */
+  #lcmCompactionMinNewTokens = 4000;
+  /** Compress settled material to this fraction of its size. */
+  #lcmCompactionTargetRatio = 0.4;
 
   /** Deployment overrides for LCM escalation thresholds. */
   readonly #lcmThresholdOverrides?: Partial<{

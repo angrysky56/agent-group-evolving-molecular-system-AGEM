@@ -171,13 +171,19 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     }
 
     const mockComp = new ReflectionMockCompressor();
-    const orch = new Orchestrator(embedder, mockComp);
+    /*
+     * Compaction is no longer triggered by `level1TokenLimit`. That threshold
+     * was doing two jobs — trigger and compression target — and as a trigger it
+     * was content-blind, monotone (the store is append-only, so it never
+     * un-fired) and quadratic (it re-compacted the whole history every cycle).
+     * Consolidation now fires when material has SETTLED or a ceiling forces it,
+     * so a test that wants it unconditionally sets the ceiling to 1.
+     */
+    const orch = new Orchestrator(embedder, mockComp, {
+      lcmCompaction: { ceilingTokens: 1, minNewTokens: 1 },
+    });
 
     try {
-      // Trigger compaction (add past token limit)
-      // Live escalation threshold is 1000, so let's set level1TokenLimit to 10 for testing
-      orch.lcmEscalation.setThresholds({ level1TokenLimit: 10 });
-
       await orch.runReasoning(
         "This is a very long prompt to trigger compaction.",
       );

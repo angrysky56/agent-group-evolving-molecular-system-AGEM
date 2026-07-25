@@ -74,6 +74,11 @@ class AgemBridge {
       lcmThresholds: {
         level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,
       },
+      lcmCompaction: {
+        ceilingTokens: settings.all.LCM_COMPACTION_CEILING_TOKENS,
+        minNewTokens: settings.all.LCM_COMPACTION_MIN_NEW_TOKENS,
+        targetRatio: settings.all.LCM_COMPACTION_TARGET_RATIO,
+      },
     });
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
@@ -1102,6 +1107,11 @@ class AgemBridge {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
       lcmThresholds: {
         level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,
+      },
+      lcmCompaction: {
+        ceilingTokens: settings.all.LCM_COMPACTION_CEILING_TOKENS,
+        minNewTokens: settings.all.LCM_COMPACTION_MIN_NEW_TOKENS,
+        targetRatio: settings.all.LCM_COMPACTION_TARGET_RATIO,
       },
     });
     this.#grep = this.#buildGrep(embedder);

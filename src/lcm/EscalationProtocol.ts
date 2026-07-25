@@ -207,13 +207,30 @@ export class EscalationProtocol extends EventEmitter {
    * @param text - The input text to escalate.
    * @returns EscalationResult with level, output, token counts, and metadata.
    */
-  async escalate(text: string): Promise<EscalationResult> {
+  async escalate(
+    text: string,
+    targetTokens?: number,
+  ): Promise<EscalationResult> {
     const inputTokens = this.#tokenCounter.countTokens(text);
-    const { level1TokenLimit, level2MinRatio, level3KTokens } =
-      this.#thresholds;
+    const { level2MinRatio, level3KTokens } = this.#thresholds;
+
+    /*
+     * `targetTokens` lets the CALLER decide both that a compaction should
+     * happen and how small the result should be, instead of that decision
+     * being a side effect of one threshold doing two jobs.
+     *
+     * Previously `level1TokenLimit` was simultaneously (a) the trigger — any
+     * history above it gets compacted — and (b) the compression target. That
+     * coupling meant you could not say "consolidate this settled material down
+     * to 40%" without also saying "and compact everything above 40% forever".
+     * When a caller supplies a target, the size-based early exit is skipped:
+     * the caller has already decided.
+     */
+    const level1TokenLimit = targetTokens ?? this.#thresholds.level1TokenLimit;
+    const callerDirected = targetTokens !== undefined;
 
     // No escalation needed — return as-is.
-    if (inputTokens <= level1TokenLimit) {
+    if (!callerDirected && inputTokens <= level1TokenLimit) {
       return {
         level: 0,
         output: text,

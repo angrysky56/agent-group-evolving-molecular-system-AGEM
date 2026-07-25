@@ -128,6 +128,27 @@ const ConfigSchema = z.object({
    * as a change in the material if this was retuned in between.
    */
   LCM_LEVEL1_TOKEN_LIMIT: z.coerce.number().min(256).default(32000),
+
+  /**
+   * Total accumulated LCM size at which consolidation is FORCED regardless of
+   * regime — the genuine memory ceiling. Default: 32000
+   */
+  LCM_COMPACTION_CEILING_TOKENS: z.coerce.number().min(256).default(32000),
+  /**
+   * Minimum NEW material (tokens not yet folded into a summary) before
+   * consolidation is worth doing. Prevents re-consolidating on every cycle.
+   *
+   * This exists because the LCM store is append-only: total size never falls,
+   * so a total-size trigger can never un-fire. Gate on what is genuinely new.
+   * Default: 4000
+   */
+  LCM_COMPACTION_MIN_NEW_TOKENS: z.coerce.number().min(64).default(4000),
+  /**
+   * Fraction of its own size that settled material is compressed to. Replaces
+   * the old behaviour where one threshold was both the trigger and the target.
+   * Default: 0.4
+   */
+  LCM_COMPACTION_TARGET_RATIO: z.coerce.number().min(0.05).max(0.95).default(0.4),
 });
 
 type Config = z.infer<typeof ConfigSchema>;
