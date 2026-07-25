@@ -44,6 +44,26 @@ export interface Frustration {
   blocks: string[];
   /** Number of blocks involved. 3 = classic frustrated triple. */
   arity: number;
+  /**
+   * The minimal set of individual PROPOSITIONS responsible for the clash,
+   * with the block each came from.
+   *
+   * Naming the blocks tells you *that* three positions cannot co-exist; it does
+   * not tell you which of their claims does the damage. A block with five
+   * formulas contributes all five to the report and only one or two to the
+   * contradiction. This narrows it to the formulas that are actually load
+   * bearing — every one of them is necessary, and dropping any restores
+   * satisfiability.
+   *
+   * Absent when core extraction was disabled or ran out of budget.
+   */
+  core?: Array<{ block: string; formula: string }>;
+  /**
+   * Set when the core could not be fully minimised — the budget ran out, or a
+   * satisfiability check came back undetermined and the formula was kept
+   * rather than wrongly discarded. The listed core is then an over-approximation.
+   */
+  coreTruncated?: boolean;
 }
 
 export interface LogicalCohomologyResult {
@@ -116,7 +136,7 @@ export interface LogicalCohomologyResult {
    * what it tested, and the verdict. The mcp-logic calls happen inside the
    * engine, so this is how they become inspectable rather than opaque. */
   checkLog: {
-    kind: "internal" | "pair" | "triple" | "set";
+    kind: "internal" | "pair" | "triple" | "set" | "core";
     blocks: string[];
     formulas: string[];
     verdict: "consistent" | "contradictory" | "undetermined";
@@ -294,11 +314,20 @@ export interface LogicalCohomologyOptions {
   maxArity?: number;
   /** Hard cap on satisfiability calls, since each is a Prover9/Mace4 run. */
   maxChecks?: number;
+  /**
+   * Narrow each frustration to the individual propositions responsible.
+   * Costs roughly one extra check per formula in the frustrated blocks.
+   */
+  extractCores?: boolean;
+  /** Per-frustration budget for core extraction. */
+  maxCoreChecks?: number;
 }
 
 export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
   maxArity: 4,
   maxChecks: 400,
+  extractCores: true,
+  maxCoreChecks: 60,
 };
 
 /** A satisfiability oracle: true = consistent, false = contradictory.
@@ -411,6 +440,68 @@ function matrixRank(M: number[][], tol = 1e-9): number {
 }
 
 const key2 = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** One proposition together with the block it came from. */
+export interface AttributedFormula {
+  block: string;
+  formula: string;
+}
+
+/**
+ * extractCore — narrow an unsatisfiable formula set to a minimal core.
+ *
+ * Deletion-based minimisation, not combinatorial search. Try dropping each
+ * formula in turn; if the remainder is still unsatisfiable the formula was not
+ * needed, so drop it for good. What survives is a set in which EVERY member is
+ * necessary — remove any one and the set becomes satisfiable.
+ *
+ * Cost is linear: one satisfiability call per formula, so a 9-formula block set
+ * costs 9 calls. Enumerating subsets to arity 4 over the same 9 formulas would
+ * be 255. At roughly a second per Mace4 invocation that is the difference
+ * between usable and not.
+ *
+ * Returns ONE minimal core. There can be several independent ones; this finds
+ * the first reachable by this deletion order, which is why the order is fixed
+ * (input order) rather than arbitrary — the result is at least reproducible.
+ *
+ * Safety: an `undetermined` verdict means we could not establish that the
+ * remainder is still unsatisfiable, so the formula is KEPT and the core is
+ * marked truncated. Dropping on an inconclusive check would silently produce a
+ * "core" that is not actually unsatisfiable.
+ */
+export async function extractCore(
+  formulas: AttributedFormula[],
+  sat: SatOracle,
+  options: { maxChecks?: number } = {},
+): Promise<{ core: AttributedFormula[]; truncated: boolean; checks: number }> {
+  const maxChecks = options.maxChecks ?? 60;
+  let working = [...formulas];
+  let checks = 0;
+  let truncated = false;
+
+  for (const candidate of [...formulas]) {
+    if (working.length <= 1) break;
+    if (checks >= maxChecks) {
+      truncated = true;
+      break;
+    }
+    const remainder = working.filter((f) => f !== candidate);
+    if (remainder.length === 0) continue;
+
+    const r = await sat(remainder.map((f) => f.formula));
+    checks++;
+
+    if (r.consistent === false) {
+      // Still unsatisfiable without it ⇒ it was not load bearing.
+      working = remainder;
+    } else if (r.consistent === null) {
+      truncated = true; // keep the formula; we cannot prove it redundant
+    }
+    // consistent === true ⇒ the formula IS necessary; keep it.
+  }
+
+  return { core: working, truncated, checks };
+}
 
 /**
  * Run the full pipeline: internal-consistency → pairwise → triple checks via the
@@ -527,6 +618,38 @@ export async function computeLogicalCohomology(
     previousLevel = nextLevel;
     for (const nk of nextKeys) consistentKeys.add(nk);
     if (nextLevel.length === 0) break;
+  }
+
+  /*
+   * 2b) Narrow each frustration to the propositions actually responsible.
+   *
+   * The block-level result says three positions cannot co-exist. It does not
+   * say which of their claims collide, and a block routinely contributes
+   * several formulas of which one matters. Deletion-based minimisation over
+   * the union of the frustrated blocks' propositions answers that, at linear
+   * rather than combinatorial cost.
+   */
+  if (opts.extractCores) {
+    for (const f of frustrations) {
+      const attributed: AttributedFormula[] = f.blocks.flatMap((name) =>
+        (propsOf.get(name) ?? []).map((formula) => ({ block: name, formula })),
+      );
+      const { core, truncated, checks } = await extractCore(attributed, sat, {
+        maxChecks: opts.maxCoreChecks,
+      });
+      checksPerformed += checks;
+      f.core = core;
+      if (truncated) f.coreTruncated = true;
+      checkLog.push({
+        kind: "core",
+        blocks: f.blocks,
+        formulas: core.map((c) => `${c.block}: ${c.formula}`),
+        verdict: "contradictory",
+        note: truncated
+          ? `minimal core (TRUNCATED — over-approximation), ${checks} checks`
+          : `minimal core, ${checks} checks`,
+      });
+    }
   }
 
   const pairSet = new Set(consistentPairs.map(([a, b]) => key2(a, b)));

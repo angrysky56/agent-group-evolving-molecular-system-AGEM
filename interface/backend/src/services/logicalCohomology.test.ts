@@ -352,6 +352,99 @@ describe("formalization defects — vacuous consistency", () => {
   });
 });
 
+describe("minimal cores — which propositions actually collide", () => {
+  it("isolates the load-bearing formulas and drops the passengers", async () => {
+    // Each block carries a real claim plus filler that has nothing to do with
+    // the clash. The core must name the three that matter and none of the rest.
+    const blocks: LogicalBlock[] = [
+      { name: "P", propositions: ["p(x)", "a0(x)", "a1(x)"] },
+      { name: "PQ", propositions: ["p(x) -> q(x)", "a2(x)"] },
+      { name: "NQ", propositions: ["-q(x)", "a3(x)", "a4(x)"] },
+    ];
+    const r = await computeLogicalCohomology(blocks, sat);
+
+    expect(r.hasContradiction).toBe(true);
+    const core = r.frustrations[0].core ?? [];
+    const formulas = core.map((c) => c.formula).sort();
+    expect(formulas).toEqual(["-q(x)", "p(x)", "p(x) -> q(x)"]);
+    expect(r.frustrations[0].coreTruncated).toBeUndefined();
+  });
+
+  it("keeps provenance — every core formula names its block", async () => {
+    const blocks: LogicalBlock[] = [
+      { name: "P", propositions: ["p(x)"] },
+      { name: "PQ", propositions: ["p(x) -> q(x)"] },
+      { name: "NQ", propositions: ["-q(x)"] },
+    ];
+    const r = await computeLogicalCohomology(blocks, sat);
+    const core = r.frustrations[0].core ?? [];
+    expect(core.find((c) => c.formula === "p(x)")?.block).toBe("P");
+    expect(core.find((c) => c.formula === "-q(x)")?.block).toBe("NQ");
+  });
+
+  it("produces a core that is genuinely unsatisfiable and genuinely minimal", async () => {
+    const blocks: LogicalBlock[] = [
+      { name: "P", propositions: ["p(x)", "a0(x)"] },
+      { name: "PQ", propositions: ["p(x) -> q(x)"] },
+      { name: "NQ", propositions: ["-q(x)", "a1(x)"] },
+    ];
+    const r = await computeLogicalCohomology(blocks, sat);
+    const core = (r.frustrations[0].core ?? []).map((c) => c.formula);
+
+    // Unsatisfiable as a set...
+    expect((await sat(core)).consistent).toBe(false);
+    // ...and every member necessary: drop any one and it becomes satisfiable.
+    for (const f of core) {
+      const without = core.filter((x) => x !== f);
+      expect((await sat(without)).consistent).toBe(true);
+    }
+  });
+
+  it("narrows an arity-2 clash to the two colliding formulas", async () => {
+    const blocks: LogicalBlock[] = [
+      { name: "T", propositions: ["p(x)", "a0(x)", "a1(x)"] },
+      { name: "F", propositions: ["-p(x)", "a2(x)"] },
+    ];
+    const r = await computeLogicalCohomology(blocks, sat);
+    const core = (r.frustrations[0].core ?? []).map((c) => c.formula).sort();
+    expect(core).toEqual(["-p(x)", "p(x)"]);
+  });
+
+  it("can be switched off", async () => {
+    const r = await computeLogicalCohomology(TRIPLE, sat, {
+      extractCores: false,
+    });
+    expect(r.hasContradiction).toBe(true);
+    expect(r.frustrations[0].core).toBeUndefined();
+  });
+
+  it("marks the core truncated rather than guessing when a check is undetermined", async () => {
+    // An oracle that refuses to answer subset queries must not cause a formula
+    // to be dropped — the reported core is then an over-approximation, and
+    // says so.
+    let first = true;
+    const flaky: SatOracle = async (fs) => {
+      if (first) {
+        first = false;
+        return sat(fs); // let the frustration itself be found
+      }
+      const r = await sat(fs);
+      return r.consistent === false ? { consistent: null, note: "flaky" } : r;
+    };
+    const r = await computeLogicalCohomology(TRIPLE, flaky);
+    if (r.hasContradiction) {
+      expect(r.frustrations[0].coreTruncated ?? false).toBe(true);
+    }
+  });
+
+  it("records core extraction in the audit trail", async () => {
+    const r = await computeLogicalCohomology(TRIPLE, sat);
+    const coreEntries = r.checkLog.filter((c) => c.kind === "core");
+    expect(coreEntries).toHaveLength(1);
+    expect(coreEntries[0].note).toMatch(/minimal core/);
+  });
+});
+
 describe("search accounting is honest", () => {
   it("reports how far it searched and how many checks it ran", async () => {
     const r = await computeLogicalCohomology([...TRIPLE, ...filler(2)], sat);

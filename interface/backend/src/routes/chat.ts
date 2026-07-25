@@ -1212,7 +1212,19 @@ ${skillContent}`,
                   : result.hasContradiction
                     ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal unsatisfiable set(s): ` +
                       result.frustrations
-                        .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
+                        .map((f) => {
+                          const head = `{${f.blocks.join(", ")}} (arity ${f.arity})`;
+                          if (!f.core || f.core.length === 0) return head;
+                          // Name the propositions that actually collide, not
+                          // just the blocks they came from.
+                          const core = f.core
+                            .map((c) => `${c.block}: ${c.formula}`)
+                            .join(" | ");
+                          return (
+                            `${head} — the clash is exactly: ${core}` +
+                            (f.coreTruncated ? " [core not fully minimised]" : "")
+                          );
+                        })
                         .join("; ")
                     : result.searchTruncated
                       ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out.`
