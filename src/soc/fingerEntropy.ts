@@ -135,7 +135,7 @@ const DEFAULTS: Required<FingerOptions> = {
 };
 
 /** Compact adjacency built once and shared by both phases. */
-interface Adjacency {
+export interface Adjacency {
   /** Deduplicated undirected edges with accumulated weights. */
   edges: WeightedEdge[];
   /** Weighted degree per node. */
@@ -150,7 +150,7 @@ interface Adjacency {
  * Any divergence here would make the two implementations disagree on the same
  * input for reasons that have nothing to do with the approximation.
  */
-function buildAdjacency(
+export function buildAdjacency(
   nodeCount: number,
   edges: ReadonlyArray<WeightedEdge>,
 ): Adjacency {

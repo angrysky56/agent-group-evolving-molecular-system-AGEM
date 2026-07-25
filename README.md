@@ -98,6 +98,22 @@ Properties that made it safe to adopt, all under test in `src/soc/fingerEntropy.
 
 Threshold: `SOCConfig.exactEntropyMaxNodes` (default 250). Below it the exact solver is cheap enough to be worth the fidelity. Full write-up in `docs/tool-execution-controllability.md`.
 
+### What it unlocked: entropy centrality
+
+Making VNE cheap made a second measure affordable — `src/soc/entropyCentrality.ts`, the dyadic core of [Hu, Tian & Zhang](#references). Rank a concept by how much entropy the graph loses when it is removed: `score(v) = Θ(G) − Θ(G∖v)`. Ranking every node needs _n_ entropy computations, so against the dense solver this was O(n⁴) — 43 s for a 120-node graph, hours at real sizes. It now runs in **15 ms at 2000 nodes**, via an incremental update that re-prices only the edges touching a removed node's neighbourhood.
+
+Measured against the exact dense solver (Spearman rank correlation, hub-heavy graph):
+
+| signal | ρ vs exact ΔΘ | distinct values / 120 |
+| --- | ---: | ---: |
+| **ΔQ** | **0.99** | **120** |
+| ΔĤ (full FINGER estimate) | 0.14 | — |
+| degree centrality | 0.12 | 16 |
+
+Two results worth recording. **Rank by `Q`, not by `Ĥ`** — the obvious move is to use the better entropy estimate `Ĥ = −Q·ln λ_max`, and it fails, because λ_max shifts from node to node and swamps the ordering. The source paper reaches for the quadratic approximation for _speed_ and notes it costs accuracy; on this evidence it is also the more faithful _ranking_ signal, which is an argument the paper does not make. And **degree centrality ties badly** — 16 distinct values across 120 nodes, so it cannot order within its buckets, while ΔQ separates all 120.
+
+Scope, honestly: this is a **structural** measure, not a semantic one — a function word that slips past the preprocessor's noise filters will score highly, and deserves to by this metric. It is currently a measured signal with tests, **not yet wired into any tool**; the natural use is seeding `detect_gaps` / `generate_catalyst_questions` with load-bearing concepts instead of degree. The source paper's hypergraph machinery (s-line graphs, hyperedge-cardinality weighting) does **not** apply to AGEM's dyadic graph and is not implemented, and its evaluation validates epidemic-propagation influence rather than importance in a reasoning graph — so the numbers above were measured here against this repo's exact solver rather than inherited.
+
 ## Tool execution: bounded recovery and side-effect-aware dispatch
 
 The chat tool loop has an explicit controllability layer rather than leaving failure handling to the model's judgement. Design vocabulary from [Hu Wei's scheduler-theoretic framework](#references); its central prescription — the static DAG — was **deliberately rejected**, since that paper disqualifies its own architecture for open-ended exploration and dynamic goal evolution, which is precisely AGEM's domain. Only the controllability primitives transferred.
@@ -122,6 +138,7 @@ AGEM does not require any MCP server other than `mcp-logic` (for contradiction d
 - **Text Network Analysis (TNA)** — co-occurrence graph, Louvain community detection, centrality, structural gap detection, ForceAtlas2 layout, catalyst-question generation.
 - **Self-Organized Criticality (SOC)** — CDP, VNE, EE, SER tracking with phase-transition detection, regime classification, and System-1 ("conclusion precedes logic") detection via `RegimeValidator`.
 - **Linear-time graph entropy (FINGER)** — O(n+m) von Neumann entropy above a node threshold, replacing an O(n³) dense eigendecomposition; 382-node cycles went 14.5 s → 19.8 ms, and previously-impossible 2000-node graphs now cost 84 ms.
+- **Entropy centrality** — ranks concepts by the entropy the graph loses without them (ρ≈0.99 against the exact solver, where degree centrality manages 0.12 and ties 120 nodes into 16 buckets). Measured signal with tests; not yet wired into any tool.
 - **Bounded tool recovery** — three-level escalation (retry → patch → escalate) with the invariant enforced by a per-call state counter, non-idempotent calls protected from silent retry, and full failure detail kept out of chat history and the concept graph.
 - **Side-effect-aware tool dispatch** — read-only tools run concurrently, mutating tools serially and in order; unknown tools default to the safe side.
 - **Workflow output contract** — completion validated against what the run actually did, not a turn counter, and dormant on non-analysis runs.
@@ -162,7 +179,8 @@ agent-group-evolving-molecular-system-AGEM/
 │   ├── tna/                   #   Text Network Analysis pipeline
 │   ├── soc/                   #   Self-Organized Criticality tracker
 │   │   ├── entropy.ts         #     Exact VNE + embedding entropy
-│   │   └── fingerEntropy.ts   #     FINGER linear-time VNE (O(n+m))
+│   │   ├── fingerEntropy.ts   #     FINGER linear-time VNE (O(n+m))
+│   │   └── entropyCentrality.ts #   ΔQ node importance (entropy held up)
 │   ├── lcm/                   #   Lifecycle Context Model
 │   ├── lumpability/           #   Lumpability auditing
 │   └── types/                 #   Shared type definitions + events
@@ -308,6 +326,11 @@ Work AGEM builds on directly. Where an idea was adapted rather than adopted whol
 Pin-Yu Chen, Lingfei Wu, Sijia Liu, Indika Rajapakse. *Fast Incremental von Neumann Graph Entropy Computation: Theory, Algorithm, and Applications.* ICML 2019. [arXiv:1805.11769](https://arxiv.org/abs/1805.11769)
 
 > Used for `src/soc/fingerEntropy.ts`. The quadratic-approximation insight — collapse the eigenspectrum into `Q = 1 − tr(ρ²)` and pair it with `λ_max` alone — is entirely theirs, and it is what turns an O(n³) metric into an O(n+m) one. **Adaptation:** the paper's closed form is derived for the combinatorial Laplacian scaled by its trace; AGEM's VNE is defined over the symmetric normalized Laplacian, so the closed form for `tr(ρ²)` was re-derived for that matrix and validated against AGEM's exact solver. Their Theorem 2 incremental update is not implemented — recomputing `Q` is already microseconds at these sizes. Any error in the re-derivation is ours.
+
+**Entropy-based vital node identification**
+Feng Hu, Kuo Tian, Zi-Ke Zhang. *Identifying Vital Nodes in Hypergraphs Based on Von Neumann Entropy.* Entropy 25(9), 1263, 2023. [doi:10.3390/e25091263](https://doi.org/10.3390/e25091263)
+
+> Basis for `src/soc/entropyCentrality.ts`. The criterion taken is theirs: rank a node by the drop in von Neumann entropy when it is removed, and use the quadratic approximation to make that affordable. **Not adopted:** the hypergraph machinery (s-line graph projection, hyperedge-cardinality weighting) — AGEM's TNA graph is dyadic, so it has nothing to act on. **Diverging finding:** they use the quadratic approximation as a speed/accuracy tradeoff and report it slightly underperforms exact HVC; measured here, ranking by the bare quadratic term `Q` tracks the exact entropy drop at ρ≈0.99 while ranking by the fuller estimate `Ĥ` collapses to ρ≈0.14, so for ranking it is not a tradeoff but the better choice. Their evaluation targets epidemic-propagation influence, which is not AGEM's use case and is not carried over as evidence.
 
 **Scheduler-theoretic framework for LLM agent execution**
 Hu Wei. *From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution.* 2026. [arXiv:2604.11378](https://arxiv.org/abs/2604.11378)
