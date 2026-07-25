@@ -12,6 +12,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeLogicalCohomology,
+  analyzeFormalization,
   type SatOracle,
   type LogicalBlock,
 } from "./logicalCohomology.js";
@@ -197,6 +198,91 @@ describe("consistent corpora stay clean", () => {
     expect(r.h0).toBe(1);
     expect(r.h1).toBe(0);
     expect(r.h1Note).toBeUndefined();
+  });
+});
+
+describe("formalization defects — vacuous consistency", () => {
+  /*
+   * Verbatim replay of a real submission (run 2026-07-25T02-09-27_k88iic) on a
+   * corpus containing a Mace4-verified contradiction. Every block encodes
+   * negation as a predicate NAME, so nothing can contradict anything, and the
+   * tool confidently reported "no contradiction". This is the regression.
+   */
+  const REAL_RUN: LogicalBlock[] = [
+    {
+      name: "transfer_argument",
+      propositions: [
+        "competence_generalizes",
+        "all x (capability(x) -> not_distribution_bound(x))",
+        "capability_travels",
+      ],
+    },
+    {
+      name: "preference_training",
+      propositions: [
+        "distribution_bound(preference_policy)",
+        "all x (distribution_bound(x) -> not_travel(x))",
+      ],
+    },
+    {
+      name: "evaluation_mandate",
+      propositions: [
+        "all x (disposition(x) -> travels(x))",
+        "travels(trained_refusal)",
+      ],
+    },
+  ];
+
+  it("flags a negation-free submission as critical", () => {
+    const w = analyzeFormalization(REAL_RUN);
+    const codes = w.map((x) => x.code);
+    expect(codes).toContain("negation_free");
+    expect(w.find((x) => x.code === "negation_free")?.severity).toBe("critical");
+  });
+
+  it("flags negation smuggled into predicate names", () => {
+    const w = analyzeFormalization(REAL_RUN);
+    const pseudo = w.find((x) => x.code === "pseudo_negation");
+    expect(pseudo).toBeDefined();
+    expect(pseudo?.severity).toBe("critical");
+    // not_travel vs travels — different symbols, so they cannot contradict.
+    expect(pseudo?.detail?.join(" ")).toMatch(/not_travel/);
+  });
+
+  it("marks the whole result vacuous rather than reporting a clean bill", async () => {
+    const r = await computeLogicalCohomology(REAL_RUN, sat);
+    expect(r.hasContradiction).toBe(false);
+    expect(r.resultIsVacuous).toBe(true);
+  });
+
+  it("does not flag a proper encoding", () => {
+    const w = analyzeFormalization(TRIPLE);
+    expect(w.filter((x) => x.severity === "critical")).toEqual([]);
+  });
+
+  it("is not vacuous when a contradiction was actually found", async () => {
+    // Expressive enough to find one ⇒ the encoding was adequate after all.
+    const r = await computeLogicalCohomology(TRIPLE, sat);
+    expect(r.hasContradiction).toBe(true);
+    expect(r.resultIsVacuous).toBe(false);
+  });
+
+  it("warns when blocks share no predicate symbols", () => {
+    const w = analyzeFormalization([
+      { name: "A", propositions: ["-alpha(x)"] },
+      { name: "B", propositions: ["beta(y)"] },
+    ]);
+    const iso = w.find((x) => x.code === "isolated_predicates");
+    expect(iso).toBeDefined();
+    expect(iso?.detail).toEqual(expect.arrayContaining(["A", "B"]));
+  });
+
+  it("does not warn about isolation when blocks do share vocabulary", () => {
+    const w = analyzeFormalization([
+      { name: "A", propositions: ["travels(cap)"] },
+      { name: "B", propositions: ["-travels(cap)"] },
+    ]);
+    expect(w.map((x) => x.code)).not.toContain("isolated_predicates");
   });
 });
 

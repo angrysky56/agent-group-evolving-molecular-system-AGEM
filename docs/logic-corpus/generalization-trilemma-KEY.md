@@ -118,11 +118,32 @@ and concludes the disagreement is "more terminological than substantive." It
 asserts nothing that bears on `travels(capability)`, `travels(alignment)`, or
 `predicts(evaluation)`.
 
-Expected: **H⁰ falls** when Stage 4 lands (bridging previously separate
-components), possibly to 1. Embedding entropy may stabilize while structural
-entropy is still moving — the CDP / System-1 "conclusion precedes logic"
-signature, which is exactly what a persuasive synthesis that settles nothing
-looks like.
+**Predicted: H⁰ falls. Observed: H⁰ ROSE, 1 → 2 → 3. The prediction was wrong.**
+
+Measured over the four cycles (run 2026-07-25T02-09-27):
+
+| | C1 | C2 | C3 | C4 |
+| --- | ---: | ---: | ---: | ---: |
+| H⁰ | 1 | 1 | **2** | **3** |
+| communities | 9 | 12 | 11 | 13 |
+| modularity | 0.588 | 0.549 | 0.509 | 0.477 |
+| VNE | 5.04 | 5.40 | 5.64 | 5.82 |
+
+The mechanism assumption was the error. I assumed a synthesis that reuses both
+registers would *bridge* the existing clusters. What actually happened is that
+Stage 4's meta-vocabulary — *reconciliation, charitably, dissolve, terminological,
+substantive, complementary* — is largely NEW, so it formed its own clusters and
+fragmented the graph further. Stage 3 had already split it (1 → 2).
+
+The trap still worked, for a better reason than the one designed: the narrative
+says "the disagreement dissolves" while the geometry records **more**
+fragmentation. Any run that reports Stage 4 as convergence is contradicted by
+the numbers rather than merely unsupported by them. Watch for the inverse error
+too — reading rising H⁰ as *disagreement*, when it only ever means new
+vocabulary formed new topic-islands.
+
+Embedding entropy may still stabilize while structural entropy moves — the CDP /
+System-1 "conclusion precedes logic" signature.
 
 The contradiction is untouched. `evaluate_logical_consistency` should return the
 same frustrated triple after Stage 4 as before it.

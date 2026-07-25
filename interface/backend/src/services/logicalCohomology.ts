@@ -55,6 +55,18 @@ export interface LogicalCohomologyResult {
   hasContradiction: boolean;
   /** Every minimal unsatisfiable subset found, at any arity. The real product. */
   frustrations: Frustration[];
+  /**
+   * Defects in the SUPPLIED FORMALIZATION. A `critical` entry means the
+   * consistency verdict is an artifact of the encoding and says nothing about
+   * the claims — see `resultIsVacuous`.
+   */
+  formalizationWarnings: FormalizationWarning[];
+  /**
+   * True when a critical formalization defect makes "no contradiction"
+   * mathematically guaranteed regardless of content. Do not report a clean
+   * bill of health when this is set.
+   */
+  resultIsVacuous: boolean;
 
   h0: number;
   /**
@@ -110,6 +122,126 @@ export interface LogicalCohomologyResult {
     verdict: "consistent" | "contradictory" | "undetermined";
     note?: string;
   }[];
+}
+
+/**
+ * A defect in the SUPPLIED FORMALIZATION, as opposed to a finding about the
+ * claims. These matter because the satisfiability check is rigorous and the
+ * translation from prose into logic is not: a thin or malformed encoding
+ * yields a confident "no contradiction" that is an artifact of the encoding.
+ */
+export interface FormalizationWarning {
+  code: "negation_free" | "pseudo_negation" | "isolated_predicates";
+  /** `critical` = the consistency result is vacuous and must not be reported. */
+  severity: "critical" | "warning";
+  message: string;
+  detail?: string[];
+}
+
+/** Strip quantifier keywords and grab predicate / propositional symbols. */
+function symbolsOf(formula: string): Set<string> {
+  const out = new Set<string>();
+  const withoutVars = formula.replace(/\b(all|exists)\s+[a-zA-Z_][\w]*/g, " ");
+  for (const m of withoutVars.matchAll(/\b([a-z_][a-zA-Z0-9_]*)\s*\(/g)) {
+    out.add(m[1]);
+  }
+  // Bare propositional atoms: identifiers not followed by "(" .
+  for (const m of withoutVars.matchAll(/\b([a-z_][a-zA-Z0-9_]*)\b(?!\s*\()/g)) {
+    if (!["all", "exists"].includes(m[1])) out.add(m[1]);
+  }
+  return out;
+}
+
+/** True if the formula uses a real negation operator (not the "->" arrow). */
+function hasNegation(formula: string): boolean {
+  return /~/.test(formula) || /-(?!>)/.test(formula);
+}
+
+/**
+ * analyzeFormalization — catch encodings that cannot express a contradiction.
+ *
+ * Motivated by a real run: every block was submitted with negation expressed as
+ * a NAME (`not_travel`, `not_distribution_bound`) rather than the `-` operator.
+ * To a theorem prover `not_travel` and `travels` are unrelated symbols, so the
+ * set was trivially satisfiable and the tool reported "no contradiction" about
+ * a corpus containing a verified one.
+ *
+ * The `negation_free` check is not a heuristic. A first-order set containing no
+ * negation is satisfiable by construction — interpret every predicate as true
+ * everywhere and every atom, implication, conjunction and universal is
+ * satisfied. So "consistent" carries exactly zero information about the claims.
+ */
+export function analyzeFormalization(
+  blocks: LogicalBlock[],
+): FormalizationWarning[] {
+  const warnings: FormalizationWarning[] = [];
+  const allFormulas = blocks.flatMap((b) => b.propositions);
+  if (allFormulas.length === 0) return warnings;
+
+  // 1) No negation anywhere ⇒ satisfiability is a theorem, not a finding.
+  if (!allFormulas.some(hasNegation)) {
+    warnings.push({
+      code: "negation_free",
+      severity: "critical",
+      message:
+        "No formula contains a negation. A negation-free first-order set is ALWAYS satisfiable " +
+        "(interpret every predicate as true everywhere), so 'no contradiction' here is a property " +
+        "of the encoding, not of the claims. Re-encode using the '-' operator — e.g. '-travels(x)' " +
+        "rather than a predicate named 'not_travels'.",
+    });
+  }
+
+  // 2) Negation smuggled into predicate names.
+  const symbolsByBlock = blocks.map((b) => ({
+    name: b.name,
+    symbols: new Set(b.propositions.flatMap((p) => [...symbolsOf(p)])),
+  }));
+  const allSymbols = new Set(symbolsByBlock.flatMap((s) => [...s.symbols]));
+  const pseudo: string[] = [];
+  for (const sym of allSymbols) {
+    const m = /^(not|non|no)_(.+)$/.exec(sym);
+    if (!m) continue;
+    const base = m[2];
+    for (const other of allSymbols) {
+      if (other === sym) continue;
+      if (other === base || other.startsWith(base) || base.startsWith(other)) {
+        pseudo.push(`${sym} vs ${other}`);
+        break;
+      }
+    }
+  }
+  if (pseudo.length > 0) {
+    warnings.push({
+      code: "pseudo_negation",
+      severity: "critical",
+      message:
+        "Negation appears to be encoded in predicate NAMES. These are unrelated symbols to the " +
+        "prover — nothing connects them, so they can never contradict. Use the '-' operator.",
+      detail: pseudo,
+    });
+  }
+
+  // 3) Blocks that share no vocabulary cannot interact logically.
+  const isolated: string[] = [];
+  for (const a of symbolsByBlock) {
+    const overlaps = symbolsByBlock.some(
+      (b) => b.name !== a.name && [...a.symbols].some((s) => b.symbols.has(s)),
+    );
+    if (!overlaps) isolated.push(a.name);
+  }
+  if (isolated.length > 0 && symbolsByBlock.length > 1) {
+    warnings.push({
+      code: "isolated_predicates",
+      severity: "warning",
+      message:
+        "These blocks share no predicate symbols with any other block, so no contradiction " +
+        "involving them is expressible. Either they are genuinely unrelated, or the same idea " +
+        "was named differently in different blocks.",
+      detail: isolated,
+    });
+  }
+
+  return warnings;
 }
 
 export interface LogicalCohomologyOptions {
@@ -376,6 +508,13 @@ export async function computeLogicalCohomology(
   const h1 = edges.length - rankD1 - rankD2;
 
   const hasContradiction = frustrations.length > 0;
+  const formalizationWarnings = analyzeFormalization(blocks);
+  // A vacuous result is one where "consistent" was guaranteed by the encoding.
+  // Finding a contradiction anyway means the encoding was expressive enough
+  // after all, so vacuity only applies to a clean verdict.
+  const resultIsVacuous =
+    !hasContradiction &&
+    formalizationWarnings.some((w) => w.severity === "critical");
   const h1Note =
     hasContradiction && h1 === 0
       ? `H1 is 0 but ${frustrations.length} minimal unsatisfiable subset(s) were found. ` +
@@ -387,6 +526,8 @@ export async function computeLogicalCohomology(
   return {
     hasContradiction,
     frustrations,
+    formalizationWarnings,
+    resultIsVacuous,
     h0, h1, hasObstruction: h1 > 0, h1Note,
     vertices, internallyInconsistent, consistentPairs, frustratedTriples,
     searchedToArity, searchTruncated, checksPerformed,

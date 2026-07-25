@@ -43,6 +43,7 @@ const ConfigSchema = z.object({
   OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
   OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash-preview"),
   OPENROUTER_EMBEDDING_MODEL: z.string().default("google/gemini-embedding-001"),
+  OPENROUTER_MAX_TOKENS: z.coerce.number().default(16384),
 
   // Anthropic
   ANTHROPIC_API_KEY: z.string().default(""),

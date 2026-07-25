@@ -27,6 +27,7 @@ export interface ChatCompletionOptions {
     cache_control?: { type: "ephemeral" };
   }>;
   model?: string;
+  maxTokens?: number;
   tools?: any[];
   apiKey?: string;
   onToken?: StreamCallback;
@@ -442,7 +443,7 @@ class OpenRouterProvider implements LLMProvider {
       model,
       messages: options.messages,
       stream: true,
-      max_tokens: 4096,
+      max_tokens: options.maxTokens ?? settings.all.OPENROUTER_MAX_TOKENS,
     };
     if (options.tools && options.tools.length > 0) {
       bodyObj.tools = options.tools;
@@ -864,7 +865,7 @@ class AnthropicProvider implements LLMProvider {
       messages,
       system,
       tools: tools && tools.length > 0 ? tools : undefined,
-      max_tokens: 8192,
+      max_tokens: options.maxTokens ?? 8192,
       stream: true,
     };
   }

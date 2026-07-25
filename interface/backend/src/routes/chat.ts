@@ -274,10 +274,14 @@ The graph cannot detect contradiction, entailment, or consistency — only forma
 Required procedure for contested topics:
 1. After clustering, name the key blocks (use the concept communities as candidates).
 2. State each block's core claim as one or more SINGLE first-order-logic propositions.
+   **NEGATION MUST USE THE "-" OPERATOR.** Write "-travels(x)". NEVER encode negation in a predicate NAME — "not_travels(x)", "no_transfer(x)", "non_local(x)" are, to the prover, symbols with no relationship whatsoever to "travels(x)", so they can never contradict it. This is the single most common way this tool gets a meaningless answer: a set of formulas with no "-" anywhere is ALWAYS satisfiable (make every predicate true everywhere), so it will report "no contradiction" no matter what the text said.
+   Blocks must also SHARE predicate symbols. If block A says "travels(capability)" and block B says "distribution_bound(policy)", nothing connects them. Use the same predicate for the same idea across blocks, and negate it where a block denies it.
+   A contradiction is normally expressed by one block asserting P and another asserting -P, or by a conditional in one block whose antecedent the others satisfy — so if the text contains a conditional ("X only if Y", "if X then not Y"), ENCODE IT AS A CONDITIONAL. Dropping it usually destroys the tension.
 3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed), searching all subsets up to arity 4 for **minimal unsatisfiable sets** — sets of blocks that cannot all be true together, but every proper subset of which can.
 4. **Read "verdict" and "frustrations". Do NOT read H¹.** "hasContradiction" is the answer; "frustrations" names the offending sets and their arity. H¹ is a topological summary that is mathematically pinned to 0 whenever there are 4 or more blocks, and cannot see frustrations above arity 3 at all — so "H¹ = 0" is NOT evidence of consistency and must never be reported as such. If "h1Note" is present it explains the discrepancy.
 5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing.
 6. Report the frustrated sets whenever "hasContradiction" is true, and check "checkFailures".
+7. **If "resultIsVacuous" is true, you have NOT tested anything.** The encoding made "consistent" a foregone conclusion. Read "formalizationWarnings", fix the formulas, and call the tool again. Reporting "no contradiction" from a vacuous result is a false finding — say the formalization failed instead.
 
 You may also call mcp-logic directly for one-off proofs/counterexamples:
 
@@ -1197,14 +1201,21 @@ ${skillContent}`,
                 // Lead with the verdict the model should actually act on.
                 // H¹ is pinned at 0 for most realistic block counts, so
                 // putting it first invited exactly the wrong reading.
-                const verdict = result.hasContradiction
-                  ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal unsatisfiable set(s): ` +
-                    result.frustrations
-                      .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
-                      .join("; ")
-                  : result.searchTruncated
-                    ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out.`
-                    : `No contradiction: all subsets up to arity ${result.searchedToArity} are jointly satisfiable.`;
+                const verdict = result.resultIsVacuous
+                  ? `INVALID FORMALIZATION — the consistency result is VACUOUS and must not be reported as a finding. ` +
+                    result.formalizationWarnings
+                      .filter((w) => w.severity === "critical")
+                      .map((w) => w.message)
+                      .join(" ") +
+                    " Re-encode the blocks and call this tool again."
+                  : result.hasContradiction
+                    ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal unsatisfiable set(s): ` +
+                      result.frustrations
+                        .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
+                        .join("; ")
+                    : result.searchTruncated
+                      ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out.`
+                      : `No contradiction: all subsets up to arity ${result.searchedToArity} are jointly satisfiable.`;
                 output = JSON.stringify(
                   { runLogId: runLog.runId, verdict, ...result },
                   null,
