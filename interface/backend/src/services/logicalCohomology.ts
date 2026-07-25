@@ -131,7 +131,11 @@ export interface LogicalCohomologyResult {
  * yields a confident "no contradiction" that is an artifact of the encoding.
  */
 export interface FormalizationWarning {
-  code: "negation_free" | "pseudo_negation" | "isolated_predicates";
+  code:
+    | "negation_free"
+    | "pseudo_negation"
+    | "isolated_predicates"
+    | "no_existential_witness";
   /** `critical` = the consistency result is vacuous and must not be reported. */
   severity: "critical" | "warning";
   message: string;
@@ -221,7 +225,44 @@ export function analyzeFormalization(
     });
   }
 
-  // 3) Blocks that share no vocabulary cannot interact logically.
+  /*
+   * 3) Universals with no witness — satisfiable by the empty world.
+   *
+   * `all x (P(x) -> Q(x))` is true when nothing is a P. A submission made
+   * entirely of universal conditionals, with no `exists` and no ground atom to
+   * populate the domain, is therefore satisfied by interpreting every
+   * predicate as empty — and "no contradiction" says nothing about the claims.
+   *
+   * This is not hypothetical. A live submission with correct negation, shared
+   * predicates and genuinely interacting blocks returned a clean bill from the
+   * empty model; re-submitting the SAME blocks with `exists x (capability(x))`
+   * and `exists x (disposition(x))` added exposed two real frustrations, one
+   * of them a flat pairwise contradiction. None of the other checks here fire
+   * on that input, which is why this one exists.
+   */
+  const hasExistential = allFormulas.some((f) => /\bexists\b/.test(f));
+  const hasUniversal = allFormulas.some((f) => /\ball\b/.test(f));
+  // A ground atom — a predicate applied to something that is not a bound
+  // variable — also forces a non-empty extension.
+  const hasGroundAtom = allFormulas.some(
+    (f) =>
+      !/\b(all|exists)\b/.test(f) &&
+      /[a-z_][a-zA-Z0-9_]*\s*\(/.test(f),
+  );
+  if (hasUniversal && !hasExistential && !hasGroundAtom) {
+    warnings.push({
+      code: "no_existential_witness",
+      severity: "critical",
+      message:
+        "Every formula is universally quantified and nothing asserts that anything exists. " +
+        "The empty interpretation — every predicate false everywhere — satisfies all of them, " +
+        "so 'no contradiction' is a property of the encoding rather than of the claims. " +
+        "Add a witness to each block whose subject matter is supposed to be non-empty, " +
+        "e.g. 'exists x (capability(x))' alongside 'all x (capability(x) -> travels(x))'.",
+    });
+  }
+
+  // 4) Blocks that share no vocabulary cannot interact logically.
   const isolated: string[] = [];
   for (const a of symbolsByBlock) {
     const overlaps = symbolsByBlock.some(
@@ -303,7 +344,25 @@ export function makeMcpLogicOracle(
       }
       const result = String(parsed.result ?? "");
 
-      if (result === "model_found") return { consistent: true };
+      if (result === "model_found") {
+        /*
+         * mcp-logic reports when the only model it found is the EMPTY WORLD —
+         * every predicate false everywhere. A set of universally quantified
+         * conditionals is satisfied vacuously there, so "consistent" carries
+         * no information about the claims. That signal was being discarded.
+         *
+         * Observed live: a submission of pure `all x (P(x) -> Q(x))` blocks
+         * with correct negation and shared predicates returned "no
+         * contradiction" from the empty model; adding `exists x (P(x))`
+         * witnesses to the same blocks exposed two real frustrations.
+         */
+        const vacuous =
+          parsed?.model?.vacuity?.is_vacuous === true ||
+          typeof parsed?.warning === "string";
+        return vacuous
+          ? { consistent: true, note: "VACUOUS: satisfied only by the empty world" }
+          : { consistent: true };
+      }
       if (result === "no_model_found")
         return { consistent: false, note: "no model up to domain bound" };
       if (result === "error")
@@ -509,6 +568,33 @@ export async function computeLogicalCohomology(
 
   const hasContradiction = frustrations.length > 0;
   const formalizationWarnings = analyzeFormalization(blocks);
+
+  /*
+   * Runtime vacuity: the static check above catches "all universals, no
+   * witness" from the text alone, but the prover can also report that the only
+   * model it found was the empty world for subtler reasons. Promote that into
+   * a formalization warning so a clean verdict built entirely on empty models
+   * cannot be reported as a finding.
+   */
+  const vacuousChecks = checkLog.filter(
+    (c) => c.verdict === "consistent" && (c.note ?? "").startsWith("VACUOUS"),
+  );
+  if (
+    !hasContradiction &&
+    vacuousChecks.length > 0 &&
+    vacuousChecks.length === checkLog.filter((c) => c.verdict === "consistent").length
+  ) {
+    formalizationWarnings.push({
+      code: "no_existential_witness",
+      severity: "critical",
+      message:
+        `All ${vacuousChecks.length} satisfiability checks were satisfied ONLY by the empty world ` +
+        "(every predicate false everywhere). The prover flagged each one as vacuous. " +
+        "Nothing here was actually tested — assert existence for the entities your " +
+        "conditionals quantify over and re-run.",
+      detail: vacuousChecks.slice(0, 5).map((c) => c.blocks.join("+")),
+    });
+  }
   // A vacuous result is one where "consistent" was guaranteed by the encoding.
   // Finding a contradiction anyway means the encoding was expressive enough
   // after all, so vacuity only applies to a clean verdict.

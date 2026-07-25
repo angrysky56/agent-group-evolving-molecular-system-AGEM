@@ -267,6 +267,72 @@ describe("formalization defects — vacuous consistency", () => {
     expect(r.resultIsVacuous).toBe(false);
   });
 
+  /*
+   * Verbatim replay of the two calls in run 2026-07-25T06-22-46_1j7q26. The
+   * ONLY difference between them is the `exists` lines. Call #1 returned "no
+   * contradiction" with zero warnings; call #2 found two real frustrations,
+   * one of them a flat pairwise contradiction. The universals in call #1 were
+   * all satisfied by the empty world.
+   */
+  const UNIVERSALS_NO_WITNESS: LogicalBlock[] = [
+    {
+      name: "A_Transfer",
+      propositions: [
+        "all x (capability(x) -> travels(x))",
+        "all x (capability(x) -> -distribution_bound(x))",
+      ],
+    },
+    {
+      name: "B_Preference",
+      propositions: [
+        "all x (disposition(x) -> distribution_bound(x))",
+        "all x (disposition(x) -> -travels(x))",
+      ],
+    },
+    {
+      name: "C_Evaluation",
+      propositions: [
+        "all x (disposition(x) -> travels(x))",
+        "all x (disposition(x) -> -distribution_bound(x))",
+      ],
+    },
+  ];
+
+  it("flags universals with no existential witness (regression)", () => {
+    // None of the other checks fire here: negation is correct, predicates are
+    // shared, blocks genuinely interact. Only the empty-world defect applies.
+    const w = analyzeFormalization(UNIVERSALS_NO_WITNESS);
+    expect(w.map((x) => x.code)).not.toContain("negation_free");
+    expect(w.map((x) => x.code)).not.toContain("pseudo_negation");
+
+    const witness = w.find((x) => x.code === "no_existential_witness");
+    expect(witness).toBeDefined();
+    expect(witness?.severity).toBe("critical");
+  });
+
+  it("clears the warning once witnesses are asserted", () => {
+    const withWitnesses = UNIVERSALS_NO_WITNESS.map((b) => ({
+      ...b,
+      propositions: [
+        ...b.propositions,
+        b.name === "A_Transfer"
+          ? "exists x (capability(x))"
+          : "exists x (disposition(x))",
+      ],
+    }));
+    const w = analyzeFormalization(withWitnesses);
+    expect(w.map((x) => x.code)).not.toContain("no_existential_witness");
+  });
+
+  it("accepts a ground atom as a witness", () => {
+    // p(a) forces a non-empty extension just as exists does.
+    const w = analyzeFormalization([
+      { name: "A", propositions: ["all x (p(x) -> q(x))", "p(a)"] },
+      { name: "B", propositions: ["-q(a)"] },
+    ]);
+    expect(w.map((x) => x.code)).not.toContain("no_existential_witness");
+  });
+
   it("warns when blocks share no predicate symbols", () => {
     const w = analyzeFormalization([
       { name: "A", propositions: ["-alpha(x)"] },
