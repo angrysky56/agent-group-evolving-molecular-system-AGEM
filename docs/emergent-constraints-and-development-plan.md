@@ -98,9 +98,80 @@ Each level forces the system to create `SummaryNode` entries in a DAG — this I
 | Premature convergence | System 1 Override Detector | ✅ Built |
 | Syntactic binding as topology | TNA Gap Detection + Catalyst Q's | ✅ Built |
 | Criticality observation | SOCTracker (VNE/EE/CDP/SER) | ✅ Built |
-| Price equation feedback | PriceEvolver | 🔲 Planned |
-| Pólya urn reinforcement | Path fitness → weight update | 🔲 Planned |
-| Selection vs transmission | Price decomposition metric | 🔲 Planned |
+| Price equation feedback | PriceEvolver | ✅ Built |
+| Pólya urn reinforcement | Path fitness → weight update | ✅ Built, measured |
+| Selection vs transmission | Price decomposition metric | ✅ Built, conditioning fixed |
+
+---
+
+## Measured: does the Pólya loop actually do anything?
+
+The status table above said "Planned" long after the module shipped, which is
+how it went unexamined. It is built — `PriceEvolver` computes the decomposition
+and writes weights back with `setEdgeAttribute`. The question is whether that
+has an effect, and it is answerable: `benchmarks/price-ablation.bench.ts` runs
+the same corpus and seed at three learning rates with no LLM in the loop.
+
+```
+arm                          it   edges  fitDens     gini  selection  transmis
+alpha=0 (control)             6     276    0.120  0.43917    0.00000   0.47826
+alpha=0.1 (default)           6     276    0.120  0.43368   -0.01104   0.47542
+alpha=1 (10x)                 6     276    0.120  0.39551   -0.16440   0.45128
+
+mean fitness density (default arm): 22.1% of edges carry fitness
+final-cycle Gini divergence from control: default=5.5e-3  10x=4.4e-2
+```
+
+**The arms separate.** Reinforcement measurably changes the weight distribution,
+monotonically in α, and 22% of edges carry fitness — so the mechanism is wired
+and has something to act on. It is not decorative.
+
+**But it runs backwards from the stated theory.** The Pólya story above is
+rich-get-richer: successful paths "returned to the urn with multiples", which
+should *concentrate* weight and push Gini **up**. Measured, Gini goes **down**
+as α rises (0.439 → 0.434 → 0.396), and selection is **negative**.
+
+The reason is visible in the sign. Negative selection means Cov(fitness, weight)
+< 0 — fitness is landing on edges that have *low* weight. The live channels
+reward **recently created** edges, and recent edges are young and light. So the
+loop is reinforcing recency, not prestige, and multiplying up young edges
+flattens the distribution instead of concentrating it.
+
+Recency is not success. To get the dynamic the theory describes, fitness has to
+attach to *outcomes* regardless of an edge's age — gap closure and H⁰ bridging
+do that, CDP-increase does not. Two of the four channels were not delivering
+that signal:
+
+- `onGapClosure` (+1.0, the strongest reward) had **zero call sites** anywhere
+  in the repo. It is now wired to `orch:obstruction-filled`.
+- `onCohomologyUpdate` rewards a *fall in H¹*, but the geometric sheaf's H¹ is
+  ≈0 by construction, so it can never fire. Added `onFragmentationUpdate`,
+  which rewards a fall in **H⁰** — the sheaf's one signal that actually moves.
+- `onWeakLumpability` only fires when a compaction runs, so raising
+  `LCM_LEVEL1_TOKEN_LIMIT` for performance silently disabled it. Second
+  instance of a config knob disabling a feedback path; worth a general audit.
+
+Also fixed, since they made the numbers meaningless rather than merely wrong:
+
+- **Conditioning.** `w` was the raw signed fitness — 0 for most edges, so
+  `w̄ ≈ 0` and both Price terms were divided by near-zero. That is why a real
+  run showed selection jumping 0.0000 → −0.1430 with no change in selection
+  pressure. `w` is now the Pólya multiplier `1 + α·f`: positive, mean ≈ 1, and
+  by construction the factor by which the edge is about to reproduce.
+- **Off-by-one.** `#iteration` was assigned inside `evolve()`, which runs after
+  the events fire, so "edges created this iteration" actually meant a two-cycle
+  window. `beginIteration()` now sets it before events.
+- **First-cycle artifact.** `#previousCDP` started at 0, so the first real
+  reading looked like a large increase and handed out fitness for nothing.
+
+Pinned by `src/evolution/PriceEvolver.test.ts` (15 tests — there were none
+before, which is how a division by ~0 and an unreachable reward both survived).
+
+**Honest status:** the loop is real, measurable, and currently implements an
+*exploration* pressure rather than the selection pressure the theory calls for.
+Whether that is a bug or a better idea is a research question, not an
+engineering one — but it should not be described as Pólya reinforcement until
+the outcome channels are carrying the signal.
 
 ---
 

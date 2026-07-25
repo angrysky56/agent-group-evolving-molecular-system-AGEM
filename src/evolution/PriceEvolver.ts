@@ -10,7 +10,27 @@
  *
  * The Price equation:
  *   Δz̄ = Cov(w,z)/w̄  +  E(wΔz)/w̄
- *   where w = fitness, z = trait (edge weight)
+ *   where w = RELATIVE fitness, z = trait (edge weight)
+ *
+ * On the choice of w — this matters and was originally wrong.
+ * ----------------------------------------------------------
+ * The Price equation's w̄ is a normalizer that assumes w is *absolute fitness*:
+ * non-negative, with a mean around 1. This implementation originally used the
+ * raw signed fitness score as w. That score is 0 for the overwhelming majority
+ * of edges (only a handful get tagged per iteration), so w̄ ≈ 0 and both terms
+ * were divided by a near-zero quantity. The result was numerically unstable and
+ * not comparable between iterations — selection jumped 0.0000 → −0.1430 →
+ * −0.1467 on a real run without any corresponding change in selection pressure.
+ *
+ * The fix is already latent in the model: the Pólya multiplier
+ *
+ *     w_i = 1 + α · f_i
+ *
+ * IS a relative fitness. It is positive (clamped below), has mean ≈ 1 because
+ * most f_i are 0, and it is exactly the factor by which edge i's weight is
+ * about to be reproduced. Using it makes w̄ well-conditioned and gives
+ * selection/transmission their textbook meaning: the covariance between an
+ * edge's reproductive success and its weight, normalised by mean success.
  *
  * Dependencies:
  *   - graphology AbstractGraph (TNA graph, injected)
@@ -43,10 +63,24 @@ export class PriceEvolver {
   /** Previous H¹ dimension for delta tracking. */
   #previousH1: number = 0;
 
-  /** Previous CDP for delta tracking. */
-  #previousCDP: number = 0;
+  /** Previous H⁰. `null` until the first reading, so cycle 1 is not a "drop". */
+  #previousH0: number | null = null;
 
-  /** Current iteration counter. */
+  /**
+   * Previous CDP. `null` until the first reading — initialising to 0 made the
+   * first cycle look like a large CDP *increase* (0 → 2.45) and handed out
+   * fitness for nothing.
+   */
+  #previousCDP: number | null = null;
+
+  /**
+   * Iteration the events currently arriving belong to.
+   *
+   * Set by `beginIteration()` BEFORE the event handlers run. It used to be
+   * assigned only at the top of `evolve()`, which runs *after* all events have
+   * fired, so `#applyRecentEdgeFitness` compared against the previous cycle's
+   * number and rewarded a wider window than "edges created this iteration".
+   */
   #iteration: number = 0;
 
   constructor(graph: AbstractGraph, config?: Partial<PriceEvolverConfig>) {
@@ -61,7 +95,14 @@ export class PriceEvolver {
     this.#currentRegime = regime;
   }
 
-  /** Record H¹ change for fitness computation. */
+  /**
+   * Record H¹ change for fitness computation.
+   *
+   * Retained, but note it is effectively dormant: the geometric sheaf's H¹ is
+   * ≈ 0 regardless of content (real embeddings saturate the coboundary rank),
+   * so a *reduction* in it essentially never occurs. It was 0 on every cycle of
+   * every real run to date. `onFragmentationUpdate` carries this channel now.
+   */
   onCohomologyUpdate(h1Dimension: number): void {
     const delta = this.#previousH1 - h1Dimension;
     if (delta > 0) {
@@ -74,8 +115,42 @@ export class PriceEvolver {
     this.#previousH1 = h1Dimension;
   }
 
+  /**
+   * Record H⁰ (semantic fragmentation) change.
+   *
+   * A fall in H⁰ means a new idea bridged previously disconnected topic
+   * islands — the sheaf's one reliable signal, and the event most worth
+   * reinforcing. Rewards edges created recently, since those are the ones that
+   * did the bridging; rewarding the whole graph would give every edge the same
+   * fitness and drive the selection covariance to zero.
+   */
+  onFragmentationUpdate(h0Dimension: number): void {
+    if (this.#previousH0 !== null) {
+      const delta = this.#previousH0 - h0Dimension;
+      if (delta > 0) {
+        this.#applyRecentEdgeFitness(
+          this.#config.h0ReductionFitness * delta,
+          `H⁰ reduced by ${delta} (islands bridged)`,
+        );
+      }
+    }
+    this.#previousH0 = h0Dimension;
+  }
+
+  /**
+   * Mark the start of an iteration. MUST be called before the cycle's events
+   * fire, so "recent edge" means edges from this cycle rather than the last.
+   */
+  beginIteration(iteration: number): void {
+    this.#iteration = iteration;
+  }
+
   /** Record SOC metrics for CDP-based fitness. */
   onSOCMetrics(cdp: number): void {
+    if (this.#previousCDP === null) {
+      this.#previousCDP = cdp;
+      return; // First reading is a baseline, not an increase.
+    }
     const delta = cdp - this.#previousCDP;
     if (delta > 0) {
       // CDP increased — reward edges created this iteration
@@ -150,33 +225,41 @@ export class PriceEvolver {
       return empty;
     }
 
-    // 2. Compute Price equation components
-    //    w = fitness, z = weight (trait)
-    //    Δz = weight - prevWeight (trait change)
-    const meanW = edges.reduce((s, e) => s + e.fitness, 0) / n;
+    // 2. Compute Price equation components.
+    //    w = RELATIVE fitness = the Pólya multiplier (1 + α·f), clamped to stay
+    //        positive. See the header note on why raw signed fitness is wrong
+    //        here: it is 0 for most edges, so w̄ ≈ 0 and both terms blow up.
+    //    z  = edge weight (the trait under selection)
+    //    Δz = weight − prevWeight
+    const alpha = this.#getLearningRate();
+    const relW = edges.map((e) =>
+      Math.max(this.#config.minRelativeFitness, 1 + alpha * e.fitness),
+    );
+
+    const meanW = relW.reduce((s, w) => s + w, 0) / n;
     const meanZ = edges.reduce((s, e) => s + e.weight, 0) / n;
 
     // Selection: Cov(w, z) / w̄
     let covWZ = 0;
-    for (const e of edges) {
-      covWZ += (e.fitness - meanW) * (e.weight - meanZ);
+    for (let i = 0; i < n; i++) {
+      covWZ += (relW[i] - meanW) * (edges[i].weight - meanZ);
     }
     covWZ /= n;
-    const selection = meanW !== 0 ? covWZ / Math.abs(meanW) : 0;
+    const selection = meanW > 0 ? covWZ / meanW : 0;
 
     // Transmission: E(w × Δz) / w̄
     let ewDz = 0;
-    for (const e of edges) {
-      const dz = e.weight - e.prevWeight;
-      ewDz += e.fitness * dz;
+    for (let i = 0; i < n; i++) {
+      ewDz += relW[i] * (edges[i].weight - edges[i].prevWeight);
     }
     ewDz /= n;
-    const transmission = meanW !== 0 ? ewDz / Math.abs(meanW) : 0;
+    const transmission = meanW > 0 ? ewDz / meanW : 0;
 
     const totalChange = selection + transmission;
 
     // 3. Apply Pólya reinforcement: w_new = w × (1 + α × fitness)
-    const alpha = this.#getLearningRate();
+    //    Same multiplier used as relative fitness above — reproduction and
+    //    the fitness that explains it are by construction the same number.
     const newWeights = new Map<string, number>();
 
     for (const e of edges) {
@@ -276,11 +359,18 @@ export class PriceEvolver {
     });
   }
 
-  /** Apply fitness to edges created in the current iteration. */
+  /**
+   * Apply fitness to edges created in the current iteration.
+   *
+   * `>= this.#iteration` — not `- 1`. With `beginIteration()` now setting the
+   * counter before events fire, this selects exactly the edges this cycle
+   * created. The old off-by-one widened the window to two cycles, which both
+   * diluted the signal and gave older edges repeated rewards.
+   */
   #applyRecentEdgeFitness(delta: number, reason: string): void {
     this.#graph.forEachEdge((edgeKey, attrs) => {
       const created = (attrs as { createdAtIteration?: number }).createdAtIteration;
-      if (created !== undefined && created >= this.#iteration - 1) {
+      if (created !== undefined && created >= this.#iteration) {
         this.#addFitness(edgeKey, delta, reason);
       }
     });

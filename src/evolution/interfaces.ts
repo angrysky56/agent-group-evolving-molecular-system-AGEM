@@ -36,6 +36,23 @@ export interface PriceEvolverConfig {
   readonly weakLumpabilityPenalty: number;
   /** Minimum edge weight floor (prevents collapse to zero). Default: 0.1 */
   readonly minEdgeWeight: number;
+  /**
+   * Floor on relative fitness w = 1 + α·f used in the Price decomposition.
+   * Keeps w positive so w̄ is a valid normalizer even if a large penalty and a
+   * large α would otherwise drive it negative. Default: 0.01
+   */
+  readonly minRelativeFitness: number;
+  /**
+   * Fitness reward for a reduction in H⁰ (semantic fragmentation).
+   *
+   * H⁰ carries this channel rather than H¹. The geometric sheaf's H¹ is ≈ 0
+   * regardless of content — the README says so explicitly, and it was 0 on
+   * every cycle of every real run — so an H¹-reduction reward can never fire.
+   * H⁰ is the sheaf's honest signal: it falls when a new idea bridges
+   * previously separate topic-islands, which is exactly the event worth
+   * reinforcing. Default: 0.8
+   */
+  readonly h0ReductionFitness: number;
   /** Max history of Price decompositions to retain. Default: 100 */
   readonly maxHistory: number;
 }
@@ -50,6 +67,8 @@ export const DEFAULT_PRICE_CONFIG: PriceEvolverConfig = {
   cdpIncreaseFitness: 0.5,
   weakLumpabilityPenalty: -0.6,
   minEdgeWeight: 0.1,
+  minRelativeFitness: 0.01,
+  h0ReductionFitness: 0.8,
   maxHistory: 100,
 };
 

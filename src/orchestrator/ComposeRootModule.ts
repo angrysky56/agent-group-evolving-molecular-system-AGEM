@@ -420,8 +420,28 @@ export class Orchestrator {
       },
     );
 
-    this.eventBus.subscribe("sheaf:consensus-reached", () => {
+    this.eventBus.subscribe("sheaf:consensus-reached", (event: AnyEvent) => {
       this.priceEvolver.onCohomologyUpdate(0);
+      // H⁰ is the sheaf signal that actually moves; H¹ is ≈0 by construction.
+      const e = event as unknown as { h0Dimension?: number };
+      if (typeof e.h0Dimension === "number") {
+        this.priceEvolver.onFragmentationUpdate(e.h0Dimension);
+      }
+    });
+
+    /*
+     * Gap closure — the strongest fitness signal (+1.0) and, until now, dead
+     * code: `onGapClosure` had ZERO call sites anywhere in the repo. The
+     * ObstructionHandler fills gaps and announces it, but nothing forwarded
+     * that to the evolver, so the reward was unreachable.
+     */
+    this.eventBus.subscribe("orch:obstruction-filled", (event: AnyEvent) => {
+      const e = event as unknown as {
+        bridgeNodes?: readonly string[];
+        newNodes?: readonly string[];
+      };
+      const nodes = e.bridgeNodes ?? e.newNodes ?? [];
+      if (nodes.length > 0) this.priceEvolver.onGapClosure(nodes);
     });
 
     this.eventBus.subscribe("soc:metrics", (event: AnyEvent) => {
@@ -537,6 +557,9 @@ export class Orchestrator {
     if (signal?.aborted) throw new Error("Aborted");
     // Step 1: Increment iteration counter
     this.#iterationCounter++;
+    // Tell the evolver which iteration the events about to fire belong to,
+    // BEFORE any of them fire. See PriceEvolver#beginIteration.
+    this.priceEvolver.beginIteration(this.#iterationCounter);
 
     /*
      * Per-phase wall-clock, because "the cycle took 14 minutes" is not an
