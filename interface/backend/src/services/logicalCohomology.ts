@@ -125,6 +125,18 @@ export interface LogicalCohomologyResult {
   /** True if the search stopped at a cap rather than exhausting the lattice —
    * i.e. frustrations of higher arity have NOT been ruled out. */
   searchTruncated: boolean;
+  /**
+   * Set when the check budget stopped the search: the total `maxChecks` that
+   * would have been needed to complete the next level. Re-running with at least
+   * this budget answers the question the truncated run left open.
+   */
+  checksRequiredForNextLevel?: number;
+  /**
+   * Set whenever `searchTruncated` is true — says which cap stopped the search
+   * and what to change. Mirrors `h1Note`: a bare boolean has repeatedly been
+   * read as "the tool cannot go further" when it means "it was not asked to".
+   */
+  truncationNote?: string;
   /** Number of satisfiability checks performed. */
   checksPerformed: number;
 
@@ -312,7 +324,22 @@ export interface LogicalCohomologyOptions {
    * four impossible). Cost is bounded by the clique pruning and by `maxChecks`.
    */
   maxArity?: number;
-  /** Hard cap on satisfiability calls, since each is a Prover9/Mace4 run. */
+  /**
+   * Hard cap on satisfiability calls, since each is a Prover9/Mace4 run.
+   *
+   * This is a SAFETY VALVE against runaway cost, not a statement about what is
+   * worth checking. The cap is needed because the subset lattice is 2^n and the
+   * face-pruning only bites when contradictions are actually present: in a
+   * largely-consistent corpus almost every subset survives pruning, so cost
+   * approaches the full lattice.
+   *
+   * Set it high enough that realistic corpora finish. A level is all-or-nothing
+   * (see the search loop), so a budget that lands mid-level silently downgrades
+   * the answer from "no higher-order frustration" to "did not look" — which is
+   * exactly the failure this default is sized to avoid. Cost to complete arity 4
+   * on a fully-consistent corpus: ~1.1k checks at 13 blocks, ~2.5k at 16,
+   * ~6.2k at 20.
+   */
   maxChecks?: number;
   /**
    * Narrow each frustration to the individual propositions responsible.
@@ -325,7 +352,10 @@ export interface LogicalCohomologyOptions {
 
 export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
   maxArity: 4,
-  maxChecks: 400,
+  // Was 400, which completed arity 3 for a 10-15 block corpus and then stopped
+  // one level short — so the arity-4 search this engine exists to run never
+  // actually ran on a real corpus, while the tool contract advertised it.
+  maxChecks: 5000,
   extractCores: true,
   maxCoreChecks: 60,
 };
@@ -560,6 +590,10 @@ export async function computeLogicalCohomology(
   let checksPerformed = 0;
   let searchedToArity = 1;
   let budgetExhausted = false;
+  /** Budget the run would have needed to finish the level it stopped before. */
+  let checksRequiredForNextLevel: number | undefined;
+  /** Arity of the level that was skipped for want of budget. */
+  let unreachedArity: number | undefined;
 
   for (let k = 2; k <= Math.max(2, opts.maxArity); k++) {
     const candidates: string[][] = [];
@@ -583,7 +617,13 @@ export async function computeLogicalCohomology(
 
     if (candidates.length === 0) break;
     if (checksPerformed + candidates.length > opts.maxChecks) {
+      // A level is all-or-nothing: exploring it partially would leave the
+      // complex incomplete and the homology wrong. So stop — but record what
+      // this level would have cost, so the caller learns the budget to re-run
+      // with instead of just being told "truncated".
       budgetExhausted = true;
+      checksRequiredForNextLevel = checksPerformed + candidates.length;
+      unreachedArity = k;
       break;
     }
 
@@ -732,6 +772,24 @@ export async function computeLogicalCohomology(
         "frustrations above arity 3 at all. Read `frustrations`, not `h1`."
       : undefined;
 
+  /*
+   * Say WHICH cap stopped the search and what to change. `searchTruncated` on
+   * its own has repeatedly been read as "the engine cannot search further",
+   * when in every observed case it meant "the budget ran out one level early".
+   * Those have opposite remedies, so the distinction is spelled out here.
+   */
+  const truncationNote = !searchTruncated
+    ? undefined
+    : budgetExhausted && checksRequiredForNextLevel !== undefined
+      ? `Stopped BEFORE arity ${unreachedArity}: that level needed a total budget of ` +
+        `${checksRequiredForNextLevel} satisfiability checks, but maxChecks is ${opts.maxChecks}. ` +
+        `This is a BUDGET limit, not a capability limit — maxArity is ${opts.maxArity} and was ` +
+        `never reached. Re-run with maxChecks >= ${checksRequiredForNextLevel} to settle it. ` +
+        `Frustrations of arity > ${searchedToArity} are NOT ruled out.`
+      : `Stopped at the arity cap: maxArity is ${opts.maxArity} but there are ${vertices.length} ` +
+        `blocks, so subsets of size ${opts.maxArity + 1}..${vertices.length} were never tested. ` +
+        `Re-run with a higher maxArity. Frustrations of arity > ${searchedToArity} are NOT ruled out.`;
+
   return {
     hasContradiction,
     frustrations,
@@ -739,7 +797,8 @@ export async function computeLogicalCohomology(
     resultIsVacuous,
     h0, h1, hasObstruction: h1 > 0, h1Note,
     vertices, internallyInconsistent, consistentPairs, frustratedTriples,
-    searchedToArity, searchTruncated, checksPerformed,
+    searchedToArity, searchTruncated, checksRequiredForNextLevel, truncationNote,
+    checksPerformed,
     rankD1, rankD2, checkFailures, checkLog,
   };
 }

@@ -20,6 +20,7 @@ import { scenarioService } from "../services/scenarios.js";
 import {
   computeLogicalCohomology,
   makeMcpLogicOracle,
+  type LogicalCohomologyOptions,
 } from "../services/logicalCohomology.js";
 import { createRunLogger } from "../services/run-logger.js";
 import { RecoveryProtocol } from "../services/recovery-protocol.js";
@@ -280,7 +281,7 @@ Required procedure for contested topics:
    **EVERY BLOCK OF UNIVERSALS NEEDS AN EXISTENTIAL WITNESS.** "all x (capability(x) -> travels(x))" is TRUE when nothing is a capability, so a set of pure "all x (...)" formulas is satisfied by the empty world and can never contradict. Whenever you write "all x (P(x) -> ...)" and P is supposed to be non-empty, also assert "exists x (P(x))". This has produced a real false "no contradiction" on a corpus that contained two.
 3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed), searching all subsets up to arity 4 for **minimal unsatisfiable sets** — sets of blocks that cannot all be true together, but every proper subset of which can.
 4. **Read "verdict" and "frustrations". Do NOT read H¹.** "hasContradiction" is the answer; "frustrations" names the offending sets and their arity. H¹ is a topological summary that is mathematically pinned to 0 whenever there are 4 or more blocks, and cannot see frustrations above arity 3 at all — so "H¹ = 0" is NOT evidence of consistency and must never be reported as such. If "h1Note" is present it explains the discrepancy.
-5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing.
+5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing. **Read "truncationNote"** — it says WHICH cap stopped the search. If it names a budget limit, "checksRequiredForNextLevel" is the exact 'maxChecks' that settles the question: call the tool again passing that value. Truncation is a setting, not a capability ceiling — never report it as "the tool cannot search further".
 6. Report the frustrated sets whenever "hasContradiction" is true, and check "checkFailures".
 7. **If "resultIsVacuous" is true, you have NOT tested anything.** The encoding made "consistent" a foregone conclusion. Read "formalizationWarnings", fix the formulas, and call the tool again. Reporting "no contradiction" from a vacuous result is a false finding — say the formalization failed instead.
 
@@ -1198,7 +1199,18 @@ ${skillContent}`,
                 const oracle = makeMcpLogicOracle((server, tool, a) =>
                   mcpManager.executeTool(server, tool, a),
                 );
-                const result = await computeLogicalCohomology(blocks, oracle);
+                // Let a caller raise the caps deliberately. Undefined must not
+                // be spread over the defaults, so only set what was supplied.
+                const cohomologyOpts: LogicalCohomologyOptions = {};
+                if (Number.isFinite(Number(args.maxArity)))
+                  cohomologyOpts.maxArity = Number(args.maxArity);
+                if (Number.isFinite(Number(args.maxChecks)))
+                  cohomologyOpts.maxChecks = Number(args.maxChecks);
+                const result = await computeLogicalCohomology(
+                  blocks,
+                  oracle,
+                  cohomologyOpts,
+                );
                 // Lead with the verdict the model should actually act on.
                 // H¹ is pinned at 0 for most realistic block counts, so
                 // putting it first invited exactly the wrong reading.
@@ -1227,7 +1239,9 @@ ${skillContent}`,
                         })
                         .join("; ")
                     : result.searchTruncated
-                      ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out.`
+                      ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, ` +
+                        `so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""} ` +
+                        `Do NOT report this as "no contradiction"; it is "not yet checked".`
                       : `No contradiction: all subsets up to arity ${result.searchedToArity} are jointly satisfiable.`;
                 output = JSON.stringify(
                   { runLogId: runLog.runId, verdict, ...result },

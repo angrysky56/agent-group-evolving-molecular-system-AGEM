@@ -63,6 +63,18 @@ const TRIPLE: LogicalBlock[] = [
   { name: "NQ", propositions: ["-q(x)"] },
 ];
 
+/**
+ * The Bell shape at module scope: every triple satisfiable, all four together
+ * unsatisfiable. Used to prove the DEFAULT budget still reaches arity 4 once
+ * padded out to a realistic corpus size.
+ */
+const QUAD_FOR_DEFAULTS: LogicalBlock[] = [
+  { name: "QA", propositions: ["p(x) | q(x)"] },
+  { name: "QB", propositions: ["p(x) | -q(x)"] },
+  { name: "QC", propositions: ["-p(x) | q(x)"] },
+  { name: "QD", propositions: ["-p(x) | -q(x)"] },
+];
+
 /** Independent filler blocks, consistent with everything. */
 const filler = (n: number): LogicalBlock[] =>
   Array.from({ length: n }, (_, i) => ({
@@ -456,6 +468,58 @@ describe("search accounting is honest", () => {
   it("flags truncation when the check budget runs out", async () => {
     const r = await computeLogicalCohomology(filler(8), sat, { maxChecks: 5 });
     expect(r.searchTruncated).toBe(true);
+  });
+
+  /*
+   * Regression: a bare `searchTruncated: true` was repeatedly read as "the
+   * engine cannot search deeper" when it meant "the budget stopped it one level
+   * short". Those have opposite remedies, so the result must say which it was
+   * and name the budget that settles it.
+   */
+  it("says the budget stopped it, and names the budget that would not", async () => {
+    const r = await computeLogicalCohomology(filler(8), sat, { maxChecks: 5 });
+    expect(r.truncationNote).toMatch(/BUDGET limit, not a capability limit/);
+    expect(r.checksRequiredForNextLevel).toBeGreaterThan(5);
+    // The number must be actionable: re-running at it completes that level.
+    const rerun = await computeLogicalCohomology(filler(8), sat, {
+      maxChecks: r.checksRequiredForNextLevel!,
+    });
+    expect(rerun.searchedToArity).toBeGreaterThan(r.searchedToArity);
+  });
+
+  it("distinguishes an arity cap from a budget cap in the note", async () => {
+    const r = await computeLogicalCohomology(TRIPLE, sat, { maxArity: 2 });
+    expect(r.searchTruncated).toBe(true);
+    expect(r.truncationNote).toMatch(/arity cap/);
+    expect(r.checksRequiredForNextLevel).toBeUndefined();
+  });
+
+  it("leaves both truncation fields unset when the search really was exhaustive", async () => {
+    const r = await computeLogicalCohomology(TRIPLE, sat, { maxArity: 8 });
+    expect(r.searchTruncated).toBe(false);
+    expect(r.truncationNote).toBeUndefined();
+    expect(r.checksRequiredForNextLevel).toBeUndefined();
+  });
+
+  /*
+   * The default budget must clear arity 4 at the corpus sizes AGEM actually
+   * produces — blocks come from concept communities, so 10-15 is typical. The
+   * old default of 400 completed arity 3 and stopped, which silently disabled
+   * the 4-wise search on every real run.
+   */
+  it("default budget reaches arity 4 on a 13-block corpus", async () => {
+    const blocks = [...QUAD_FOR_DEFAULTS, ...filler(9)];
+    expect(blocks).toHaveLength(13);
+    const r = await computeLogicalCohomology(blocks, sat);
+    expect(r.searchedToArity).toBe(4);
+    expect(r.hasContradiction).toBe(true);
+    expect(r.frustrations.some((f) => f.arity === 4)).toBe(true);
+    // The budget must NOT be what stopped it — that was the old failure.
+    expect(r.checksRequiredForNextLevel).toBeUndefined();
+    // It is still honestly truncated, but now by the arity cap, and the note
+    // has to say so rather than leaving the reader to guess which cap it was.
+    expect(r.searchTruncated).toBe(true);
+    expect(r.truncationNote).toMatch(/arity cap/);
   });
 
   it("does not claim truncation when the lattice was exhausted", async () => {
