@@ -34,16 +34,68 @@ export interface LogicalBlock {
   propositions: string[];
 }
 
+/**
+ * A minimal unsatisfiable subset (MUS): a set of blocks that cannot all be true
+ * together, every proper subset of which CAN. Minimality is guaranteed by
+ * construction — a set is only tested once all of its faces are known
+ * consistent — so each one names an irreducible contradiction.
+ */
+export interface Frustration {
+  blocks: string[];
+  /** Number of blocks involved. 3 = classic frustrated triple. */
+  arity: number;
+}
+
 export interface LogicalCohomologyResult {
+  /**
+   * THE headline result. True iff a minimal unsatisfiable subset was found.
+   *
+   * Use this, not `h1`. See the `h1` doc comment for why.
+   */
+  hasContradiction: boolean;
+  /** Every minimal unsatisfiable subset found, at any arity. The real product. */
+  frustrations: Frustration[];
+
   h0: number;
+  /**
+   * H¹ of the consistency complex. **Not a reliable contradiction detector.**
+   *
+   * H¹ > 0 does imply a frustration exists, but the converse fails badly, in
+   * two distinct ways — both verified against this implementation:
+   *
+   *   1. Extra consistent blocks cancel it. With n ≥ 4 blocks, a single
+   *      frustrated triple gives H¹ = 0, because the other filled triangles
+   *      span the whole cycle space and the unfilled one becomes a boundary
+   *      rather than a cycle. Measured: n=3 → H¹=1; n=4,5,6,8 → H¹=0, with the
+   *      same genuine frustration present throughout.
+   *   2. It only ever sees arity 3. A 4-block minimal unsatisfiable set has all
+   *      of its triples satisfiable, so every triangle fills and H¹ = 0.
+   *
+   * Since real runs name blocks from concept communities and so almost always
+   * have ≥ 4 blocks, H¹ is pinned at 0 in practice. It is retained as a
+   * topological summary of the complex, not as the detector.
+   */
   h1: number;
+  /** Kept for compatibility. Equivalent to h1 > 0, with all the caveats above. */
   hasObstruction: boolean;
+  /** Set when h1 is 0 but frustrations exist — explains the discrepancy. */
+  h1Note?: string;
+
   vertices: string[];
   /** Blocks dropped because their own propositions were self-contradictory. */
   internallyInconsistent: string[];
   consistentPairs: [string, string][];
-  /** Pairwise-consistent triples that are NOT jointly consistent — the H¹ cause. */
+  /** Compatibility view of `frustrations` filtered to arity 3. */
   frustratedTriples: [string, string, string][];
+
+  /** Highest arity actually searched. */
+  searchedToArity: number;
+  /** True if the search stopped at a cap rather than exhausting the lattice —
+   * i.e. frustrations of higher arity have NOT been ruled out. */
+  searchTruncated: boolean;
+  /** Number of satisfiability checks performed. */
+  checksPerformed: number;
+
   rankD1: number;
   rankD2: number;
   /** mcp-logic calls that errored (parse failures etc.) — surfaced, not hidden. */
@@ -52,13 +104,29 @@ export interface LogicalCohomologyResult {
    * what it tested, and the verdict. The mcp-logic calls happen inside the
    * engine, so this is how they become inspectable rather than opaque. */
   checkLog: {
-    kind: "internal" | "pair" | "triple";
+    kind: "internal" | "pair" | "triple" | "set";
     blocks: string[];
     formulas: string[];
     verdict: "consistent" | "contradictory" | "undetermined";
     note?: string;
   }[];
 }
+
+export interface LogicalCohomologyOptions {
+  /**
+   * Highest subset size to test. 3 reproduces the old triples-only behaviour;
+   * 4 catches Bell-shaped frustrations (any three assumptions compatible, all
+   * four impossible). Cost is bounded by the clique pruning and by `maxChecks`.
+   */
+  maxArity?: number;
+  /** Hard cap on satisfiability calls, since each is a Prover9/Mace4 run. */
+  maxChecks?: number;
+}
+
+export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
+  maxArity: 4,
+  maxChecks: 400,
+};
 
 /** A satisfiability oracle: true = consistent, false = contradictory.
  * `null` means the check could not be completed (parse error / real timeout). */
@@ -160,7 +228,9 @@ const key2 = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 export async function computeLogicalCohomology(
   blocks: LogicalBlock[],
   sat: SatOracle,
+  options: LogicalCohomologyOptions = {},
 ): Promise<LogicalCohomologyResult> {
+  const opts = { ...DEFAULT_COHOMOLOGY_OPTIONS, ...options };
   const checkFailures: string[] = [];
   const internallyInconsistent: string[] = [];
   const checkLog: LogicalCohomologyResult["checkLog"] = [];
@@ -182,49 +252,102 @@ export async function computeLogicalCohomology(
     else checkFailures.push(`internal(${b.name}): ${r.note ?? "unknown"}`);
   }
 
-  // 2) Pairwise consistency → edges.
+  // 2) Layered search for MINIMAL unsatisfiable subsets, arity 2..maxArity.
+  //
+  //    A k-set is tested only once every one of its (k-1)-faces is known
+  //    consistent. That single rule does three jobs at once:
+  //      - it is the downward-closure prune (a set containing an inconsistent
+  //        subset cannot be consistent, so testing it is wasted work);
+  //      - it guarantees MINIMALITY of everything reported — if all proper
+  //        subsets are consistent and the set is not, the set is a MUS;
+  //      - it generalises the old pair→triangle clique test to any arity.
+  //
+  //    This is what actually detects contradictions. The homology below is a
+  //    summary computed from the same data, and — see the `h1` docs — it is
+  //    pinned to 0 for most realistic block counts, which is why it must not
+  //    be the thing anyone reads.
   const consistentPairs: [string, string][] = [];
-  const pairSet = new Set<string>();
-  for (let i = 0; i < vertices.length; i++) {
-    for (let j = i + 1; j < vertices.length; j++) {
-      const a = vertices[i], b = vertices[j];
-      const fs = [...propsOf.get(a)!, ...propsOf.get(b)!];
-      const r = await sat(fs);
-      checkLog.push({
-        kind: "pair", blocks: [a, b], formulas: fs,
-        verdict: verdictOf(r.consistent), note: r.note,
-      });
-      if (r.consistent === true) {
-        consistentPairs.push([a, b]);
-        pairSet.add(key2(a, b));
-      } else if (r.consistent === null) {
-        checkFailures.push(`pair(${a},${b}): ${r.note ?? "unknown"}`);
+  const filledTriangles: [string, string, string][] = [];
+  const frustrations: Frustration[] = [];
+
+  const keyOf = (names: string[]) => [...names].sort().join("|");
+  /** Sets of size k known consistent, keyed by sorted join. */
+  let previousLevel: string[][] = vertices.map((v) => [v]);
+  let consistentKeys = new Set<string>(previousLevel.map(keyOf));
+
+  let checksPerformed = 0;
+  let searchedToArity = 1;
+  let budgetExhausted = false;
+
+  for (let k = 2; k <= Math.max(2, opts.maxArity); k++) {
+    const candidates: string[][] = [];
+    const seen = new Set<string>();
+
+    // Build k-candidates by extending each consistent (k-1)-set with a vertex
+    // that sorts after its last member, then require every face to be present.
+    for (const base of previousLevel) {
+      for (const v of vertices) {
+        if (base.includes(v)) continue;
+        const cand = [...base, v].sort();
+        const ck = keyOf(cand);
+        if (seen.has(ck)) continue;
+        seen.add(ck);
+        const facesConsistent = cand.every((omit) =>
+          consistentKeys.has(keyOf(cand.filter((x) => x !== omit))),
+        );
+        if (facesConsistent) candidates.push(cand);
       }
     }
+
+    if (candidates.length === 0) break;
+    if (checksPerformed + candidates.length > opts.maxChecks) {
+      budgetExhausted = true;
+      break;
+    }
+
+    const nextLevel: string[][] = [];
+    const nextKeys = new Set<string>();
+    for (const set of candidates) {
+      const fs = set.flatMap((n) => propsOf.get(n)!);
+      const r = await sat(fs);
+      checksPerformed++;
+      checkLog.push({
+        kind: k === 2 ? "pair" : k === 3 ? "triple" : "set",
+        blocks: set,
+        formulas: fs,
+        verdict: verdictOf(r.consistent),
+        note: r.note,
+      });
+
+      if (r.consistent === true) {
+        nextLevel.push(set);
+        nextKeys.add(keyOf(set));
+        if (k === 2) consistentPairs.push([set[0], set[1]]);
+        if (k === 3) filledTriangles.push([set[0], set[1], set[2]]);
+      } else if (r.consistent === false) {
+        // Every proper subset was consistent, so this set is minimal.
+        frustrations.push({ blocks: set, arity: k });
+      } else {
+        checkFailures.push(`set(${set.join(",")}): ${r.note ?? "unknown"}`);
+      }
+    }
+
+    searchedToArity = k;
+    previousLevel = nextLevel;
+    for (const nk of nextKeys) consistentKeys.add(nk);
+    if (nextLevel.length === 0) break;
   }
 
-  // 3) Triple consistency → filled triangles. Only test 3-cliques in the
-  //    pairwise graph (others cannot be jointly consistent — downward closure).
-  const filledTriangles: [string, string, string][] = [];
-  const frustratedTriples: [string, string, string][] = [];
-  for (let i = 0; i < vertices.length; i++)
-    for (let j = i + 1; j < vertices.length; j++)
-      for (let k = j + 1; k < vertices.length; k++) {
-        const a = vertices[i], b = vertices[j], c = vertices[k];
-        if (!pairSet.has(key2(a, b)) || !pairSet.has(key2(a, c)) ||
-            !pairSet.has(key2(b, c))) continue; // not a 3-clique
-        const fs = [
-          ...propsOf.get(a)!, ...propsOf.get(b)!, ...propsOf.get(c)!,
-        ];
-        const r = await sat(fs);
-        checkLog.push({
-          kind: "triple", blocks: [a, b, c], formulas: fs,
-          verdict: verdictOf(r.consistent), note: r.note,
-        });
-        if (r.consistent === true) filledTriangles.push([a, b, c]);
-        else if (r.consistent === false) frustratedTriples.push([a, b, c]);
-        else checkFailures.push(`triple(${a},${b},${c}): ${r.note ?? "unknown"}`);
-      }
+  const pairSet = new Set(consistentPairs.map(([a, b]) => key2(a, b)));
+  void pairSet;
+  const frustratedTriples = frustrations
+    .filter((f) => f.arity === 3)
+    .map((f) => f.blocks as [string, string, string]);
+
+  // The search is exhaustive only if it was not cut short by either cap.
+  const searchTruncated =
+    budgetExhausted ||
+    (searchedToArity < vertices.length && searchedToArity >= opts.maxArity);
 
   // 4) Boundary matrices and homology.
   const vIdx = new Map(vertices.map((v, i) => [v, i]));
@@ -252,9 +375,21 @@ export async function computeLogicalCohomology(
   const h0 = vertices.length - rankD1;
   const h1 = edges.length - rankD1 - rankD2;
 
+  const hasContradiction = frustrations.length > 0;
+  const h1Note =
+    hasContradiction && h1 === 0
+      ? `H1 is 0 but ${frustrations.length} minimal unsatisfiable subset(s) were found. ` +
+        "This is expected, not a discrepancy: with 4 or more blocks the other filled " +
+        "simplices span the cycle space and cancel the obstruction, and H1 cannot see " +
+        "frustrations above arity 3 at all. Read `frustrations`, not `h1`."
+      : undefined;
+
   return {
-    h0, h1, hasObstruction: h1 > 0,
+    hasContradiction,
+    frustrations,
+    h0, h1, hasObstruction: h1 > 0, h1Note,
     vertices, internallyInconsistent, consistentPairs, frustratedTriples,
+    searchedToArity, searchTruncated, checksPerformed,
     rankD1, rankD2, checkFailures, checkLog,
   };
 }

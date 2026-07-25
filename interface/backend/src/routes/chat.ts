@@ -264,7 +264,7 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 
 # Native AGEM tools (call directly)
 - run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
-- evaluate_logical_consistency (logic-based H⁰/H¹ — the real contradiction detector)
+- evaluate_logical_consistency (minimal unsatisfiable sets — the real contradiction detector; read "frustrations", not H¹)
 - detect_gaps, generate_catalyst_questions, search_context
 - spawn_agem_agent, reset_agem_engine, read_skill
 
@@ -274,8 +274,10 @@ The graph cannot detect contradiction, entailment, or consistency — only forma
 Required procedure for contested topics:
 1. After clustering, name the key blocks (use the concept communities as candidates).
 2. State each block's core claim as one or more SINGLE first-order-logic propositions.
-3. Call evaluate_logical_consistency with those blocks. The engine runs all the internal/pairwise/triple satisfiability checks via mcp-logic for you (so the calls can't be malformed) and returns logic-based H⁰/H¹: H¹ > 0 means blocks that are consistent in every pair but impossible all together — a genuine contradiction the graph's own H¹ cannot detect. It also lists frustratedTriples (the offending sets) and any checkFailures.
-4. Base any consistency claim on that result, and report frustratedTriples when H¹ > 0.
+3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed), searching all subsets up to arity 4 for **minimal unsatisfiable sets** — sets of blocks that cannot all be true together, but every proper subset of which can.
+4. **Read "verdict" and "frustrations". Do NOT read H¹.** "hasContradiction" is the answer; "frustrations" names the offending sets and their arity. H¹ is a topological summary that is mathematically pinned to 0 whenever there are 4 or more blocks, and cannot see frustrations above arity 3 at all — so "H¹ = 0" is NOT evidence of consistency and must never be reported as such. If "h1Note" is present it explains the discrepancy.
+5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing.
+6. Report the frustrated sets whenever "hasContradiction" is true, and check "checkFailures".
 
 You may also call mcp-logic directly for one-off proofs/counterexamples:
 
@@ -1192,8 +1194,19 @@ ${skillContent}`,
                   mcpManager.executeTool(server, tool, a),
                 );
                 const result = await computeLogicalCohomology(blocks, oracle);
+                // Lead with the verdict the model should actually act on.
+                // H¹ is pinned at 0 for most realistic block counts, so
+                // putting it first invited exactly the wrong reading.
+                const verdict = result.hasContradiction
+                  ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal unsatisfiable set(s): ` +
+                    result.frustrations
+                      .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
+                      .join("; ")
+                  : result.searchTruncated
+                    ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out.`
+                    : `No contradiction: all subsets up to arity ${result.searchedToArity} are jointly satisfiable.`;
                 output = JSON.stringify(
-                  { runLogId: runLog.runId, ...result },
+                  { runLogId: runLog.runId, verdict, ...result },
                   null,
                   2,
                 );

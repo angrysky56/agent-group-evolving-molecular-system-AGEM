@@ -23,23 +23,40 @@ Each reasoning cycle ingests text into a persistent, accumulating concept graph 
 - **Graph topology (TNA)** — concept communities (Louvain) and the bridges between them. The richest signal: which ideas cluster and how they connect.
 - **Sheaf H⁰ — connectivity / fragmentation.** H⁰ is the number of connected semantic components. Rising H⁰ means the discussion is fragmenting into separate topic-islands; falling H⁰ means a new idea bridged previously separate clusters. This is the geometric sheaf's real, reliable contribution.
 - **Self-Organized Criticality (SOC)** — von Neumann entropy, embedding entropy, CDP, and a regime classifier (nascent / stable / critical). A measure of how much the graph is still developing, and a detector for "conclusion precedes logic" (embedding entropy stabilizing before structural entropy). VNE is computed exactly on small graphs and via the linear-time **FINGER** approximation once the graph outgrows a dense eigendecomposition — see [Scaling: linear-time graph entropy](#scaling-linear-time-graph-entropy).
-- **Logic-based H¹ — genuine contradiction detection.** See below. This is AGEM's distinctive capability.
+- **Minimal unsatisfiable sets — genuine contradiction detection.** See below. This is AGEM's distinctive capability.
 
 > [!IMPORTANT]
-> **A note on metric honesty.** The _geometric_ sheaf's H¹ reflects cycle topology in the cluster graph — it does **not** detect logical contradiction (real embeddings saturate the coboundary rank, so geometric H¹ ≈ 0 regardless of content). AGEM does not pretend otherwise. Contradiction is detected by the _separate_ logic-based H¹ pipeline described next. H⁰ is for connectivity; logic-H¹ is for contradiction; the two are different machines.
+> **A note on metric honesty.** The _geometric_ sheaf's H¹ reflects cycle topology in the cluster graph — it does **not** detect logical contradiction (real embeddings saturate the coboundary rank, so geometric H¹ ≈ 0 regardless of content). AGEM does not pretend otherwise. Contradiction is detected by the _separate_ logical pipeline described next. H⁰ is for connectivity; the logical search is for contradiction; the two are different machines.
+>
+> The same discipline applies inside that logical pipeline. Its own H¹ turned out to be an unreliable detector — pinned at 0 for any realistic number of blocks — so the detector is now the minimal-unsatisfiable-set search, and H¹ is demoted to a summary with its failure modes documented. See the warning below.
 
-## Logic-based H¹ — the distinctive capability
+## Contradiction detection — the distinctive capability
 
-The question "are these claims actually consistent?" cannot be answered by graph geometry — similarity is not consistency ("collapse is real" and "collapse is not real" are nearly identical vectors and flatly contradictory). AGEM answers it with a genuinely logical construction, the **consistency complex**:
+The question "are these claims actually consistent?" cannot be answered by graph geometry — similarity is not consistency ("collapse is real" and "collapse is not real" are nearly identical vectors and flatly contradictory). AGEM answers it logically, by searching for **minimal unsatisfiable sets**:
 
 - Each **block** of claims is a vertex.
-- A set of blocks is a "filled" simplex iff their combined propositions are **jointly satisfiable** — every such check is delegated to `mcp-logic` (Prover9/Mace4).
-- **H⁰** of this complex = groups of blocks that cannot even pairwise reconcile.
-- **H¹** of this complex = sets of blocks that are **consistent in every pair but impossible all together** — a genuine higher-order contradiction that pairwise checking alone cannot find (the difference between _blind-men-and-the-elephant_, which is consistent, and a genuinely _frustrated_ set).
+- A set of blocks is tested for joint satisfiability only once every one of its proper subsets is known consistent — every check delegated to `mcp-logic` (Prover9/Mace4).
+- A set that fails that test is a **frustration**: its members cannot all be true together, yet every proper subset can. Minimality is guaranteed by the search order, so each one names an irreducible contradiction rather than a superset of one.
+- The search runs to **arity 4 by default** (configurable), so it catches Bell-shaped tensions — any three assumptions compatible, all four impossible — not just frustrated triples.
 
-This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns H⁰/H¹, the offending `frustratedTriples`, and a full `checkLog` audit trail of every check run and its verdict.
+This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns a plain-language `verdict`, `hasContradiction`, the offending `frustrations` with their arity, and a full `checkLog` audit trail of every check run and its verdict.
 
-It is verified end-to-end: the homology against a Python reference, the satisfiability against real Mace4, and the live pipeline against a calibrated corpus (`docs/logic-corpus/`) — a 3-wise-inconsistent set yields H¹=1 with the right frustrated triple, a pairwise contradiction yields a component split (H⁰) not a false H¹, and a fully-consistent set yields H¹=0 with the triple verified consistent. See `docs/emergent-bonds-and-stateless-reconstruction.md` §13–§15 for the full derivation and verification.
+> [!WARNING]
+> **Do not read H¹ as the contradiction detector.** It is still computed and still reported, but it is a topological summary of the complex and it has two false-negative modes, both verified against this implementation:
+>
+> 1. **Extra consistent blocks cancel it.** With n ≥ 4 blocks, a single genuine frustrated triple gives H¹ = 0 — the other filled simplices span the cycle space, so the unfilled one becomes a boundary rather than a cycle. Measured: n=3 → H¹=1; n=4, 5, 6, 8 → H¹=0, same frustration present throughout.
+> 2. **It cannot see above arity 3.** A 4-block minimal unsatisfiable set has every triple satisfiable, so every triangle fills and H¹ = 0.
+>
+> Since real runs name blocks from concept communities and so almost always have four or more, **H¹ was pinned at 0 in practice and fired only on the 3-block calibration corpus.** The math was never wrong; the interpretation was. `hasContradiction` and `frustrations` are the signal — `h1Note` is emitted whenever H¹ = 0 while frustrations exist, so the discrepancy is explained rather than discovered.
+>
+> H⁰ remains a fine connectivity readout, with the same caveat it always had: a block consistent with both sides of a flat contradiction bridges them in the graph without touching the contradiction.
+
+It is verified end-to-end: the homology against a Python reference, the satisfiability against real Mace4, and the live pipeline against calibrated corpora in `docs/logic-corpus/`. Regression tests pin the behaviour that matters — the frustration is found regardless of how many extra consistent blocks accompany it, 4-wise frustrations are found, minimality is enforced, and truncated searches admit it. See `docs/emergent-bonds-and-stateless-reconstruction.md` §13–§15 for the original derivation.
+
+Two corpora ship with it:
+
+- `logic-h1-test-corpus.md` — the calibration instrument: atomic propositions, known answers, proves the machinery runs.
+- `generalization-trilemma-corpus.md` — a **trap corpus**: four staged cycles of sincere, self-contained positions in a live research disagreement, with the contradiction never stated. The vocabulary clusters deliberately crosswise to the logic, one passage is a near-neighbour in embedding space with no logical bearing, and the final stage is a synthesis that bridges vocabulary and resolves nothing. Answer key in `generalization-trilemma-KEY.md` — do not feed that one to the model.
 
 ## Native tools
 
