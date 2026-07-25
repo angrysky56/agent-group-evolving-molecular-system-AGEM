@@ -34,8 +34,22 @@ export interface PriceEvolverConfig {
   readonly cdpIncreaseFitness: number;
   /** Fitness penalty for weak lumpability. Default: -0.6 */
   readonly weakLumpabilityPenalty: number;
-  /** Minimum edge weight floor (prevents collapse to zero). Default: 0.1 */
+  /**
+   * Legacy floor on edge weight. Retained for config compatibility but no
+   * longer applied: the evolver does not write `weight` at all — see the
+   * PriceEvolver header on separating policy from evidence. Default: 0.1
+   */
   readonly minEdgeWeight: number;
+  /**
+   * Floor on salience under mass-conserving reinforcement. Default: 0.05
+   *
+   * This is the anti-amnesia guard. Conserving total salience means rewarding
+   * one edge takes share from the others, so a long-unrewarded edge decays —
+   * which is the point, but unbounded decay would silently remove material from
+   * consideration entirely. The floor keeps every edge recoverable: it can fall
+   * out of favour, never out of existence.
+   */
+  readonly minSalience: number;
   /**
    * Floor on relative fitness w = 1 + α·f used in the Price decomposition.
    * Keeps w positive so w̄ is a valid normalizer even if a large penalty and a
@@ -67,6 +81,7 @@ export const DEFAULT_PRICE_CONFIG: PriceEvolverConfig = {
   cdpIncreaseFitness: 0.5,
   weakLumpabilityPenalty: -0.6,
   minEdgeWeight: 0.1,
+  minSalience: 0.05,
   minRelativeFitness: 0.01,
   h0ReductionFitness: 0.8,
   maxHistory: 100,

@@ -183,8 +183,11 @@ function runArm(alpha: number): CycleRecord[] {
 
     const decomp = evolver.evolve(iteration);
 
+    // Gini is measured on SALIENCE — the attribute reinforcement actually
+    // writes. Edge `weight` is evidence and the evolver no longer touches it,
+    // so measuring weight here would show every arm as identical by design.
     const weights: number[] = [];
-    g.forEachEdge((_e: string, attrs: any) => weights.push(attrs?.weight ?? 1));
+    g.forEachEdge((_e: string, attrs: any) => weights.push(attrs?.salience ?? 1));
 
     records.push({
       iteration,
@@ -251,10 +254,18 @@ function main(): void {
   console.log(
     `final-cycle Gini divergence from control:  default=${dDefault.toExponential(2)}  10x=${dStrong.toExponential(2)}`,
   );
+  const concentrates =
+    last(strong).gini > last(control).gini && last(dflt).gini >= last(control).gini;
+
   console.log(
-    dStrong > 1e-6
-      ? "VERDICT: reinforcement measurably changes the weight distribution."
-      : "VERDICT: arms did NOT separate — the reinforcement is not doing anything. Do not claim it as a capability.",
+    dStrong <= 1e-6
+      ? "VERDICT: arms did NOT separate — reinforcement is not doing anything. Do not claim it as a capability."
+      : concentrates
+        ? "VERDICT: reinforcement CONCENTRATES salience with alpha — the rich-get-richer dynamic the design calls for."
+        : "VERDICT: arms separate but salience FLATTENS as alpha rises — the mechanism is wired backwards from the stated theory.",
+  );
+  console.log(
+    "note: Gini is measured on salience (policy). Edge weight (evidence) is untouched by design.",
   );
 }
 

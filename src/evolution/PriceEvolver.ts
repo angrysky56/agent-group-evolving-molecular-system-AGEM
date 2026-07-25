@@ -32,6 +32,23 @@
  * selection/transmission their textbook meaning: the covariance between an
  * edge's reproductive success and its weight, normalised by mean success.
  *
+ * Salience, not weight — policy must not contaminate evidence
+ * ------------------------------------------------------------
+ * Reinforcement writes a separate `salience` attribute and NEVER touches
+ * `weight`. This matters more than it looks. Edge `weight` is accumulated
+ * co-occurrence: a *measurement* of the corpus, and the substrate Louvain, VNE,
+ * H⁰ and every SOC metric are computed over. The evolver previously overwrote
+ * it, which meant a rise in VNE could equally be corpus growth or the evolver
+ * inflating its favourites, and nothing distinguished them. For a system whose
+ * stated virtue is honest metrics, silently mutating what the metrics measure
+ * is worse than any dynamics bug.
+ *
+ * So the two are separated by construction:
+ *   weight   — evidence. Written only by the TNA ingest. Never by this class.
+ *   salience — policy. A relative attention multiplier with mean 1, consumed
+ *              by EXPLORATION decisions (what to probe next, which gaps to
+ *              prioritise, where to spawn), never by measurement.
+ *
  * Dependencies:
  *   - graphology AbstractGraph (TNA graph, injected)
  *   - EventBus events: soc:metrics, lumpability:*, sheaf:*, regime:*
@@ -186,18 +203,20 @@ export class PriceEvolver {
   /**
    * evolve() — called once per iteration after all events have fired.
    *
-   * 1. Snapshot current weights
+   * Operates on SALIENCE, never on edge weight. See the class header.
+   *
+   * 1. Snapshot current salience
    * 2. Compute Price decomposition from accumulated fitnesses
-   * 3. Apply Pólya reinforcement to edge weights
+   * 3. Apply Pólya reinforcement, then conserve mass, then floor
    * 4. Store decomposition in history
    * 5. Reset fitness accumulators
-   *
-   * Returns the Price decomposition for this iteration.
    */
   evolve(iteration: number): PriceDecomposition {
     this.#iteration = iteration;
 
-    // 1. Collect current edge weights and fitnesses
+    // 1. Collect current salience and fitness.
+    //    A previously-unseen edge starts at neutral salience 1.0 — salience is
+    //    a RELATIVE attention multiplier with mean 1, not an accumulator.
     const edges: Array<{
       key: string;
       weight: number;
@@ -206,11 +225,11 @@ export class PriceEvolver {
     }> = [];
 
     this.#graph.forEachEdge((edgeKey, attrs) => {
-      const w = (attrs as { weight?: number }).weight ?? 1;
-      const prevW = this.#previousWeights.get(edgeKey) ?? w;
+      const s = (attrs as { salience?: number }).salience ?? 1;
+      const prevS = this.#previousWeights.get(edgeKey) ?? s;
       const fitnessEntry = this.#currentFitnesses.get(edgeKey);
       const f = fitnessEntry?.fitness ?? 0;
-      edges.push({ key: edgeKey, weight: w, prevWeight: prevW, fitness: f });
+      edges.push({ key: edgeKey, weight: s, prevWeight: prevS, fitness: f });
     });
 
     const n = edges.length;
@@ -236,10 +255,23 @@ export class PriceEvolver {
       Math.max(this.#config.minRelativeFitness, 1 + alpha * e.fitness),
     );
 
+    // Reinforced salience BEFORE the mass-conserving rescale.
+    //
+    // Order matters here, and getting it wrong makes the decomposition
+    // vacuous. Normalisation pins mean salience at 1, so if Δz is measured
+    // across the rescale then Δz̄ ≡ 0 by construction, selection and
+    // transmission are forced to cancel, and both read 0.00000 forever — which
+    // is exactly what the first version of this fix produced. The Price
+    // equation must describe the change reinforcement *induced*; the rescale is
+    // a separate bookkeeping step that follows it.
+    const raw: number[] = edges.map((e) =>
+      Math.max(0, e.weight * (1 + alpha * e.fitness)),
+    );
+
     const meanW = relW.reduce((s, w) => s + w, 0) / n;
     const meanZ = edges.reduce((s, e) => s + e.weight, 0) / n;
 
-    // Selection: Cov(w, z) / w̄
+    // Selection: Cov(w, z) / w̄  — z is the parent trait (pre-update salience)
     let covWZ = 0;
     for (let i = 0; i < n; i++) {
       covWZ += (relW[i] - meanW) * (edges[i].weight - meanZ);
@@ -247,30 +279,44 @@ export class PriceEvolver {
     covWZ /= n;
     const selection = meanW > 0 ? covWZ / meanW : 0;
 
-    // Transmission: E(w × Δz) / w̄
+    // Transmission: E(w × Δz) / w̄  — Δz is the reinforcement-induced change
     let ewDz = 0;
     for (let i = 0; i < n; i++) {
-      ewDz += relW[i] * (edges[i].weight - edges[i].prevWeight);
+      ewDz += relW[i] * (raw[i] - edges[i].weight);
     }
     ewDz /= n;
     const transmission = meanW > 0 ? ewDz / meanW : 0;
 
     const totalChange = selection + transmission;
 
-    // 3. Apply Pólya reinforcement: w_new = w × (1 + α × fitness)
-    //    Same multiplier used as relative fitness above — reproduction and
-    //    the fitness that explains it are by construction the same number.
+    // 3. Apply Pólya reinforcement to SALIENCE, with mass conserved.
+    //
+    //    s_new = s × (1 + α·f), then rescaled so the mean returns to 1.
+    //
+    //    The rescale is what makes this an urn rather than an inflator. Without
+    //    it, multiplying a subset upward while leaving the rest alone merely
+    //    lets the light edges catch up — measured, that FLATTENED the
+    //    distribution (Gini 0.439 → 0.396 as α rose), the opposite of the
+    //    rich-get-richer dynamic the design calls for. Conserving total mass
+    //    means promoting the fit necessarily demotes the unfit, so selection
+    //    concentrates attention instead of diluting it.
+    //
+    //    The floor is the guard against that concentration becoming amnesia: no
+    //    edge can be driven to zero salience and disappear from consideration
+    //    entirely, however long it goes unrewarded.
     const newWeights = new Map<string, number>();
+    const rawTotal = raw.reduce((s, v) => s + v, 0);
+    const scale = rawTotal > 0 ? n / rawTotal : 1; // target mean = 1
 
-    for (const e of edges) {
-      const reinforcement = 1 + alpha * e.fitness;
-      const newWeight = Math.max(this.#config.minEdgeWeight, e.weight * reinforcement);
+    for (let i = 0; i < n; i++) {
+      const e = edges[i];
+      const scaled = Math.max(this.#config.minSalience, raw[i] * scale);
       try {
-        this.#graph.setEdgeAttribute(e.key, "weight", newWeight);
+        this.#graph.setEdgeAttribute(e.key, "salience", scaled);
       } catch {
         // Edge may have been removed between iterations
       }
-      newWeights.set(e.key, newWeight);
+      newWeights.set(e.key, scaled);
     }
 
     // 4. Store decomposition
@@ -320,6 +366,37 @@ export class PriceEvolver {
   }
 
   /** Get all edge fitness entries for the current iteration. */
+  /**
+   * Salience of every edge, highest first — the exploration-priority ranking.
+   *
+   * This is the intended consumer surface: what to probe next, which gaps to
+   * prioritise, where to spawn. It is deliberately NOT wired into any metric.
+   * Mean salience is 1 by construction, so a value above 1 means "the
+   * reinforcement history says attend here", below 1 means "deprioritised but
+   * never discarded" (see `minSalience`).
+   */
+  getSalienceRanking(): Array<{ edgeKey: string; salience: number }> {
+    const out: Array<{ edgeKey: string; salience: number }> = [];
+    this.#graph.forEachEdge((edgeKey, attrs) => {
+      out.push({
+        edgeKey,
+        salience: (attrs as { salience?: number }).salience ?? 1,
+      });
+    });
+    return out.sort((a, b) => b.salience - a.salience || a.edgeKey.localeCompare(b.edgeKey));
+  }
+
+  /** Salience of one edge; 1.0 (neutral) if never reinforced. */
+  getSalience(edgeKey: string): number {
+    try {
+      return (
+        (this.#graph.getEdgeAttribute(edgeKey, "salience") as number) ?? 1
+      );
+    } catch {
+      return 1;
+    }
+  }
+
   getCurrentFitnesses(): readonly EdgeFitness[] {
     const result: EdgeFitness[] = [];
     for (const [edgeKey, entry] of this.#currentFitnesses) {

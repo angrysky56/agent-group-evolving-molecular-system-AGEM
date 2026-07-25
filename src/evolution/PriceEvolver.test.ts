@@ -77,7 +77,11 @@ describe("conditioning of the Price decomposition", () => {
     expect(d.selection).toBe(0);
   });
 
-  it("scales selection with alpha rather than exploding", () => {
+  it("scales transmission with alpha rather than exploding", () => {
+    // Transmission, not selection. On a fresh graph every edge starts at the
+    // neutral salience of 1, so Cov(fitness, salience) is 0 and selection is
+    // *correctly* 0 — there is no standing variation to select on yet. All the
+    // change reinforcement induces shows up as transmission.
     const run = (alpha: number): number => {
       const g = makeGraph();
       const p = new PriceEvolver(g, {
@@ -86,19 +90,53 @@ describe("conditioning of the Price decomposition", () => {
       });
       p.beginIteration(2);
       p.onGapClosure(["d"]);
-      return p.evolve(2).selection;
+      return p.evolve(2).transmission;
     };
     const small = Math.abs(run(0.1));
     const large = Math.abs(run(1.0));
     expect(large).toBeGreaterThan(small);
     expect(large).toBeLessThan(1000);
   });
+
+  it("does not collapse to zero once salience varies", () => {
+    // Two cycles: the first creates variation, the second can select on it.
+    const g = makeGraph();
+    const p = new PriceEvolver(g, {
+      baseLearningRate: 0.5,
+      nascentMultiplier: 1,
+    });
+    p.beginIteration(2);
+    p.onGapClosure(["d"]);
+    p.evolve(2);
+
+    p.beginIteration(3);
+    p.onGapClosure(["d"]);
+    const second = p.evolve(3);
+    // c:d is now above neutral AND rewarded again ⇒ positive covariance.
+    expect(second.selection).toBeGreaterThan(0);
+  });
 });
 
-describe("Pólya reinforcement actually changes weights", () => {
-  it("raises the weight of a rewarded edge and leaves others alone", () => {
+describe("reinforcement acts on salience, never on evidence", () => {
+  it("NEVER modifies edge weight — evidence must stay a measurement", () => {
+    // The important one. `weight` is accumulated co-occurrence, and it is the
+    // substrate Louvain, VNE, H⁰ and every SOC metric are computed over. If the
+    // evolver writes it, a rise in VNE could be corpus growth or the evolver
+    // inflating its favourites, and nothing distinguishes them.
     const g = makeGraph();
     const before = weightsOf(g);
+    const p = new PriceEvolver(g, {
+      baseLearningRate: 5,
+      nascentMultiplier: 1,
+    });
+    p.beginIteration(2);
+    p.onGapClosure(["d"]);
+    p.evolve(2);
+    expect(weightsOf(g)).toEqual(before);
+  });
+
+  it("raises salience of a rewarded edge above the neutral mean", () => {
+    const g = makeGraph();
     const p = new PriceEvolver(g, {
       baseLearningRate: 0.5,
       nascentMultiplier: 1,
@@ -106,35 +144,62 @@ describe("Pólya reinforcement actually changes weights", () => {
     p.beginIteration(2);
     p.onGapClosure(["d"]); // rewards edges incident to d ⇒ c:d
     p.evolve(2);
-    const after = weightsOf(g);
 
-    expect(after["c:d"]).toBeGreaterThan(before["c:d"]);
-    expect(after["a:b"]).toBe(before["a:b"]);
+    expect(p.getSalience("c:d")).toBeGreaterThan(1);
+    expect(p.getSalience("a:b")).toBeLessThan(1);
   });
 
-  it("does not change any weight when alpha is 0", () => {
+  it("conserves mass — promoting one edge demotes the others", () => {
+    // This is what makes it an urn rather than an inflator, and it is what
+    // makes concentration possible at all. Without it, multiplying a subset
+    // upward merely lets light edges catch up and the distribution FLATTENS
+    // (measured: Gini 0.439 → 0.396 as α rose).
     const g = makeGraph();
-    const before = weightsOf(g);
+    const p = new PriceEvolver(g, {
+      baseLearningRate: 0.5,
+      nascentMultiplier: 1,
+    });
+    p.beginIteration(2);
+    p.onGapClosure(["d"]);
+    p.evolve(2);
+
+    const ranking = p.getSalienceRanking();
+    const mean =
+      ranking.reduce((s, r) => s + r.salience, 0) / ranking.length;
+    expect(mean).toBeCloseTo(1, 6);
+    expect(ranking[0].edgeKey).toBe("c:d");
+  });
+
+  it("does not change salience when alpha is 0", () => {
+    const g = makeGraph();
     const p = new PriceEvolver(g, { baseLearningRate: 0 });
     p.beginIteration(2);
     p.onGapClosure(["d"]);
     p.evolve(2);
-    expect(weightsOf(g)).toEqual(before);
+    for (const r of p.getSalienceRanking()) {
+      expect(r.salience).toBeCloseTo(1, 9);
+    }
   });
 
-  it("never drives a weight below the floor", () => {
+  it("never drives salience to zero — the anti-amnesia floor", () => {
+    // Mass conservation means an unrewarded edge decays. That is the point,
+    // but unbounded decay would remove material from consideration entirely.
+    // An edge may fall out of favour; it may not fall out of existence.
     const g = makeGraph();
     const p = new PriceEvolver(g, {
       baseLearningRate: 5,
       nascentMultiplier: 1,
-      minEdgeWeight: 0.1,
+      minSalience: 0.05,
     });
-    p.beginIteration(2);
-    p.onWeakLumpability(["e1"]); // large negative fitness on recent edges
-    p.evolve(2);
-    for (const w of Object.values(weightsOf(g))) {
-      expect(w).toBeGreaterThanOrEqual(0.1);
+    for (let i = 2; i <= 8; i++) {
+      p.beginIteration(i);
+      p.onGapClosure(["d"]); // c:d always wins, a:b never does
+      p.evolve(i);
     }
+    for (const r of p.getSalienceRanking()) {
+      expect(r.salience).toBeGreaterThanOrEqual(0.05);
+    }
+    expect(p.getSalience("c:d")).toBeGreaterThan(p.getSalience("a:b"));
   });
 });
 

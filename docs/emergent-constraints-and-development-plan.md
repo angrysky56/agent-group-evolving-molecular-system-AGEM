@@ -164,14 +164,70 @@ Also fixed, since they made the numbers meaningless rather than merely wrong:
 - **First-cycle artifact.** `#previousCDP` started at 0, so the first real
   reading looked like a large increase and handed out fitness for nothing.
 
-Pinned by `src/evolution/PriceEvolver.test.ts` (15 tests — there were none
+Pinned by `src/evolution/PriceEvolver.test.ts` (18 tests — there were none
 before, which is how a division by ~0 and an unreachable reward both survived).
 
-**Honest status:** the loop is real, measurable, and currently implements an
-*exploration* pressure rather than the selection pressure the theory calls for.
-Whether that is a bug or a better idea is a research question, not an
-engineering one — but it should not be described as Pólya reinforcement until
-the outcome channels are carrying the signal.
+### Fixed: separated policy from evidence, and conserved mass
+
+Two changes turned the inverted dynamic the right way up.
+
+**1. Reinforcement no longer writes `weight`.** It writes a separate `salience`
+attribute. This was the deeper defect: `weight` is accumulated co-occurrence — a
+*measurement* — and it is the substrate Louvain, VNE, H⁰ and every SOC metric
+are computed over. With the evolver mutating it, a rise in VNE could equally be
+corpus growth or the evolver inflating its favourites, and nothing
+distinguished them. For a system whose stated virtue is honest metrics, that is
+worse than any dynamics bug.
+
+```
+weight   — evidence. Written only by TNA ingest. The evolver never touches it.
+salience — policy. Relative attention multiplier, mean 1 by construction.
+           Consumed by EXPLORATION only: what to probe next, which gaps to
+           prioritise, where to spawn. Never by measurement.
+```
+
+**2. Mass is conserved.** Salience is rescaled to mean 1 after each update. This
+is what makes it an urn rather than an inflator — promoting the fit now
+necessarily demotes the unfit. A floor (`minSalience`, default 0.05) bounds the
+resulting decay: an edge may fall out of favour, never out of existence. That
+floor is the anti-amnesia guard, and it is needed precisely *because*
+conservation introduces forgetting.
+
+Re-running the ablation, measuring Gini on salience:
+
+```
+arm                  it  edges  fitDens     gini  selection  transmis
+alpha=0 (control)     6    276    0.120  0.00000    0.00000   0.00000
+alpha=0.1 (default)   6    276    0.120  0.01992    0.00000   0.00624
+alpha=1 (10x)         6    276    0.120  0.16535   -0.00000   0.08462
+
+VERDICT: reinforcement CONCENTRATES salience with alpha
+```
+
+Gini now rises monotonically with α instead of falling. The dynamic matches the
+theory.
+
+**Selection reads ≈0, and that is the honest answer, not a bug.** Fitness lands
+on newly created edges, which sit at the neutral salience of 1, so
+Cov(fitness, salience) ≈ 0: there is no standing variation being differentially
+reproduced. All the induced change appears as *transmission*. In Price terms the
+system is generating variation but not yet selecting on it — still exploration,
+now correctly reported as such rather than through a numerical artifact. Getting
+selection requires fitness to favour the *same* edges repeatedly across cycles,
+which is what the outcome channels (gap closure, H⁰ bridging) do and what
+CDP-on-recent-edges cannot.
+
+One trap found while fixing this: measuring Δz *across* the rescale makes
+Δz̄ ≡ 0 by construction, which forces selection and transmission to cancel and
+pins both at 0.00000 forever. The decomposition must be computed on the
+reinforcement-induced change *before* normalisation. The first version of this
+fix had it wrong and reported a clean sweep of zeros.
+
+**Honest status:** the loop is real, measured, conserves mass, concentrates
+attention, and cannot corrupt a metric or erase a memory. It currently expresses
+exploration pressure rather than selection pressure — that is a property of the
+fitness definition, not the mechanism, and the outcome channels are now wired to
+change it as gaps actually start closing.
 
 ---
 
