@@ -114,6 +114,18 @@ const ConfigSchema = z.object({
    * running a small local model with a short context; raising it further keeps
    * more raw history at the cost of a larger (but rarer) compaction call.
    * Default: 32000
+   *
+   * ⚠ THIS KNOB MOVES H⁰. Measured on the same corpus with the same cycle-1
+   * node count (169): at the old limit of 1000, compaction fired every cycle
+   * and H⁰ ran 1 → 1 → 2 → 3; at 32000 it never fired and H⁰ was 3 from cycle
+   * one. The sheaf is built by `buildSheafFromRegistry` over LCM subgraphs, so
+   * the summary nodes that compaction creates change the base graph the
+   * cohomology is computed over.
+   *
+   * That is a real coupling between a performance setting and a reported
+   * metric, and it was undocumented. Consequence: H⁰ trajectories are only
+   * comparable across runs that share this value. Do not read a change in H⁰
+   * as a change in the material if this was retuned in between.
    */
   LCM_LEVEL1_TOKEN_LIMIT: z.coerce.number().min(256).default(32000),
 });
