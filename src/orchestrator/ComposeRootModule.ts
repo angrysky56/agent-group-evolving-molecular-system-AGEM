@@ -241,11 +241,21 @@ export class Orchestrator {
   constructor(
     embedder: IEmbedder,
     compressor?: ICompressor,
-    options?: { vdwAgentMaxIterations?: number },
+    options?: {
+      vdwAgentMaxIterations?: number;
+      /** Overrides for LCM escalation thresholds; see #initLcm. */
+      lcmThresholds?: Partial<{
+        level1TokenLimit: number;
+        level2MinRatio: number;
+        level3KTokens: number;
+        coherenceSimilarityThreshold: number;
+      }>;
+    },
   ) {
     this.eventBus = new EventBus();
     this.#embedder = embedder;
     this.#vdwAgentMaxIterations = options?.vdwAgentMaxIterations;
+    this.#lcmThresholdOverrides = options?.lcmThresholds;
 
     this.#initLcm(embedder, compressor);
     this.#initSheaf();
@@ -793,6 +803,14 @@ export class Orchestrator {
   /** Per-phase wall-clock of the most recent cycle, in ms. */
   #lastPhaseTimings: Record<string, number> = {};
 
+  /** Deployment overrides for LCM escalation thresholds. */
+  readonly #lcmThresholdOverrides?: Partial<{
+    level1TokenLimit: number;
+    level2MinRatio: number;
+    level3KTokens: number;
+    coherenceSimilarityThreshold: number;
+  }>;
+
   /** Where the last cycle spent its time. Empty before the first cycle. */
   getLastPhaseTimings(): Readonly<Record<string, number>> {
     return this.#lastPhaseTimings;
@@ -933,11 +951,27 @@ export class Orchestrator {
     );
     (this as any).lcmDag = active.dag;
 
+    /*
+     * LCM escalation thresholds.
+     *
+     * `level1TokenLimit` is the token count above which the accumulated LCM is
+     * compacted by an LLM summarization call. It is the single most expensive
+     * knob in a cycle: measured at 49.2s of a 53.1s cycle — 93% — because the
+     * old hardcoded value of 1000 tokens is smaller than a single paragraph of
+     * real corpus, so compaction fired on EVERY cycle.
+     *
+     * The default is now sized for modern context windows: compaction should
+     * be an occasional consolidation, not a per-cycle tax. Override per
+     * deployment via the constructor options (the backend maps env vars onto
+     * these) — small models with short contexts want a lower number, and a
+     * lower number is also what the original 1000 was implicitly assuming.
+     */
     const thresholds = {
-      level1TokenLimit: 1000,
-      level2MinRatio: 0.8,
-      level3KTokens: 2000,
-      coherenceSimilarityThreshold: 0.7,
+      level1TokenLimit: this.#lcmThresholdOverrides?.level1TokenLimit ?? 32000,
+      level2MinRatio: this.#lcmThresholdOverrides?.level2MinRatio ?? 0.8,
+      level3KTokens: this.#lcmThresholdOverrides?.level3KTokens ?? 2000,
+      coherenceSimilarityThreshold:
+        this.#lcmThresholdOverrides?.coherenceSimilarityThreshold ?? 0.7,
     };
     const comp = compressor ?? new MockCompressor();
     this.#compressor = comp;

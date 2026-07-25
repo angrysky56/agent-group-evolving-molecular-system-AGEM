@@ -100,6 +100,22 @@ const ConfigSchema = z.object({
    * ingest a corpus it does not have. Default: 600
    */
   CHAT_CONTRACT_MATERIAL_CHARS: z.coerce.number().min(0).default(600),
+
+  /**
+   * Token count of accumulated LCM context above which a compaction (an LLM
+   * summarization call) is triggered.
+   *
+   * This is the most expensive knob in a reasoning cycle. It was hardcoded at
+   * 1000 — smaller than a single paragraph of real material — so compaction
+   * fired on every cycle. Measured: 49.2s of a 53.1s cycle, 93% of the total.
+   *
+   * The default is sized for modern context windows so that compaction is an
+   * occasional consolidation rather than a per-cycle tax. Lower it if you are
+   * running a small local model with a short context; raising it further keeps
+   * more raw history at the cost of a larger (but rarer) compaction call.
+   * Default: 32000
+   */
+  LCM_LEVEL1_TOKEN_LIMIT: z.coerce.number().min(256).default(32000),
 });
 
 type Config = z.infer<typeof ConfigSchema>;

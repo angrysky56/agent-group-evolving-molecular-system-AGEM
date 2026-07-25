@@ -71,6 +71,9 @@ class AgemBridge {
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
+      lcmThresholds: {
+        level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,
+      },
     });
     this.#grep = this.#buildGrep(embedder);
     const config = settings.getLLMConfig();
@@ -426,10 +429,26 @@ class AgemBridge {
       `Starting cycle: ${userMessage.slice(0, 80)}`,
     );
 
+    /*
+     * The orchestrator reports its own per-phase timings, but runReasoning is
+     * only part of what a cycle costs: the MetaOrchestrator makes a routing LLM
+     * call first, and the topology it selects may make more. Measured once at
+     * 174.3s of tool time against 53.1s of reported cycle — 121s unaccounted
+     * for, entirely in this layer. Time it here so the whole cost is visible
+     * rather than just the part that happened to be instrumented.
+     */
+    const cycleStart = Date.now();
     const metaResult = await this.#metaOrchestrator.execute(
       userMessage,
       { accuracyRequirement: "standard" },
       signal,
+    );
+    const totalMs = Date.now() - cycleStart;
+    const reasoningMs = this.#orchestrator.getLastPhaseTimings().total ?? 0;
+    console.log(
+      `[AgemBridge] run_agem_cycle ${(totalMs / 1000).toFixed(1)}s — ` +
+        `reasoning=${(reasoningMs / 1000).toFixed(1)}s ` +
+        `meta_routing+topology=${((totalMs - reasoningMs) / 1000).toFixed(1)}s`,
     );
 
     const state = this.getState();
@@ -1081,6 +1100,9 @@ class AgemBridge {
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
+      lcmThresholds: {
+        level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,
+      },
     });
     this.#grep = this.#buildGrep(embedder);
 
