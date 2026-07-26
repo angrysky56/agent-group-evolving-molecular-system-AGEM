@@ -574,29 +574,62 @@ class AgemBridge {
 
   /** Get current sheaf cohomology analysis. */
   getCohomology(): CohomologySnapshot {
-    // Honesty guard: on an empty graph the sheaf default would report
-    // h0=1 / coboundary_rank=1, which reads like "one consensus component"
-    // when in fact nothing has been analysed. Report a true-empty snapshot so
-    // an un-run engine can't be misread as a meaningful result.
-    const nodeCount = this.#orchestrator.tnaGraph.getGraph().order;
-    if (nodeCount === 0) {
+    /*
+     * Honesty guard. The previous version asked the TNA CONCEPT GRAPH whether
+     * it was empty, then reported cohomology of the SHEAF — two unrelated
+     * objects. `sheaf` starts life as buildFlatSheaf(2, 1), a two-vertex stub,
+     * and is only replaced when a cycle reaches step 6. Restoring a persisted
+     * concept graph populates the graph but does NOT build the sheaf, so the
+     * guard passed and the stub's cohomology was returned as a finding —
+     * exactly the misreading the guard was written to prevent.
+     *
+     * Ask the sheaf about the sheaf.
+     */
+    if (!this.#orchestrator.sheafBuiltFromRegistry) {
       return {
         h0_dimension: 0,
         h1_dimension: 0,
         has_obstruction: false,
         coboundary_rank: 0,
         tolerance: 0,
-        note: "empty graph — no cycle has been run; run_agem_cycle first",
+        domain: "lcm-subgraph-registry",
+        sheaf_vertices: 0,
+        sheaf_edges: 0,
+        note:
+          "sheaf not built — no cycle has run in this process, so H⁰/H¹ are " +
+          "undefined. A restored concept graph does not build the sheaf. " +
+          "Run run_agem_cycle first.",
       };
     }
 
-    const cohom = computeCohomology(this.#orchestrator.sheaf);
+    const sheaf = this.#orchestrator.sheaf;
+    const vertices = sheaf.getVertexIds().length;
+    const edges = sheaf.getEdgeIds().length;
+    const cohom = computeCohomology(sheaf);
+
+    /*
+     * With no edges every vertex is its own component, so H⁰ trivially equals
+     * the subgraph count and H¹ is trivially 0. That is a fact about an
+     * unconnected registry, not about the corpus — and it is indistinguishable
+     * from a real result unless it is said out loud.
+     */
+    const note =
+      edges === 0
+        ? `sheaf has ${vertices} vertices and NO edges — no pair of subgraphs ` +
+          `cleared the similarity threshold, so H⁰ is just the subgraph count ` +
+          `and H¹ is trivially 0. This says nothing about the concept graph.`
+        : undefined;
+
     return {
       h0_dimension: cohom.h0Dimension,
       h1_dimension: cohom.h1Dimension,
       has_obstruction: cohom.hasObstruction,
       coboundary_rank: cohom.coboundaryRank,
       tolerance: cohom.tolerance,
+      domain: "lcm-subgraph-registry",
+      sheaf_vertices: vertices,
+      sheaf_edges: edges,
+      note,
     };
   }
 

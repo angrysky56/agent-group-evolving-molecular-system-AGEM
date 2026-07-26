@@ -1,0 +1,95 @@
+[
+ {
+  "name": "Hard Problem Dualism",
+  "propositions": [
+   "exists p (phenomenal_property(p) & -functional_property(p))",
+   "all f (functional_property(f) -> exists m (mechanism(m) & explains(m, f)))",
+   "all p (phenomenal_property(p) -> all m (-mechanism(m) | -explains(m, p)))"
+  ]
+ },
+ {
+  "name": "Phenomenal-Access Dissociation",
+  "propositions": [
+   "exists s (mental_state(s) & phenomenal(s) & -accessed(s))",
+   "exists s (mental_state(s) & accessed(s) & -phenomenal(s))"
+  ]
+ },
+ {
+  "name": "IIT Intrinsic",
+  "propositions": [
+   "all s (conscious(s) <-> has_phi(s))",
+   "all s (has_phi(s) -> -broadcasts(s))",
+   "exists s (conscious(s))"
+  ]
+ },
+ {
+  "name": "Global Workspace Relational",
+  "propositions": [
+   "all s (conscious(s) <-> broadcasts(s))",
+   "exists s (conscious(s))"
+  ]
+ },
+ {
+  "name": "Type Physicalism",
+  "propositions": [
+   "identical(pain, c_fiber)",
+   "all x (identical(x, pain) -> identical(x, c_fiber))"
+  ]
+ },
+ {
+  "name": "Functionalism with Multiple Realizability",
+  "propositions": [
+   "all x (plays_causal_role(pain_role, x) -> identical(x, pain))",
+   "exists x (-identical(x, c_fiber) & plays_causal_role(pain_role, x))"
+  ]
+ },
+ {
+  "name": "Epiphenomenalism",
+  "propositions": [
+   "all m (mental_event(m) & all p (physical_event(p) -> -causes(m, p)))",
+   "exists m (mental_event(m))"
+  ]
+ },
+ {
+  "name": "Interactionist Dualism",
+  "propositions": [
+   "exists m (mental_event(m) & exists p (physical_event(p) & causes(m, p)))"
+  ]
+ },
+ {
+  "name": "Explanatory Gap Epistemic",
+  "propositions": [
+   "all x (physical_account_of(x) -> -epistemically_transparent(x))",
+   "exists x (physical_account_of(pain))"
+  ]
+ },
+ {
+  "name": "Zombie Argument Modal",
+  "propositions": [
+   "exists z (physically_identical(z, me) & -conscious(z))",
+   "all m all z (physically_identical(m, z) & -conscious(m) & conscious(z) -> -necessitated_by_physical(consciousness))"
+  ]
+ },
+ {
+  "name": "Qualia-Intentionality Separation",
+  "propositions": [
+   "exists m (mental_state(m) & has_qualia(m) & -has_intentionality(m))",
+   "exists m (mental_state(m) & has_intentionality(m) & -has_qualia(m))"
+  ]
+ },
+ {
+  "name": "Prediction Error and Precision",
+  "propositions": [
+   "all x (error_signal(x) -> -precision_gain(x))",
+   "exists x (error_signal(x))",
+   "exists x (precision_gain(x))"
+  ]
+ },
+ {
+  "name": "Substrate Independence",
+  "propositions": [
+   "all x all p1 all p2 ((physical_substrate(p1) & physical_substrate(p2) & preserves_organization(x, p1, p2)) -> preserves_consciousness(x, p1, p2))",
+   "exists x (conscious_entity(x))"
+  ]
+ }
+]

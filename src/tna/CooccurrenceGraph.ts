@@ -42,6 +42,38 @@ type GraphInstance = AbstractGraph;
 const DEFAULT_WINDOW_SIZE = 4;
 
 // ---------------------------------------------------------------------------
+// Segmentation
+// ---------------------------------------------------------------------------
+
+/**
+ * segmentText — split raw text into the units a co-occurrence window may span.
+ *
+ * WHY THIS EXISTS: the window used to slide over the whole ingested blob as one
+ * flat token stream, so the last tokens of one sentence got edges to the first
+ * tokens of the next. Measured on two propositions with no shared vocabulary,
+ * concatenating them fabricated 6 edges — "qualitative|realizability",
+ * "entail|feel" and friends — asserting relationships that appear nowhere in
+ * the source. Every downstream number (communities, modularity, bridges, the
+ * blocks proposed to the logic layer) was computed over those artifacts.
+ *
+ * A sentence is the unit of assertion, so it is the unit of co-occurrence:
+ * two terms in different sentences are not adjacent in any meaningful sense,
+ * however few characters separate them.
+ *
+ * Exported for testing.
+ */
+export function segmentText(text: string): string[] {
+  return text
+    // Paragraph and list-item breaks are hard boundaries.
+    .split(/\n\s*\n|\n\s*[-*•]\s+|\n\s*\d+[.)]\s+/)
+    // Sentence terminator followed by whitespace, without splitting decimals
+    // ("0.606") or single-letter abbreviations ("e.g.").
+    .flatMap((para) => para.split(/(?<![A-Z0-9])[.!?]+(?=\s|$)/))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+// ---------------------------------------------------------------------------
 // CooccurrenceGraph class
 // ---------------------------------------------------------------------------
 
@@ -100,6 +132,22 @@ export class CooccurrenceGraph {
    */
   readonly #phraseExtractor: PhraseExtractor | null;
 
+  /**
+   * Content hashes of segments already folded into the graph.
+   *
+   * WHY: ingestion was not idempotent. Re-ingesting identical material grew the
+   * graph — measured, a 7-node graph became 13 nodes on a second ingest of the
+   * same sentence, because PhraseExtractor counts bigrams ACROSS ingestions and
+   * a second pass pushes them over the promotion threshold, while edge weights
+   * accumulate unboundedly on top. Live runs of the same corpus moved
+   * 1010 -> 1036 -> 1074 nodes and 13 -> 14 -> 11 communities, with Louvain
+   * seeded at 42 throughout: the clustering was stable, the graph was not.
+   *
+   * "A cycle only advances reasoning if fed genuinely new content" was a
+   * convention. This makes it an invariant.
+   */
+  readonly #seenSegments: Set<string> = new Set();
+
   constructor(preprocessor: Preprocessor, config?: TNAConfig) {
     this.#preprocessor = preprocessor;
     this.#windowSize = config?.windowSize ?? DEFAULT_WINDOW_SIZE;
@@ -127,7 +175,30 @@ export class CooccurrenceGraph {
       this.#currentIteration = iteration;
     }
 
+    /*
+     * Ingest SEGMENT BY SEGMENT rather than as one flat token stream. Two
+     * defects are fixed by this, both measured (see graphIntegrity.test.ts):
+     *
+     *   - The window no longer spans a sentence boundary, so it can no longer
+     *     invent an edge between terms that never appear in the same assertion.
+     *   - Already-seen segments are skipped, so re-ingesting material is a
+     *     no-op instead of silently mutating the graph.
+     *
+     * Per-segment preprocessing is safe: preprocessDetailed() builds a
+     * throwaway TfIdf per call and does not touch shared corpus state.
+     */
+    for (const segment of segmentText(text)) {
+      const key = segment.replace(/\s+/g, " ").toLowerCase();
+      if (this.#seenSegments.has(key)) continue;
+      this.#seenSegments.add(key);
+      this.#ingestSegment(segment);
+    }
+  }
+
+  /** Fold a single already-deduplicated segment into the graph. */
+  #ingestSegment(text: string): void {
     const result = this.#preprocessor.preprocessDetailed(text);
+    if (result.tokens.length === 0) return;
 
     // Build a surface-to-lemma map for this ingestion batch.
     const surfaceToLemma = result.surfaceToLemma;
@@ -247,9 +318,22 @@ export class CooccurrenceGraph {
           for (const sf of newSurfaces) {
             existing.surfaceForms.add(sf);
           }
-          // Update TF-IDF weight if we have a new score.
-          if (tfidfScores.get(token) !== undefined) {
-            existing.tfidfWeight = tfidfScores.get(token)!;
+          /*
+           * Keep the STRONGEST observation, not the most recent one. This was
+           * last-write-wins, so a node's weight reflected whichever batch
+           * happened to mention it last — and now that ingestion is
+           * segment-wise, "last" would mean "the final sentence of the
+           * document", which is noise.
+           *
+           * NOTE: preprocessDetailed computes tf-idf against a corpus of one
+           * document, so idf is constant and this is really a term-frequency
+           * score. Making it a genuine corpus statistic means routing ingest
+           * through preprocessWithCorpus() and maintaining the document set —
+           * a larger change, deliberately not made here.
+           */
+          const incoming = tfidfScores.get(token);
+          if (incoming !== undefined) {
+            existing.tfidfWeight = Math.max(existing.tfidfWeight, incoming);
           }
         }
       }

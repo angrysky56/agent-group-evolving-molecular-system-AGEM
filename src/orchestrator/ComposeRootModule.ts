@@ -145,6 +145,18 @@ export class Orchestrator {
   /** Sheaf data structure: tracks agent stalk sections and restriction maps. */
   readonly sheaf!: CellularSheaf;
 
+  /**
+   * False until `buildSheafFromRegistry()` has replaced the placeholder sheaf.
+   *
+   * `sheaf` is initialised to `buildFlatSheaf(2, 1)` — a two-vertex stub — and
+   * only becomes the real subgraph sheaf when a cycle reaches step 6. Cohomology
+   * of the stub is a well-formed number that means nothing, so any consumer
+   * reporting H⁰/H¹ must be able to tell the two apart. Restoring a persisted
+   * TNA graph does NOT build the sheaf, so "the graph has nodes" is not a valid
+   * proxy for "the sheaf is real".
+   */
+  readonly sheafBuiltFromRegistry: boolean = false;
+
   /** Cohomology analyzer: computes H^0/H^1 from sheaf and emits obstruction events. */
   readonly cohomologyAnalyzer!: CohomologyAnalyzer;
 
@@ -801,6 +813,7 @@ export class Orchestrator {
     // Dynamically construct CellularSheaf base graph from SubgraphRegistry (Move B2)
     const dynamicSheaf = await this.buildSheafFromRegistry();
     (this as any).sheaf = dynamicSheaf;
+    (this as any).sheafBuiltFromRegistry = true;
 
     const cohomologyResult = this.cohomologyAnalyzer.analyze(
       this.sheaf,

@@ -283,6 +283,22 @@ describe("Orchestrator (ComposeRootModule)", () => {
       await orchestrator.runReasoning("test prompt");
       expect(orchestrator.getIterationCount()).toBe(1);
     });
+
+    /*
+     * `sheaf` is initialised to buildFlatSheaf(2, 1) — a stub whose cohomology
+     * is a well-formed number that means nothing. Consumers reporting H⁰/H¹
+     * must be able to tell the stub from the real subgraph sheaf, and the TNA
+     * graph's node count is NOT a valid proxy: restoring a persisted concept
+     * graph fills the graph without ever building the sheaf.
+     */
+    it("reports the sheaf as unbuilt until a cycle actually builds it", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator = new Orchestrator(embedder);
+
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(false);
+      await orchestrator.runReasoning("test prompt");
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(true);
+    });
   });
 
   describe("T6: 10-iteration loop", () => {
