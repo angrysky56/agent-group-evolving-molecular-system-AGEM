@@ -3,17 +3,19 @@
 > [!TIP]
 > **TL;DR**: AGEM is a self-contained TypeScript reasoning engine. It ingests text into an evolving concept graph, tracks how that graph fragments and coheres (sheaf **H⁰**), measures whether the system is still developing or has prematurely converged (self-organized criticality), and — its distinctive capability — detects genuine **logical contradiction** in a body of claims by computing the homology of a _consistency complex_ backed by a real theorem prover (**logic-based H¹**).
 
+![UI](Screenshot_2026-07-27_13-03-20.png)
+
 ## Quick-Start Card
 
-| Goal              | Action                             | Target                             |
-| :---------------- | :--------------------------------- | :--------------------------------- |
-| **Launch System** | `./start.sh`                       | Full-stack UI + Backend            |
-| **Run Analysis**  | Open `localhost:5173`              | Interactive Chat Dashboard         |
-| **Add Knowledge** | Drop `.md` in `skills/`            | Agent Skill Loading                |
-| **Run Tests**     | `npm test`                         | Core Engine Validation             |
-| **Inspect a run** | Read `knowledge_base/runs/<id>.md` | Full tool I/O + graph-ingest trace |
-| **Inspect memory** | Read `knowledge_base/findings/index.json` | Hot findings + conflict candidates |
-| **Benchmark**     | `npx tsx benchmarks/phase-timing.bench.ts` | Per-phase cycle cost vs graph size |
+| Goal               | Action                                     | Target                             |
+| :----------------- | :----------------------------------------- | :--------------------------------- |
+| **Launch System**  | `./start.sh`                               | Full-stack UI + Backend            |
+| **Run Analysis**   | Open `localhost:5173`                      | Interactive Chat Dashboard         |
+| **Add Knowledge**  | Drop `.md` in `skills/`                    | Agent Skill Loading                |
+| **Run Tests**      | `npm test`                                 | Core Engine Validation             |
+| **Inspect a run**  | Read `knowledge_base/runs/<id>.md`         | Full tool I/O + graph-ingest trace |
+| **Inspect memory** | Read `knowledge_base/findings/index.json`  | Hot findings + conflict candidates |
+| **Benchmark**      | `npx tsx benchmarks/phase-timing.bench.ts` | Per-phase cycle cost vs graph size |
 
 ## What AGEM does
 
@@ -88,9 +90,9 @@ Formulas use ASCII first-order logic: `->` `<->` `&` `|` `-` (negation), parenth
 
 ## TypeDB claim store (optional)
 
-The concept graph records that two lemmas appeared near each other. It cannot record that IIT **excludes** global broadcast — so a formalizer reading it has to *reconstruct* the claim from keywords, and reconstruction is underdetermined. Measured on one corpus across three runs: 3, then 6, then 2 contradictions, with IIT/GWT flipping from contradictory to consistent because the exclusion silently vanished from the encoding.
+The concept graph records that two lemmas appeared near each other. It cannot record that IIT **excludes** global broadcast — so a formalizer reading it has to _reconstruct_ the claim from keywords, and reconstruction is underdetermined. Measured on one corpus across three runs: 3, then 6, then 2 contradictions, with IIT/GWT flipping from contradictory to consistent because the exclusion silently vanished from the encoding.
 
-The claim store fixes the shape rather than the wording. Claims are stored as **schema-enforced n-ary relations with named roles and mandatory provenance** (`schema/claims.tql`), so a malformed extraction *fails to write* instead of becoming a confident wrong answer:
+The claim store fixes the shape rather than the wording. Claims are stored as **schema-enforced n-ary relations with named roles and mandatory provenance** (`schema/claims.tql`), so a malformed extraction _fails to write_ instead of becoming a confident wrong answer:
 
 ```
 exclusion missing its `excluded` role  →  [CNT5]  Constraint '@card(1..1)' violated: found 0 instances
@@ -116,7 +118,7 @@ Nothing else is required — the backend creates the database and defines the sc
 cd interface/backend && npx tsx scripts/verify-claim-store.ts
 ```
 
-**Driver note.** TypeDB 3.x has no gRPC driver for Node; the npm package `typedb-driver` is 2.x-only and will *not* talk to a 3.x server. AGEM uses `@typedb/driver-http`, and `TYPEDB_ADDRESS` is therefore the **HTTP** port (8100), not gRPC 1729.
+**Driver note.** TypeDB 3.x has no gRPC driver for Node; the npm package `typedb-driver` is 2.x-only and will _not_ talk to a 3.x server. AGEM uses `@typedb/driver-http`, and `TYPEDB_ADDRESS` is therefore the **HTTP** port (8100), not gRPC 1729.
 
 **Writing TypeQL.** TypeDB 3.x is a rewrite — `thing` is no longer a root type, inserts use `links (role: $x)`, and queries are pipelines. The vendored reference at `skills/typeql/SKILL.md` raises TypeQL pass rates from 23–43% to 86–96% by TypeDB's own benchmark; use it rather than writing 3.x from memory. Optionally add the syntax checker with `sudo apt install typeql-check=3.12.0` (pin the version — apt's default candidate `3.12.0-rc0` is a truncated artifact on their CDN at time of writing). It isn't needed: loading a schema against a scratch database validates semantics as well as grammar.
 
@@ -146,11 +148,11 @@ AGEM now uses **FINGER** ([Chen et al., ICML 2019](#references)) above a configu
 Q = 1 − tr(ρ²)          Ĥ = −Q · ln λ_max          both O(n + m)
 ```
 
-| nodes | before | after |
-| ----: | -----: | ----: |
+| nodes |    before |       after |
+| ----: | --------: | ----------: |
 |   382 | 14 498 ms | **19.8 ms** |
-|   682 | ~64 s | **15.0 ms** |
-|  2082 | ~57 min | **84.3 ms** |
+|   682 |     ~64 s | **15.0 ms** |
+|  2082 |   ~57 min | **84.3 ms** |
 
 **This is a re-derivation, not a transcription.** FINGER publishes its closed form for the _combinatorial_ Laplacian scaled by its trace; AGEM uses the _symmetric normalized_ Laplacian `I − D^(−1/2) A D^(−1/2)`. Applying the published formula directly would have silently computed a different quantity that still looked plausible. What generalises is the identity `Q = 1 − tr(ρ²)`; only the closed form for `tr(ρ²)` is matrix-specific. The AGEM derivation is anchored on Kₙ (`Q = (n−2)/(n−1)`, `λ_max(ρ) = 1/(n−1)`) and every accuracy test asserts against the **real exact solver**, not hand-copied numbers.
 
@@ -172,13 +174,13 @@ Making VNE cheap made a second measure affordable — `src/soc/entropyCentrality
 
 Measured against the exact dense solver (Spearman rank correlation, hub-heavy graph):
 
-| signal | ρ vs exact ΔΘ | distinct values / 120 |
-| --- | ---: | ---: |
-| **ΔQ** | **0.99** | **120** |
-| ΔĤ (full FINGER estimate) | 0.14 | — |
-| degree centrality | 0.12 | 16 |
+| signal                    | ρ vs exact ΔΘ | distinct values / 120 |
+| ------------------------- | ------------: | --------------------: |
+| **ΔQ**                    |      **0.99** |               **120** |
+| ΔĤ (full FINGER estimate) |          0.14 |                     — |
+| degree centrality         |          0.12 |                    16 |
 
-Two results worth recording. **Rank by `Q`, not by `Ĥ`** — the obvious move is to use the better entropy estimate `Ĥ = −Q·ln λ_max`, and it fails, because λ_max shifts from node to node and swamps the ordering. The source paper reaches for the quadratic approximation for _speed_ and notes it costs accuracy; on this evidence it is also the more faithful _ranking_ signal, which is an argument the paper does not make. And **degree centrality ties badly** — 16 distinct values across 120 nodes, so it cannot order within its buckets, while ΔQ separates all 120.
+Two results worth recording. **Rank by `Q`, not by `Ĥ`** — the obvious move is to use the better entropy estimate `Ĥ = −Q·ln λ_max`, and it fails, because λ*max shifts from node to node and swamps the ordering. The source paper reaches for the quadratic approximation for \_speed* and notes it costs accuracy; on this evidence it is also the more faithful _ranking_ signal, which is an argument the paper does not make. And **degree centrality ties badly** — 16 distinct values across 120 nodes, so it cannot order within its buckets, while ΔQ separates all 120.
 
 Scope, honestly: this is a **structural** measure, not a semantic one — a function word that slips past the preprocessor's noise filters will score highly, and deserves to by this metric. It is currently a measured signal with tests, **not yet wired into any tool**; the natural use is seeding `detect_gaps` / `generate_catalyst_questions` with load-bearing concepts instead of degree. The source paper's hypergraph machinery (s-line graphs, hyperedge-cardinality weighting) does **not** apply to AGEM's dyadic graph and is not implemented, and its evaluation validates epidemic-propagation influence rather than importance in a reasoning graph — so the numbers above were measured here against this repo's exact solver rather than inherited.
 
@@ -189,8 +191,8 @@ The chat tool loop has an explicit controllability layer rather than leaving fai
 - **Bounded three-level recovery** (`recovery-protocol.ts`) — L1 engine-side retry for transient faults (network, timeout, rate limit, 5xx), L2 deterministic argument repair for schema faults, L3 escalation to the model. The escalation invariant is enforced mechanically by a per-call `pristine → retried → patched` counter, not by convention. Replaces an unbounded loop whose only rule was the words "retry ONCE" in a prompt.
 - **Non-idempotent calls are never blind-retried** — `run_agem_cycle` ingests into the accumulating graph, so a silent retry would double-count the same co-occurrences. Those failures escalate with a notice saying why.
 - **Context partition** — full failure detail (stack, response body, every attempt) goes to the run log only. Chat history receives a terse, length-capped, structured notice. Failure text never becomes implicit input to later reasoning, and never reaches the concept graph.
-- **Side-effect-aware parallel dispatch** (`tool-dispatch.ts`) — consecutive read-only calls run concurrently; every mutating call is a wave of its own, so read/write order is preserved and results return in original call order. Unknown tools default to *mutating*: misclassifying a read as a write costs latency, the reverse corrupts the graph.
-- **Output contract** (`workflow-contract.ts`) — a run completes when the workflow demonstrably happened (ingest → inspect → verify-if-multi-position), not when a turn counter says so. "Multi-position" is read from AGEM's own clustering (≥2 concept communities), not keyword-matched. Only *successful* calls count. Stays dormant on non-analysis runs, so "reset the engine" is never nudged to ingest a corpus it does not have.
+- **Side-effect-aware parallel dispatch** (`tool-dispatch.ts`) — consecutive read-only calls run concurrently; every mutating call is a wave of its own, so read/write order is preserved and results return in original call order. Unknown tools default to _mutating_: misclassifying a read as a write costs latency, the reverse corrupts the graph.
+- **Output contract** (`workflow-contract.ts`) — a run completes when the workflow demonstrably happened (ingest → inspect → verify-if-multi-position), not when a turn counter says so. "Multi-position" is read from AGEM's own clustering (≥2 concept communities), not keyword-matched. Only _successful_ calls count. Stays dormant on non-analysis runs, so "reset the engine" is never nudged to ingest a corpus it does not have.
 
 ## Optional MCP servers
 
@@ -343,28 +345,28 @@ All configuration lives in `.env`. Key settings:
 
 Tool-execution settings:
 
-| Variable                         | Default | Description                                                                                                    |
-| -------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------- |
-| `CHAT_MAX_TURNS`                 | `30`    | Hard cap on tool turns per request.                                                                             |
-| `TOOL_RETRY_BUDGET`              | `2`     | L1 retries for **transient** faults on **idempotent** calls only. `0` escalates every failure to the model.      |
-| `TOOL_MAX_CONCURRENCY`           | `4`     | Max simultaneous read-only tool calls. Mutating tools are always serial regardless of this value.                |
-| `CHAT_ENFORCE_WORKFLOW_CONTRACT` | `true`  | Require ingest → inspect → verify-if-multi-position before a run may finish.                                    |
-| `CHAT_CONTRACT_MATERIAL_CHARS`   | `600`   | User-message size at which a run counts as an analysis, so short maintenance commands are never nudged.          |
+| Variable                         | Default | Description                                                                                                 |
+| -------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `CHAT_MAX_TURNS`                 | `30`    | Hard cap on tool turns per request.                                                                         |
+| `TOOL_RETRY_BUDGET`              | `2`     | L1 retries for **transient** faults on **idempotent** calls only. `0` escalates every failure to the model. |
+| `TOOL_MAX_CONCURRENCY`           | `4`     | Max simultaneous read-only tool calls. Mutating tools are always serial regardless of this value.           |
+| `CHAT_ENFORCE_WORKFLOW_CONTRACT` | `true`  | Require ingest → inspect → verify-if-multi-position before a run may finish.                                |
+| `CHAT_CONTRACT_MATERIAL_CHARS`   | `600`   | User-message size at which a run counts as an analysis, so short maintenance commands are never nudged.     |
 
 Finding-memory settings:
 
-| Variable                              | Default | Description                                                                 |
-| ------------------------------------- | ------- | --------------------------------------------------------------------------- |
-| `FINDING_RECALL_SIMILARITY_FLOOR`     | `0.4`   | Raw cosine floor; top-k cannot promote a weaker match.                       |
-| `FINDING_RECALL_TOP_K`                | `3`     | Maximum findings injected before the first model turn.                       |
-| `FINDING_UNUSED_RETENTION_DAYS`       | `180`   | Grace period before never-recalled, never-cited findings leave the hot index. |
-| `FINDING_MAX_ACTIVE`                  | `500`   | Absolute cap on findings scanned per run; overflow is archived, not deleted. |
-| `FINDING_DENSIFICATION_ENABLED`       | `true`  | Attempt an optional schema-gated payload on typed findings.                  |
-| `FINDING_DENSIFICATION_TARGET_RATIO`  | `0.28`  | Hard payload/source token ceiling; an envelope that cannot fit is skipped.   |
-| `FINDING_DENSIFICATION_MAX_PASSES`    | `3`     | Maximum CoD revisions/provider calls per finding.                            |
-| `FINDING_DENSIFICATION_MAX_SOURCE_TOKENS` | `8192` | Oversized evidence is skipped rather than silently truncated.            |
-| `FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS` | `2048` | Absolute payload ceiling.                                                |
-| `FINDING_DENSIFICATION_MIN_NARRATIVE_TOKENS` | `16` | Prevent a schema-only/trivial payload from being reported as condensed. |
+| Variable                                     | Default | Description                                                                   |
+| -------------------------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `FINDING_RECALL_SIMILARITY_FLOOR`            | `0.4`   | Raw cosine floor; top-k cannot promote a weaker match.                        |
+| `FINDING_RECALL_TOP_K`                       | `3`     | Maximum findings injected before the first model turn.                        |
+| `FINDING_UNUSED_RETENTION_DAYS`              | `180`   | Grace period before never-recalled, never-cited findings leave the hot index. |
+| `FINDING_MAX_ACTIVE`                         | `500`   | Absolute cap on findings scanned per run; overflow is archived, not deleted.  |
+| `FINDING_DENSIFICATION_ENABLED`              | `true`  | Attempt an optional schema-gated payload on typed findings.                   |
+| `FINDING_DENSIFICATION_TARGET_RATIO`         | `0.28`  | Hard payload/source token ceiling; an envelope that cannot fit is skipped.    |
+| `FINDING_DENSIFICATION_MAX_PASSES`           | `3`     | Maximum CoD revisions/provider calls per finding.                             |
+| `FINDING_DENSIFICATION_MAX_SOURCE_TOKENS`    | `8192`  | Oversized evidence is skipped rather than silently truncated.                 |
+| `FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS`    | `2048`  | Absolute payload ceiling.                                                     |
+| `FINDING_DENSIFICATION_MIN_NARRATIVE_TOKENS` | `16`    | Prevent a schema-only/trivial payload from being reported as condensed.       |
 
 Engine setting (`SOCConfig`, not env): `exactEntropyMaxNodes` (default `250`) — node count above which VNE switches from the exact solver to FINGER.
 
@@ -410,22 +412,22 @@ npx tsx benchmarks/phase-timing.bench.ts   # per-phase cycle cost vs graph size
 Work AGEM builds on directly. Where an idea was adapted rather than adopted wholesale, the difference is stated — the adaptations are AGEM's responsibility, not the original authors'.
 
 **FINGER — linear-time von Neumann graph entropy**
-Pin-Yu Chen, Lingfei Wu, Sijia Liu, Indika Rajapakse. *Fast Incremental von Neumann Graph Entropy Computation: Theory, Algorithm, and Applications.* ICML 2019. [arXiv:1805.11769](https://arxiv.org/abs/1805.11769)
+Pin-Yu Chen, Lingfei Wu, Sijia Liu, Indika Rajapakse. _Fast Incremental von Neumann Graph Entropy Computation: Theory, Algorithm, and Applications._ ICML 2019. [arXiv:1805.11769](https://arxiv.org/abs/1805.11769)
 
 > Used for `src/soc/fingerEntropy.ts`. The quadratic-approximation insight — collapse the eigenspectrum into `Q = 1 − tr(ρ²)` and pair it with `λ_max` alone — is entirely theirs, and it is what turns an O(n³) metric into an O(n+m) one. **Adaptation:** the paper's closed form is derived for the combinatorial Laplacian scaled by its trace; AGEM's VNE is defined over the symmetric normalized Laplacian, so the closed form for `tr(ρ²)` was re-derived for that matrix and validated against AGEM's exact solver. Their Theorem 2 incremental update is not implemented — recomputing `Q` is already microseconds at these sizes. Any error in the re-derivation is ours.
 
 **Entropy-based vital node identification**
-Feng Hu, Kuo Tian, Zi-Ke Zhang. *Identifying Vital Nodes in Hypergraphs Based on Von Neumann Entropy.* Entropy 25(9), 1263, 2023. [doi:10.3390/e25091263](https://doi.org/10.3390/e25091263)
+Feng Hu, Kuo Tian, Zi-Ke Zhang. _Identifying Vital Nodes in Hypergraphs Based on Von Neumann Entropy._ Entropy 25(9), 1263, 2023. [doi:10.3390/e25091263](https://doi.org/10.3390/e25091263)
 
 > Basis for `src/soc/entropyCentrality.ts`. The criterion taken is theirs: rank a node by the drop in von Neumann entropy when it is removed, and use the quadratic approximation to make that affordable. **Not adopted:** the hypergraph machinery (s-line graph projection, hyperedge-cardinality weighting) — AGEM's TNA graph is dyadic, so it has nothing to act on. **Diverging finding:** they use the quadratic approximation as a speed/accuracy tradeoff and report it slightly underperforms exact HVC; measured here, ranking by the bare quadratic term `Q` tracks the exact entropy drop at ρ≈0.99 while ranking by the fuller estimate `Ĥ` collapses to ρ≈0.14, so for ranking it is not a tradeoff but the better choice. Their evaluation targets epidemic-propagation influence, which is not AGEM's use case and is not carried over as evidence.
 
 **Scheduler-theoretic framework for LLM agent execution**
-Hu Wei. *From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution.* 2026. [arXiv:2604.11378](https://arxiv.org/abs/2604.11378)
+Hu Wei. _From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution._ 2026. [arXiv:2604.11378](https://arxiv.org/abs/2604.11378)
 
 > Provided the vocabulary and the design discipline for the tool-execution layer: bounded three-level recovery with a mechanically enforced escalation invariant, execution/diagnostic context partition, output-contract validation, and side-effect classification. **Deliberately not adopted:** the paper's central prescription, the static pre-planned DAG. Its own §9.7 and §10.2 disqualify that architecture for open-ended exploration and dynamic goal evolution — which is exactly what AGEM does — so only the controllability primitives, which are orthogonal to static planning, were taken. Note also that the paper is a position paper: it states plainly that its performance predictions are untested, and nothing here treats them as evidence.
 
 **Chain of Density and BabelTele — optional finding payloads**
-Griffin Adams et al. *From Sparse to Dense: GPT-4 Summarization with Chain of Density Prompting.* 2023. [arXiv:2309.04269](https://arxiv.org/abs/2309.04269). Jiayi Zhu et al. *Large Language Models Do Not Always Need Readable Language.* 2026 preprint. [arXiv:2606.19857](https://arxiv.org/abs/2606.19857).
+Griffin Adams et al. _From Sparse to Dense: GPT-4 Summarization with Chain of Density Prompting._ 2023. [arXiv:2309.04269](https://arxiv.org/abs/2309.04269). Jiayi Zhu et al. _Large Language Models Do Not Always Need Readable Language._ 2026 preprint. [arXiv:2606.19857](https://arxiv.org/abs/2606.19857).
 
 > CoD contributes only the bounded revision pattern; it is a prompting heuristic, not a guarantee. BabelTele contributes the readability-relaxed surface and recoverability-without-an-external-codebook constraint. **AGEM adaptation:** accepted claim roles provide an exact fidelity gate that neither paper supplies. The dense result is optional payload only: it never replaces the verbatim verdict, coverage, or caveats and never enters the retrieval embedding. BabelTele's reported transfer depends on the compressor-reader pair, so recalled cross-model payloads remain explicitly marked for re-checking.
 
