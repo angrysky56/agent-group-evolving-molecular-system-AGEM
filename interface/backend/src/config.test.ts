@@ -17,4 +17,39 @@ describe("ConfigService — update and Zod schema re-validation", () => {
     expect(settings.update({ CHAT_ENFORCE_WORKFLOW_CONTRACT: true as any })).toBe(true);
     expect(settings.all.CHAT_ENFORCE_WORKFLOW_CONTRACT).toBe(true);
   });
+
+  it("exposes provider output caps and accepts only positive integer updates", () => {
+    const originalOpenRouter = settings.all.OPENROUTER_MAX_TOKENS;
+    const originalAnthropic = settings.all.ANTHROPIC_MAX_TOKENS;
+
+    expect(settings.toSystemConfig()).toMatchObject({
+      openrouter_max_tokens: originalOpenRouter,
+      anthropic_max_tokens: originalAnthropic,
+    });
+
+    expect(
+      settings.update({
+        OPENROUTER_MAX_TOKENS: 12_345,
+        ANTHROPIC_MAX_TOKENS: 6_789,
+      }),
+    ).toBe(true);
+    expect(settings.toSystemConfig()).toMatchObject({
+      openrouter_max_tokens: 12_345,
+      anthropic_max_tokens: 6_789,
+    });
+
+    expect(settings.update({ OPENROUTER_MAX_TOKENS: 0 })).toBe(false);
+    expect(settings.update({ ANTHROPIC_MAX_TOKENS: 1.5 })).toBe(false);
+    expect(settings.toSystemConfig()).toMatchObject({
+      openrouter_max_tokens: 12_345,
+      anthropic_max_tokens: 6_789,
+    });
+
+    expect(
+      settings.update({
+        OPENROUTER_MAX_TOKENS: originalOpenRouter,
+        ANTHROPIC_MAX_TOKENS: originalAnthropic,
+      }),
+    ).toBe(true);
+  });
 });

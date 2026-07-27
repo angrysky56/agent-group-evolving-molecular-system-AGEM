@@ -224,9 +224,13 @@ export function attachFindingMemory(
         id: candidate.id,
         olderFindingId: candidate.olderFindingId,
         newerFindingId: candidate.newerFindingId,
+        basis: candidate.basis ?? "shared-claims",
+        sharedCorpusId: candidate.sharedCorpusId,
         sharedClaimCount: candidate.sharedClaims.length,
         note:
-          "Opposite verdicts share exact supporting claims. This is a supersedes candidate; neither finding was silently retired.",
+          candidate.basis === "shared-corpus"
+            ? "Different verification methods produced different outcomes for the exact corpus identity. This is a supersedes candidate; neither finding was silently retired."
+            : "Opposite verdicts share exact supporting claims. This is a supersedes candidate; neither finding was silently retired.",
       })),
     };
     return JSON.stringify(parsed, null, 2);

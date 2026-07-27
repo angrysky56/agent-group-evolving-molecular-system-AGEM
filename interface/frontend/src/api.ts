@@ -16,6 +16,7 @@ import type {
   AgemStateSnapshot,
   SOCSnapshot,
 } from "@shared/types";
+import { SseDecoder, type DecodedSseEvent } from "./sse";
 
 const BASE = "/api/v1";
 
@@ -136,77 +137,59 @@ export function streamChat(
       }
 
       const decoder = new TextDecoder();
-      let buffer = "";
-      let currentEvent = "";
+      const sse = new SseDecoder();
+      const dispatch = ({ event: eventType, data }: DecodedSseEvent) => {
+        switch (eventType) {
+          case "token":
+            callbacks.onToken(data.content ?? "");
+            break;
+          case "thinking":
+            callbacks.onThinking?.(data.content ?? "");
+            break;
+          case "artifact":
+            callbacks.onArtifact?.(data);
+            break;
+          case "agem_state":
+            callbacks.onAgemState?.(data);
+            break;
+          case "clear_stream":
+            callbacks.onClearStream?.();
+            break;
+          case "tool_result":
+            callbacks.onToolResult?.(
+              data.tool ?? "unknown",
+              data.elapsed_ms ?? 0,
+              data.output ?? "",
+            );
+            break;
+          case "usage":
+            callbacks.onUsage?.(data as {
+              prompt_tokens: number;
+              completion_tokens: number;
+              total_tokens: number;
+            });
+            break;
+          case "system":
+            break;
+          case "done":
+            if (data.message) callbacks.onDone(data.message as ChatMessage);
+            break;
+          case "error":
+            callbacks.onError(
+              String(data.message ?? data.content ?? "Unknown error"),
+            );
+            break;
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-            continue;
-          }
-          if (!line.startsWith("data: ")) {
-            if (line === "") currentEvent = ""; // Reset event type on empty line
-            continue;
-          }
-
-          const payload = line.slice(6).trim();
-          if (payload === "[DONE]") continue;
-
-          try {
-            const data = JSON.parse(payload);
-            const eventType = currentEvent || data.type;
-
-            switch (eventType) {
-              case "token":
-                callbacks.onToken(data.content ?? "");
-                break;
-              case "thinking":
-                callbacks.onThinking?.(data.content ?? "");
-                break;
-              case "artifact":
-                callbacks.onArtifact?.(data);
-                break;
-              case "agem_state":
-                callbacks.onAgemState?.(data);
-                break;
-              case "clear_stream":
-                callbacks.onClearStream?.();
-                break;
-              case "tool_result":
-                callbacks.onToolResult?.(
-                  data.tool ?? "unknown",
-                  data.elapsed_ms ?? 0,
-                  data.output ?? "",
-                );
-                break;
-              case "usage":
-                callbacks.onUsage?.(data);
-                break;
-              case "system":
-                // Tool execution progress — could display but skip for now
-                break;
-              case "done":
-                if (data.message) {
-                  callbacks.onDone(data.message);
-                }
-                break;
-              case "error":
-                callbacks.onError(
-                  data.message ?? data.content ?? "Unknown error",
-                );
-                break;
-            }
-          } catch {
-            // Skip malformed JSON
-          }
+        if (done) {
+          for (const event of sse.push(decoder.decode(), true)) dispatch(event);
+          break;
+        }
+        for (const event of sse.push(decoder.decode(value, { stream: true }))) {
+          dispatch(event);
         }
       }
     })

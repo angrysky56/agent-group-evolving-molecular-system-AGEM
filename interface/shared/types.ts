@@ -325,6 +325,8 @@ export interface SystemConfig {
   embedding_model: string;
   ollama_base_url: string;
   openrouter_base_url: string;
+  openrouter_max_tokens: number;
+  anthropic_max_tokens: number;
   minimax_base_url: string;
   knowledge_base_path: string;
   /** True when the backend already has an API key from the environment (never exposes the key itself). */

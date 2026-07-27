@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
@@ -139,6 +139,79 @@ describe("FindingStore", () => {
       active: 4,
       openConflicts: 2,
     });
+  });
+
+  it("flags cross-method outcome disagreements only for the exact same corpus", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ hand: [1, 0], typed: [1, 0], other: [1, 0] }),
+      { directory },
+    );
+    const hand = await store.store({
+      ...input("hand", "contradiction", ["fol:one"], "hand", "hand-authored"),
+      corpusId: "origin-of-genetic-code",
+    });
+    const other = await store.store({
+      ...input(
+        "other",
+        "inconclusive",
+        ["claim:one"],
+        "other",
+        "derived-from-claims",
+      ),
+      corpusId: "different-corpus",
+    });
+    const typed = await store.store({
+      ...input(
+        "typed",
+        "inconclusive",
+        ["claim:two"],
+        "typed",
+        "derived-from-claims",
+      ),
+      corpusId: "origin-of-genetic-code",
+    });
+
+    expect(other.conflicts).toEqual([]);
+    expect(typed.conflicts).toEqual([
+      expect.objectContaining({
+        olderFindingId: hand.finding.id,
+        basis: "shared-corpus",
+        sharedCorpusId: "origin-of-genetic-code",
+        sharedClaims: [],
+      }),
+    ]);
+  });
+
+  it("backfills cross-method candidates already present in a legacy index", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ hand: [1, 0], typed: [1, 0] }),
+      { directory },
+    );
+    await store.store({
+      ...input("hand", "contradiction", ["fol:one"], "hand", "hand-authored"),
+      corpusId: "origin-of-genetic-code",
+    });
+    await store.store({
+      ...input(
+        "typed",
+        "inconclusive",
+        ["claim:one"],
+        "typed",
+        "derived-from-claims",
+      ),
+      corpusId: "origin-of-genetic-code",
+    });
+    const indexPath = join(directory, "index.json");
+    const legacy = JSON.parse(await readFile(indexPath, "utf8"));
+    legacy.conflicts = [];
+    await writeFile(indexPath, JSON.stringify(legacy), "utf8");
+
+    expect(await store.listOpenConflicts()).toEqual([
+      expect.objectContaining({
+        basis: "shared-corpus",
+        sharedCorpusId: "origin-of-genetic-code",
+      }),
+    ]);
   });
 
   it("surfaces a candidate without silently superseding, then archives on explicit resolution", async () => {

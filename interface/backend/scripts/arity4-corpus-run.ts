@@ -127,8 +127,18 @@ async function main() {
   const arityEnv = process.env.MAX_ARITY;
   const maxArity =
     arityEnv === "full" ? blocks.length : arityEnv ? Number(arityEnv) : undefined;
-  const opts = maxArity ? { maxArity, maxChecks: Number.MAX_SAFE_INTEGER } : {};
-  if (maxArity) console.log(`maxArity override: ${maxArity} (budget lifted)\n`);
+  const maxChecks = process.env.MAX_CHECKS
+    ? Number(process.env.MAX_CHECKS)
+    : undefined;
+  const opts = {
+    ...(maxArity ? { maxArity } : {}),
+    ...(maxChecks ? { maxChecks } : {}),
+  };
+  if (maxArity || maxChecks) {
+    console.log(
+      `overrides: maxArity=${maxArity ?? "default"}, maxChecks=${maxChecks ?? "default"}\n`,
+    );
+  }
 
   const started = Date.now();
   const r = await computeLogicalCohomology(blocks, makeMace4Oracle(), opts);

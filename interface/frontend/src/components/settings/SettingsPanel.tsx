@@ -107,6 +107,36 @@ export function SettingsPanel({ onClose }: Props) {
     }
   };
 
+  /** Persist a provider-specific completion cap after local validation. */
+  const handleMaxTokensBlur = (
+    provider: "openrouter" | "anthropic",
+    maxTokens: number,
+  ) => {
+    if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) {
+      void settings.hydrateFromServer();
+      return;
+    }
+
+    const key =
+      provider === "openrouter"
+        ? "OPENROUTER_MAX_TOKENS"
+        : "ANTHROPIC_MAX_TOKENS";
+    fetch("/api/v1/system/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: maxTokens }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Configuration update failed (${response.status})`);
+        }
+      })
+      .catch((error) => {
+        console.error("[settings] output cap update failed:", error);
+        void settings.hydrateFromServer();
+      });
+  };
+
   // Chat models (non-embedding) filtered to the current provider
   const chatModels = settings.availableModels.filter((m) => {
     if (m.type === "embedding") return false;
@@ -243,6 +273,66 @@ export function SettingsPanel({ onClose }: Props) {
                 >
                   API key is encrypted locally. Press Enter or click away to
                   validate and retrieve the model fleet list.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Provider output cap ── */}
+          {(settings.provider === "openrouter" ||
+            settings.provider === "anthropic") && (
+            <div className="settings-group">
+              <div className="settings-group__label">Generation Limit</div>
+              <div className="settings-field">
+                <label
+                  className="settings-field__label"
+                  htmlFor="provider-max-output-tokens"
+                >
+                  Maximum output tokens
+                </label>
+                <input
+                  id="provider-max-output-tokens"
+                  className="settings-field__input settings-field__input--mono"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={
+                    settings.provider === "openrouter"
+                      ? settings.openRouterMaxTokens
+                      : settings.anthropicMaxTokens
+                  }
+                  onChange={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    if (!Number.isSafeInteger(value) || value < 1) return;
+                    if (settings.provider === "openrouter") {
+                      settings.setOpenRouterMaxTokens(value);
+                    } else {
+                      settings.setAnthropicMaxTokens(value);
+                    }
+                  }}
+                  onBlur={() => {
+                    const provider = settings.provider as
+                      | "openrouter"
+                      | "anthropic";
+                    const value =
+                      provider === "openrouter"
+                        ? settings.openRouterMaxTokens
+                        : settings.anthropicMaxTokens;
+                    handleMaxTokensBlur(provider, value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+                <p
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--color-text-muted, #64748b)",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Provider completion ceiling. Higher limits permit longer
+                  reports but can increase latency and cost.
                 </p>
               </div>
             </div>

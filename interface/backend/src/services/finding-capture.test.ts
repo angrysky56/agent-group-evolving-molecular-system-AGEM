@@ -202,6 +202,28 @@ describe("automatic finding capture", () => {
     expect(attached.findingMemory.condensedNarrativeStored).toBe(true);
     expect(attached.findingMemory.densification.status).toBe("not-applicable");
 
+    const crossMethod = JSON.parse(
+      attachFindingMemory("{}", {
+        ...memory,
+        conflicts: [
+          {
+            ...conflict,
+            basis: "shared-corpus",
+            sharedCorpusId: "corpus",
+            sharedClaims: [],
+          },
+        ],
+      }),
+    );
+    expect(crossMethod.findingMemory.conflictCandidates[0]).toEqual(
+      expect.objectContaining({
+        basis: "shared-corpus",
+        sharedCorpusId: "corpus",
+        sharedClaimCount: 0,
+        note: expect.stringContaining("exact corpus identity"),
+      }),
+    );
+
     const rejected = JSON.parse(
       attachFindingMemory(
         "{}",

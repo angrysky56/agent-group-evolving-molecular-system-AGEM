@@ -16,6 +16,8 @@ export interface SettingsState {
   embeddingModel: string;
   apiKey: string;
   ollamaUrl: string;
+  openRouterMaxTokens: number;
+  anthropicMaxTokens: number;
   availableModels: ModelInfo[];
   modelsLoading: boolean;
 
@@ -25,6 +27,8 @@ export interface SettingsState {
   setEmbeddingModel: (model: string) => void;
   setApiKey: (key: string) => void;
   setOllamaUrl: (url: string) => void;
+  setOpenRouterMaxTokens: (maxTokens: number) => void;
+  setAnthropicMaxTokens: (maxTokens: number) => void;
   setAvailableModels: (models: ModelInfo[]) => void;
   /** Fetch available models for the given (or current) provider. */
   fetchModels: (provider?: LLMProviderType, apiKey?: string) => Promise<void>;
@@ -54,6 +58,8 @@ export const useSettingsStore = create<SettingsState>()(
       embeddingModel: "nomic-embed-text",
       apiKey: "",
       ollamaUrl: "http://localhost:11434",
+      openRouterMaxTokens: 32_768,
+      anthropicMaxTokens: 8_192,
       availableModels: [],
       modelsLoading: false,
 
@@ -63,6 +69,10 @@ export const useSettingsStore = create<SettingsState>()(
       setEmbeddingModel: (embeddingModel) => set({ embeddingModel }),
       setApiKey: (apiKey) => set({ apiKey }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
+      setOpenRouterMaxTokens: (openRouterMaxTokens) =>
+        set({ openRouterMaxTokens }),
+      setAnthropicMaxTokens: (anthropicMaxTokens) =>
+        set({ anthropicMaxTokens }),
       setAvailableModels: (availableModels) => set({ availableModels }),
 
       fetchModels: async (provider?: LLMProviderType, apiKey?: string) => {
@@ -87,6 +97,8 @@ export const useSettingsStore = create<SettingsState>()(
             embeddingProvider: config.embedding_provider ?? config.provider,
             chatModel: config.model,
             embeddingModel: config.embedding_model,
+            openRouterMaxTokens: config.openrouter_max_tokens,
+            anthropicMaxTokens: config.anthropic_max_tokens,
           });
         } catch (err) {
           console.error("[settings] hydrateFromServer failed:", err);

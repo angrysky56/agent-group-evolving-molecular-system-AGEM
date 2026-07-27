@@ -2,8 +2,9 @@
  * Automatic long-term finding memory.
  *
  * Recall is semantic (one cue embedding, cosine floor, then top-k). Conflict
- * detection is deliberately not semantic: it requires exact overlap between
- * canonical supporting-claim keys and opposite conclusive outcomes.
+ * detection is deliberately not semantic: same-method comparisons require
+ * exact supporting-claim overlap; cross-method comparisons require exact
+ * corpus identity. Embedding resemblance never defines a conflict.
  *
  * The hot index is a small JSON file because TypeDB cannot perform vector
  * retrieval. Findings and evidence relations are also mirrored into TypeDB by
@@ -85,6 +86,8 @@ export interface ConflictCandidate {
   newerFindingId: string;
   olderFindingId: string;
   sharedClaims: string[];
+  basis?: "shared-claims" | "shared-corpus";
+  sharedCorpusId?: string;
   createdAt: string;
   status: "open" | "resolved" | "dismissed";
   winnerFindingId?: string;
@@ -223,27 +226,21 @@ export class FindingStore {
       };
 
       const conflicts: ConflictCandidate[] = [];
-      // Conflict detection is graph-structural, so only typed claims qualify.
-      // Hand-authored FOL can still be recalled, but it does not get promoted
-      // to a graph conflict merely because two formula strings happen to match.
-      if (
-        isConclusive(finding.outcome) &&
-        finding.method === "derived-from-claims"
-      ) {
+      // Same-method conflicts remain graph-structural: only exact typed claim
+      // overlap and opposite conclusive outcomes qualify. Cross-method results
+      // cannot share key spaces, so they use exact corpus identity instead.
+      // An inconclusive result may disagree cross-method with a conclusive one:
+      // that is a review candidate, never an automatic winner.
+      if (isConclusive(finding.outcome) || finding.outcome === "inconclusive") {
         for (const older of index.findings) {
           if (
             older.status === "superseded" ||
-            older.method !== "derived-from-claims" ||
-            !isConclusive(older.outcome) ||
             older.outcome === finding.outcome
           ) {
             continue;
           }
-          const sharedClaims = intersection(
-            finding.supportingClaims,
-            older.supportingClaims,
-          );
-          if (sharedClaims.length === 0) continue;
+          const evidence = conflictEvidence(finding, older);
+          if (!evidence) continue;
           const alreadyOpen = index.conflicts.some(
             (candidate) =>
               candidate.status === "open" &&
@@ -255,7 +252,9 @@ export class FindingStore {
             id: randomUUID(),
             newerFindingId: finding.id,
             olderFindingId: older.id,
-            sharedClaims,
+            sharedClaims: evidence.sharedClaims,
+            basis: evidence.basis,
+            sharedCorpusId: evidence.sharedCorpusId,
             createdAt: now,
             status: "open",
           };
@@ -360,6 +359,10 @@ export class FindingStore {
   listOpenConflicts(): Promise<ConflictCandidate[]> {
     return this.#serial(async () => {
       const index = await this.#readIndex();
+      if (this.#backfillConflicts(index) > 0) {
+        await this.#sink(index);
+        await this.#writeIndex(index);
+      }
       return index.conflicts
         .filter((candidate) => candidate.status === "open")
         .map((candidate) => ({ ...candidate, sharedClaims: [...candidate.sharedClaims] }));
@@ -456,6 +459,41 @@ export class FindingStore {
             candidate.olderFindingId === findingId),
       )
       .map((candidate) => ({ ...candidate, sharedClaims: [...candidate.sharedClaims] }));
+  }
+
+  #backfillConflicts(index: FindingIndex): number {
+    let added = 0;
+    const now = this.#now().toISOString();
+    for (let newerIndex = 1; newerIndex < index.findings.length; newerIndex++) {
+      const newer = index.findings[newerIndex];
+      if (newer.status === "superseded") continue;
+      for (let olderIndex = 0; olderIndex < newerIndex; olderIndex++) {
+        const older = index.findings[olderIndex];
+        if (older.status === "superseded") continue;
+        const exists = index.conflicts.some(
+          (candidate) =>
+            (candidate.newerFindingId === newer.id &&
+              candidate.olderFindingId === older.id) ||
+            (candidate.newerFindingId === older.id &&
+              candidate.olderFindingId === newer.id),
+        );
+        if (exists) continue;
+        const evidence = conflictEvidence(newer, older);
+        if (!evidence) continue;
+        index.conflicts.push({
+          id: randomUUID(),
+          newerFindingId: newer.id,
+          olderFindingId: older.id,
+          sharedClaims: evidence.sharedClaims,
+          basis: evidence.basis,
+          sharedCorpusId: evidence.sharedCorpusId,
+          createdAt: now,
+          status: "open",
+        });
+        added++;
+      }
+    }
+    return added;
   }
 
   async #sink(index: FindingIndex): Promise<void> {
@@ -657,6 +695,39 @@ function isConclusive(
   outcome: FindingOutcome,
 ): outcome is "contradiction" | "no-contradiction" {
   return outcome === "contradiction" || outcome === "no-contradiction";
+}
+
+function conflictEvidence(
+  newer: StoredFinding,
+  older: StoredFinding,
+): Pick<ConflictCandidate, "basis" | "sharedClaims" | "sharedCorpusId"> | null {
+  if (newer.outcome === older.outcome) return null;
+  if (
+    newer.method === "derived-from-claims" &&
+    older.method === "derived-from-claims" &&
+    isConclusive(newer.outcome) &&
+    isConclusive(older.outcome)
+  ) {
+    const sharedClaims = intersection(
+      newer.supportingClaims,
+      older.supportingClaims,
+    );
+    return sharedClaims.length > 0
+      ? { basis: "shared-claims", sharedClaims }
+      : null;
+  }
+  if (
+    newer.method !== older.method &&
+    newer.corpusId === older.corpusId &&
+    (isConclusive(newer.outcome) || isConclusive(older.outcome))
+  ) {
+    return {
+      basis: "shared-corpus",
+      sharedCorpusId: newer.corpusId,
+      sharedClaims: [],
+    };
+  }
+  return null;
 }
 
 function intersection(a: readonly string[], b: readonly string[]): string[] {

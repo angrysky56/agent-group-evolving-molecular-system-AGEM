@@ -27,8 +27,12 @@ import { readCheckLog } from "../services/check-log-reader.js";
 import { claimStore } from "../services/typedb-claims.js";
 import {
   extractIntoStore,
-  claimToPropositions,
 } from "../services/claim-extractor.js";
+import {
+  deriveClaimBlocks,
+  mapSegmentsToPositions,
+} from "../services/claim-blocks.js";
+import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
 import {
@@ -53,6 +57,8 @@ import { settings } from "../config.js";
 import { compress } from "headroom-ai";
 
 export const chatRouter = Router();
+
+const claimBlockEmbedder = new ProviderEmbedder();
 
 // Helper to neutralize user-provided inputs to prevent log forgery/injection
 function sanitizeLog(value: unknown): string {
@@ -589,6 +595,18 @@ ${skillContent}`,
                 type: "string",
                 description: "Label for this corpus, used for provenance.",
               },
+              ontology: {
+                type: "object",
+                additionalProperties: { type: "string" },
+                description:
+                  "Optional audited alias-to-canonical predicate map, e.g. {\"arbitrariness\":\"arbitrary\",\"assignments\":\"assignment\"}. Exact aliases override embedding clustering. Every applied merge is returned in predicateMapping.",
+              },
+              sharedExistencePredicates: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Additional neutral entities whose existence every position accepts, e.g. [\"codon\",\"amino_acid\",\"assignment\"]. The derivation also links positions automatically through up to three canonical roles that recur across blocks. Every applied seed is returned for audit; supply only corpus-wide commitments.",
+              },
             },
             required: ["text"],
           },
@@ -599,7 +617,7 @@ ${skillContent}`,
         function: {
           name: "list_finding_conflicts",
           description:
-            "List automatically detected supersedes candidates. Candidates require exact shared supporting claims and opposite verified outcomes; no finding is retired automatically.",
+            "List automatically detected supersedes candidates. Same-method candidates require exact shared typed claims and opposite conclusive outcomes; cross-method candidates require exact corpus identity and different outcomes. Embedding similarity never defines conflicts, and no finding is retired automatically.",
           parameters: { type: "object", properties: {}, required: [] },
         },
       },
@@ -1522,39 +1540,45 @@ ${skillContent}`,
                 }));
                 const extraction = await extractIntoStore(segs, corpusId);
 
-                // Derive FOL from the claim TYPES, not from prose.
-                const derived = extraction.outcomes
-                  .filter((o) => o.accepted && o.claimKey && o.claimId)
-                  .map((o) => {
-                    const block = claimToPropositions(o.claim);
-                    return block
-                      ? {
-                          ...block,
-                          claimKey: o.claimKey!,
-                          claimRef: o.claimId!,
-                        }
-                      : null;
-                  })
-                  .filter(
-                    (
-                      block,
-                    ): block is {
-                      name: string;
-                      propositions: string[];
-                      claimKey: string;
-                      claimRef: string;
-                    } => !!block,
-                  );
-
-                /*
-                 * Distinct names only. The same claim extracted from five
-                 * sentences is ONE block; duplicates would inflate the lattice
-                 * and collapse the complex.
-                 */
-                const seenNames = new Set<string>();
-                const distinct = derived.filter((b) =>
-                  seenNames.has(b.name) ? false : (seenNames.add(b.name), true),
+                const graphCommunities =
+                  agemBridge.getGraphSummary().concept_graph?.communities.map(
+                    (community) => ({
+                      id: community.id,
+                      label: community.label,
+                      members: community.members,
+                    }),
+                  ) ?? [];
+                const rawOntology =
+                  args.ontology &&
+                  typeof args.ontology === "object" &&
+                  !Array.isArray(args.ontology)
+                    ? (args.ontology as Record<string, unknown>)
+                    : {};
+                const ontology = Object.fromEntries(
+                  Object.entries(rawOntology).flatMap(([alias, canonical]) =>
+                    typeof canonical === "string" && canonical.trim()
+                      ? [[alias, canonical]]
+                      : [],
+                  ),
                 );
+                const sharedExistencePredicates = Array.isArray(
+                  args.sharedExistencePredicates,
+                )
+                  ? args.sharedExistencePredicates
+                      .map((value: unknown) => String(value).trim())
+                      .filter(Boolean)
+                  : [];
+                // Derive deterministic formulas, but canonicalise their labels
+                // and collect related claims into corpus positions annotated
+                // with their graph communities before the subset search.
+                const derivation = await deriveClaimBlocks(extraction.outcomes, {
+                  communities: graphCommunities,
+                  ontology,
+                  embedder: claimBlockEmbedder,
+                  positionBySegment: mapSegmentsToPositions(segs),
+                  sharedExistencePredicates,
+                });
+                const distinct = derivation.blocks;
 
                 /*
                  * CAP THE BLOCK COUNT. Unlike the hand-curated path, extraction
@@ -1605,21 +1629,32 @@ ${skillContent}`,
                   const segmentTextById = new Map(
                     segs.map((segment) => [segment.id, segment.text]),
                   );
-                  const supportingClaimEvidence = supporting.flatMap((block) => {
-                    const accepted = extraction.outcomes.find(
-                      (outcome) =>
-                        outcome.accepted &&
-                        outcome.claimKey === block.claimKey &&
-                        outcome.claimId === block.claimRef,
-                    );
+                  const supportingKeys = new Set(
+                    supporting.flatMap((block) => block.claimKeys),
+                  );
+                  const supportingRefs = new Set(
+                    supporting.flatMap((block) => block.claimRefs),
+                  );
+                  const evidenceKeys = new Set<string>();
+                  const supportingClaimEvidence = extraction.outcomes.flatMap((accepted) => {
+                    if (
+                      !accepted.accepted ||
+                      !accepted.claimKey ||
+                      !accepted.claimId ||
+                      !supportingKeys.has(accepted.claimKey) ||
+                      evidenceKeys.has(accepted.claimKey)
+                    ) {
+                      return [];
+                    }
                     const sourceText = accepted
                       ? segmentTextById.get(accepted.segmentId)
                       : undefined;
-                    return accepted && sourceText
+                    if (sourceText) evidenceKeys.add(accepted.claimKey);
+                    return sourceText
                       ? [
                           {
-                            claimKey: block.claimKey,
-                            claimRef: block.claimRef,
+                            claimKey: accepted.claimKey,
+                            claimRef: accepted.claimId,
                             segmentId: accepted.segmentId,
                             sourceText,
                             claim: accepted.claim,
@@ -1671,6 +1706,13 @@ ${skillContent}`,
                       runLogId: runLog.runId,
                       capNote,
                       coverage,
+                      distinctClaimsExtracted: new Set(
+                        extraction.outcomes
+                          .filter((outcome) => outcome.accepted)
+                          .map((outcome) => outcome.claimKey)
+                          .filter(Boolean),
+                      ).size,
+                      positionBlocksDerived: distinct.length,
                       distinctBlocksExtracted: distinct.length,
                       blocksChecked: blocks.length,
                       blocksEvaluated: evaluated,
@@ -1686,12 +1728,21 @@ ${skillContent}`,
                           .map((o) => ({ claim: o.claim, why: o.rejection })),
                       },
                       derivedBlocks: blocks,
-                      supportingClaimKeys: supporting.map(
-                        (block) => block.claimKey,
-                      ),
-                      supportingClaimRefs: supporting.map(
-                        (block) => block.claimRef,
-                      ),
+                      predicateMapping: derivation.predicateMapping,
+                      sharedExistencePredicates:
+                        derivation.sharedExistencePredicates,
+                      blockAssignments: selected.map((block) => ({
+                        block: block.name,
+                        communityId: block.communityId,
+                        communityIds: block.communityIds,
+                        communityLabel: block.communityLabel,
+                        positionLabel: block.positionLabel,
+                        claimKeys: block.claimKeys,
+                        segmentIds: block.segmentIds,
+                      })),
+                      derivationRejections: derivation.rejected,
+                      supportingClaimKeys: [...supportingKeys].sort(),
+                      supportingClaimRefs: [...supportingRefs].sort(),
                       // Accepted source sentences plus typed roles form the
                       // fidelity oracle for optional narrative densification.
                       supportingClaimEvidence,

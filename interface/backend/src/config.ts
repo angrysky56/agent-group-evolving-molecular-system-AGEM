@@ -70,7 +70,7 @@ const ConfigSchema = z.object({
    * against a 1,048,576 context. 32768 is a working default rather than a
    * ceiling; raise it here or in .env if a report is still being cut short.
    */
-  OPENROUTER_MAX_TOKENS: z.coerce.number().default(32768),
+  OPENROUTER_MAX_TOKENS: z.coerce.number().int().positive().default(32768),
 
   // Anthropic
   ANTHROPIC_API_KEY: z.string().default(""),
@@ -78,7 +78,7 @@ const ConfigSchema = z.object({
   ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
   ANTHROPIC_EMBEDDING_MODEL: z.string().default(""),
   /** Was hardcoded in AnthropicProvider with no way to change it. */
-  ANTHROPIC_MAX_TOKENS: z.coerce.number().default(8192),
+  ANTHROPIC_MAX_TOKENS: z.coerce.number().int().positive().default(8192),
 
   // MiniMax
   MINIMAX_API_KEY: z.string().default(""),
@@ -356,6 +356,8 @@ class ConfigService {
       embedding_model: emb.embedding_model,
       ollama_base_url: this.#config.OLLAMA_BASE_URL,
       openrouter_base_url: this.#config.OPENROUTER_BASE_URL,
+      openrouter_max_tokens: this.#config.OPENROUTER_MAX_TOKENS,
+      anthropic_max_tokens: this.#config.ANTHROPIC_MAX_TOKENS,
       minimax_base_url: this.#config.MINIMAX_BASE_URL,
       knowledge_base_path: this.#config.KNOWLEDGE_BASE_PATH,
       // Never expose the key itself — only whether one is configured

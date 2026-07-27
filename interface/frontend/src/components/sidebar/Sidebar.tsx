@@ -8,7 +8,6 @@ import { useChatStore } from "../../stores/chat";
 import { useSessionStore } from "../../stores/sessions";
 import { useAgemStore } from "../../stores/agem";
 import {
-  listSessions,
   createSession,
   deleteSession,
   getSession,
@@ -16,7 +15,6 @@ import {
 
 export function Sidebar() {
   const sessions = useSessionStore((s) => s.sessions);
-  const setSessions = useSessionStore((s) => s.setSessions);
   const removeSession = useSessionStore((s) => s.removeSession);
   const addSession = useSessionStore((s) => s.addSession);
   const activeSessionId = useChatStore((s) => s.activeSessionId);

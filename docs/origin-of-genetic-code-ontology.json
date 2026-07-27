@@ -1,0 +1,13 @@
+{
+  "affinity": "stereochemical_affinity",
+  "stereochemical-affinity": "stereochemical_affinity",
+  "chemical-affinity-between-triplet-and-residue": "stereochemical_affinity",
+  "assignments": "assignment",
+  "initial-set-of-assignments": "assignment",
+  "arbitrariness": "arbitrary",
+  "the-code": "code",
+  "freezing": "frozen",
+  "immutability": "frozen",
+  "goodness": "quality",
+  "assigning-an-error-value-to-a-code": "error_value"
+}

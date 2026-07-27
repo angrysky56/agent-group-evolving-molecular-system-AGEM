@@ -88,3 +88,28 @@ npx tsx index.ts ask \
 Prose lands in the report, tool activity in the trace, and the full per-check
 audit trail in `knowledge_base/runs/<runId>.jsonl` — reachable afterwards with
 `get_check_log`.
+
+## Deterministic typed-block replay
+
+The production path clusters unmapped role labels by embedding similarity and
+reports every mapping. For a reproducible audit of the stored methodology run,
+use the checked-in alias map instead of relying on an embedding model:
+
+```bash
+cd interface/backend
+KNOWLEDGE_BASE_PATH=../../knowledge_base \
+  npx tsx scripts/audit-derived-blocks.ts \
+  2026-07-27T20-52-14-766Z_jrr9cp \
+  --rederive \
+  --ontology=../../docs/origin-of-genetic-code-ontology.json \
+  --out=/tmp/agem-origin-position-blocks.json
+
+MAX_ARITY=4 MAX_CHECKS=50000 \
+  npx tsx scripts/arity4-corpus-run.ts \
+  /tmp/agem-origin-position-blocks.json
+```
+
+The derivation automatically adds up to three canonical role predicates that
+recur across positions as neutral existence seeds. Extra caller-audited seeds
+remain available through `--shared=codon,amino_acid,assignment`; all applied
+seeds are printed by the audit and present in every output block.
