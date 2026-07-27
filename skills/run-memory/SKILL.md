@@ -86,13 +86,20 @@ tried and dropped, tool sequencing, restated corpus prose. Target ~25–30% of
 original length. It is payload, never a retrieval cue: recall embeds the
 verbatim verdict even when a dense narrative exists.
 
-Automatic densification is available only for `derived-from-claims`, because
-accepted typed claims enumerate what must survive. Each bounded CoD-style pass
-may use a BabelTele surface, but it must retain every self-describing schema
-fact byte-for-byte and fit the token budget. Do not invent aliases, legends,
+Automatic densification is available only for `derived-from-claims`. The
+original typed corpus supplies compressible narrative material; accepted typed
+claims enumerate what must survive. Each bounded CoD-style pass may use a
+BabelTele surface, but it must retain every self-describing schema fact
+byte-for-byte and fit the token budget. Do not invent aliases, legends,
 separators, or token meanings that require an external codebook. If any role,
 polarity, modality, or direction is missing after the final pass, store no
 condensed narrative; the verbatim finding still stands.
+
+The target ratio is a hard ceiling. Never enlarge it merely because the schema
+facts are expensive: if the envelope cannot also leave the configured minimum
+narrative budget, make zero model calls and report `budget-too-small`. A pass
+limit reached without a valid payload is `fidelity-rejected`, not partial
+success; surface the status and pass count in `findingMemory.densification`.
 
 This is a checked heuristic, not lossless compression. Cross-model readers must
 re-check before relying on the dense reasoning. Coverage, denominators,

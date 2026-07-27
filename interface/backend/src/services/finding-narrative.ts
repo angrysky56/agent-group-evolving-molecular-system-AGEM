@@ -44,6 +44,7 @@ export type DensificationStatus =
   | "not-compressible"
   | "budget-too-small"
   | "provider-error"
+  | "internal-error"
   | "fidelity-rejected";
 
 export interface DensificationResult {
@@ -52,7 +53,10 @@ export interface DensificationResult {
   passes: number;
   sourceTokens: number;
   targetTokens?: number;
+  schemaEnvelopeTokens?: number;
   outputTokens?: number;
+  narrativeTokens?: number;
+  minimumNarrativeTokens?: number;
   missingFacts?: string[];
   note?: string;
 }
@@ -63,6 +67,7 @@ export interface FindingNarrativeDensifierOptions {
   maxPasses?: number;
   maxSourceTokens?: number;
   maxOutputTokens?: number;
+  minNarrativeTokens?: number;
   tokenCounter?: ITokenCounter;
 }
 
@@ -73,6 +78,7 @@ export class FindingNarrativeDensifier {
   readonly #maxPasses: number;
   readonly #maxSourceTokens: number;
   readonly #maxOutputTokens: number;
+  readonly #minNarrativeTokens: number;
   readonly #tokenCounter: ITokenCounter;
 
   constructor(
@@ -92,6 +98,9 @@ export class FindingNarrativeDensifier {
     this.#maxOutputTokens =
       options.maxOutputTokens ??
       settings.all.FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS;
+    this.#minNarrativeTokens =
+      options.minNarrativeTokens ??
+      settings.all.FINDING_DENSIFICATION_MIN_NARRATIVE_TOKENS;
     this.#tokenCounter = options.tokenCounter ?? new GptTokenCounter();
   }
 
@@ -125,17 +134,21 @@ export class FindingNarrativeDensifier {
 
     const factEnvelope = schemaEnvelope(schemaFacts);
     const factTokens = this.#tokenCounter.countTokens(factEnvelope);
-    const targetTokens = Math.max(
+    // The ratio is a hard ceiling, not a suggestion that may be silently
+    // relaxed until the oracle fits. If the schema envelope cannot leave room
+    // for a real narrative inside that ceiling, this input is not compressible.
+    const targetTokens = Math.min(
       Math.ceil(sourceTokens * this.#targetRatio),
-      factTokens + 12,
+      this.#maxOutputTokens,
     );
-    if (targetTokens > this.#maxOutputTokens) {
+    if (factTokens + this.#minNarrativeTokens > targetTokens) {
       return {
         ...emptyResult("budget-too-small"),
         sourceTokens,
         targetTokens,
-        note:
-          "The schema facts alone leave no room inside the configured output budget.",
+        schemaEnvelopeTokens: factTokens,
+        minimumNarrativeTokens: this.#minNarrativeTokens,
+        note: `The schema envelope needs ${factTokens} tokens and must leave at least ${this.#minNarrativeTokens} narrative tokens, exceeding the strict ${targetTokens}-token target. No model call was made.`,
       };
     }
     if (targetTokens >= sourceTokens) {
@@ -149,6 +162,7 @@ export class FindingNarrativeDensifier {
     let previous = "";
     let missingFacts = [...schemaFacts];
     let outputTokens: number | undefined;
+    let narrativeTokens: number | undefined;
     let formatValid = false;
 
     for (let pass = 1; pass <= this.#maxPasses; pass++) {
@@ -160,7 +174,9 @@ export class FindingNarrativeDensifier {
         maxPasses: this.#maxPasses,
         previous,
         previousTokens: outputTokens,
+        previousNarrativeTokens: narrativeTokens,
         previousFormatValid: formatValid,
+        minNarrativeTokens: this.#minNarrativeTokens,
         missingFacts,
       });
 
@@ -180,6 +196,7 @@ export class FindingNarrativeDensifier {
           passes: pass,
           sourceTokens,
           targetTokens,
+          schemaEnvelopeTokens: factTokens,
           missingFacts,
           note: error instanceof Error ? error.message : String(error),
         };
@@ -188,14 +205,17 @@ export class FindingNarrativeDensifier {
       const candidate = stripWrapping(raw);
       outputTokens = this.#tokenCounter.countTokens(candidate);
       missingFacts = schemaFacts.filter((fact) => !candidate.includes(fact));
-      formatValid =
-        candidate.startsWith(factEnvelope) &&
-        candidate.slice(factEnvelope.length).trim().length > 0;
+      formatValid = candidate.startsWith(factEnvelope);
+      const narrative = formatValid
+        ? candidate.slice(factEnvelope.length).trim()
+        : "";
+      narrativeTokens = this.#tokenCounter.countTokens(narrative);
       if (
         candidate.length > 0 &&
         outputTokens <= targetTokens &&
         missingFacts.length === 0 &&
-        formatValid
+        formatValid &&
+        narrativeTokens >= this.#minNarrativeTokens
       ) {
         return {
           status: "condensed",
@@ -203,7 +223,10 @@ export class FindingNarrativeDensifier {
           passes: pass,
           sourceTokens,
           targetTokens,
+          schemaEnvelopeTokens: factTokens,
           outputTokens,
+          narrativeTokens,
+          minimumNarrativeTokens: this.#minNarrativeTokens,
           missingFacts: [],
         };
       }
@@ -215,14 +238,19 @@ export class FindingNarrativeDensifier {
       passes: this.#maxPasses,
       sourceTokens,
       targetTokens,
+      schemaEnvelopeTokens: factTokens,
       outputTokens,
+      narrativeTokens,
+      minimumNarrativeTokens: this.#minNarrativeTokens,
       missingFacts,
       note:
         missingFacts.length > 0
           ? "No pass preserved every schema fact."
           : !formatValid
             ? "No pass produced the required self-describing schema envelope."
-            : "No pass met the token budget.",
+            : (narrativeTokens ?? 0) < this.#minNarrativeTokens
+              ? `No pass produced the minimum ${this.#minNarrativeTokens}-token dense narrative.`
+              : "No pass met the token budget.",
     };
   }
 }
@@ -257,7 +285,9 @@ function buildDensificationPrompt(input: {
   maxPasses: number;
   previous: string;
   previousTokens?: number;
+  previousNarrativeTokens?: number;
   previousFormatValid: boolean;
+  minNarrativeTokens: number;
   missingFacts: string[];
 }): string {
   const revision = input.previous
@@ -266,7 +296,9 @@ function buildDensificationPrompt(input: {
           ? `Missing exact schema facts:\n${input.missingFacts.join("\n")}`
           : !input.previousFormatValid
             ? "The facts were present but not in the required exact schema envelope."
-            : "All facts survived, but the candidate exceeded the token budget."
+            : (input.previousNarrativeTokens ?? 0) < input.minNarrativeTokens
+              ? `The dense narrative had ${input.previousNarrativeTokens ?? 0} tokens; at least ${input.minNarrativeTokens} are required.`
+              : "All facts survived, but the candidate exceeded the token budget."
       }`
     : "";
 
@@ -278,7 +310,8 @@ Hard constraints:
 - Output at most ${input.targetTokens} tokens and output only the payload.
 - Preserve every SCHEMA FACT below byte-for-byte. They are the fidelity oracle.
 - Begin with the exact self-describing envelope shown below, followed by a
-  non-empty dense narrative. Do not wrap it in a code fence:
+  dense narrative of at least ${input.minNarrativeTokens} tokens. Do not wrap
+  it in a code fence:
 ${schemaEnvelope(input.schemaFacts)}
 - Keep relation direction, polarity/negation, modality, and distinctions intact.
 - Human readability may be relaxed. You may use familiar abbreviations,

@@ -10,7 +10,10 @@ import {
   schemaClaimFact,
   type ExtractedClaim,
 } from "./claim-extractor.js";
-import type { FindingNarrativeRequest } from "./finding-narrative.js";
+import type {
+  DensificationResult,
+  FindingNarrativeRequest,
+} from "./finding-narrative.js";
 
 export interface FindingCaptureContext {
   runLogId: string;
@@ -119,6 +122,7 @@ export function captureFindingFromTool(
  */
 export function captureFindingNarrativeFromTool(
   toolName: string,
+  args: Record<string, unknown>,
   output: string,
 ): CapturedNarrativeRequest | null {
   if (toolName !== "extract_and_verify_claims") return null;
@@ -166,10 +170,19 @@ export function captureFindingNarrativeFromTool(
   if (supportingKeys.some((key) => !evidenceByKey.has(key))) return null;
 
   const evidence = supportingKeys.map((key) => evidenceByKey.get(key)!);
+  const corpusText =
+    typeof args.text === "string" && args.text.trim()
+      ? args.text.trim()
+      : evidence
+          .map(
+            ({ segmentId, sourceText }) =>
+              `[source:${segmentId}] ${sourceText}`,
+          )
+          .join("\n");
   return {
-    sourceNarrative: evidence
-      .map(({ segmentId, sourceText }) => `[source:${segmentId}] ${sourceText}`)
-      .join("\n"),
+    // The full typed corpus contains the redundancy CoD/BabelTele can remove.
+    // The smaller supporting-claim set remains the exact fidelity oracle.
+    sourceNarrative: corpusText,
     schemaFacts: evidence.map(({ fact }) => fact),
   };
 }
@@ -177,6 +190,7 @@ export function captureFindingNarrativeFromTool(
 export function attachFindingMemory(
   output: string,
   memory: StoreFindingResult,
+  densification?: DensificationResult,
 ): string {
   try {
     const parsed = JSON.parse(output) as Record<string, unknown>;
@@ -185,6 +199,26 @@ export function attachFindingMemory(
       findingId: memory.finding.id,
       stored: memory.stored,
       condensedNarrativeStored: !!memory.finding.condensedNarrative,
+      densification: densification
+        ? {
+            status: densification.status,
+            passes: densification.passes,
+            sourceTokens: densification.sourceTokens,
+            targetTokens: densification.targetTokens,
+            schemaEnvelopeTokens: densification.schemaEnvelopeTokens,
+            outputTokens: densification.outputTokens,
+            narrativeTokens: densification.narrativeTokens,
+            minimumNarrativeTokens: densification.minimumNarrativeTokens,
+            missingFactCount: densification.missingFacts?.length ?? 0,
+            note: densification.note,
+          }
+        : {
+            status:
+              memory.finding.method === "derived-from-claims"
+                ? "not-attempted"
+                : "not-applicable",
+            passes: 0,
+          },
       conflictCandidates: memory.conflicts.map((candidate) => ({
         id: candidate.id,
         olderFindingId: candidate.olderFindingId,

@@ -39,6 +39,7 @@ import {
   captureFindingNarrativeFromTool,
   formatRecallContext,
 } from "../services/finding-capture.js";
+import type { DensificationResult } from "../services/finding-narrative.js";
 import { RecoveryProtocol } from "../services/recovery-protocol.js";
 import {
   dispatchBatch,
@@ -2033,13 +2034,15 @@ ${skillContent}`,
                   },
                 );
                 if (finding) {
+                  let densificationResult: DensificationResult | undefined;
                   const narrativeRequest = captureFindingNarrativeFromTool(
                     fnName,
+                    args,
                     outcome.output,
                   );
                   if (narrativeRequest) {
                     try {
-                      const densification =
+                      densificationResult =
                         await findingNarrativeDensifier.densify(
                           {
                             ...narrativeRequest,
@@ -2048,29 +2051,39 @@ ${skillContent}`,
                           },
                           abortController.signal,
                         );
-                      if (densification.condensedNarrative) {
+                      if (densificationResult.condensedNarrative) {
                         finding.condensedNarrative =
-                          densification.condensedNarrative;
+                          densificationResult.condensedNarrative;
                       }
                       runLog.event("finding_densification", {
-                        status: densification.status,
-                        passes: densification.passes,
-                        sourceTokens: densification.sourceTokens,
-                        targetTokens: densification.targetTokens,
-                        outputTokens: densification.outputTokens,
+                        status: densificationResult.status,
+                        passes: densificationResult.passes,
+                        sourceTokens: densificationResult.sourceTokens,
+                        targetTokens: densificationResult.targetTokens,
+                        schemaEnvelopeTokens:
+                          densificationResult.schemaEnvelopeTokens,
+                        outputTokens: densificationResult.outputTokens,
+                        narrativeTokens: densificationResult.narrativeTokens,
+                        minimumNarrativeTokens:
+                          densificationResult.minimumNarrativeTokens,
                         missingFactCount:
-                          densification.missingFacts?.length ?? 0,
-                        note: densification.note,
+                          densificationResult.missingFacts?.length ?? 0,
+                        note: densificationResult.note,
                       });
                     } catch (error) {
                       // Optional compression must never make a verified
                       // finding disappear. The verbatim fields still store.
+                      const message =
+                        error instanceof Error ? error.message : String(error);
+                      densificationResult = {
+                        status: "internal-error",
+                        passes: 0,
+                        sourceTokens: 0,
+                        note: message,
+                      };
                       runLog.event("finding_densification", {
-                        status: "error",
-                        message:
-                          error instanceof Error
-                            ? error.message
-                            : String(error),
+                        status: densificationResult.status,
+                        message,
                       });
                     }
                   }
@@ -2078,7 +2091,11 @@ ${skillContent}`,
                     finding,
                     abortController.signal,
                   );
-                  effectiveOutput = attachFindingMemory(outcome.output, memory);
+                  effectiveOutput = attachFindingMemory(
+                    outcome.output,
+                    memory,
+                    densificationResult,
+                  );
                   runLog.event("finding_write", {
                     findingId: memory.finding.id,
                     stored: memory.stored,
@@ -2087,12 +2104,22 @@ ${skillContent}`,
                     outcome: memory.finding.outcome,
                     condensedNarrativeStored:
                       !!memory.finding.condensedNarrative,
+                    densificationStatus:
+                      densificationResult?.status ??
+                      (memory.finding.method === "derived-from-claims"
+                        ? "not-attempted"
+                        : "not-applicable"),
                   });
                   sendEvent("finding_memory", {
                     finding_id: memory.finding.id,
                     conflict_candidates: memory.conflicts,
                     condensed_narrative_stored:
                       !!memory.finding.condensedNarrative,
+                    densification_status:
+                      densificationResult?.status ??
+                      (memory.finding.method === "derived-from-claims"
+                        ? "not-attempted"
+                        : "not-applicable"),
                   });
                 }
               } catch (error) {

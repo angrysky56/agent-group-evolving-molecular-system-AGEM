@@ -106,10 +106,14 @@ describe("automatic finding capture", () => {
 
     const narrative = captureFindingNarrativeFromTool(
       "extract_and_verify_claims",
+      {
+        text:
+          "Phi can occur without global broadcast. Consciousness is phi. Additional corpus context remains available for compression.",
+      },
       output,
     );
-    expect(narrative?.sourceNarrative).toContain(
-      "[source:typed-corpus-0] Phi can occur without global broadcast.",
+    expect(narrative?.sourceNarrative).toBe(
+      "Phi can occur without global broadcast. Consciousness is phi. Additional corpus context remains available for compression.",
     );
     expect(narrative?.schemaFacts).toEqual([
       'exclusion(excluder="phi",excluded="global-broadcast")',
@@ -121,12 +125,14 @@ describe("automatic finding capture", () => {
     expect(
       captureFindingNarrativeFromTool(
         "evaluate_logical_consistency",
+        {},
         JSON.stringify({ supportingClaimKeys: ["claim:a"] }),
       ),
     ).toBeNull();
     expect(
       captureFindingNarrativeFromTool(
         "extract_and_verify_claims",
+        {},
         JSON.stringify({
           supportingClaimKeys: ["claim:a", "claim:missing"],
           supportingClaimEvidence: [
@@ -194,6 +200,39 @@ describe("automatic finding capture", () => {
     const attached = JSON.parse(attachFindingMemory("{}", memory));
     expect(attached.findingMemory.conflictCandidates[0].id).toBe("conflict-1");
     expect(attached.findingMemory.condensedNarrativeStored).toBe(true);
+    expect(attached.findingMemory.densification.status).toBe("not-applicable");
+
+    const rejected = JSON.parse(
+      attachFindingMemory(
+        "{}",
+        {
+          ...memory,
+          finding: { ...finding, condensedNarrative: undefined },
+        },
+        {
+          status: "fidelity-rejected",
+          passes: 3,
+          sourceTokens: 400,
+          targetTokens: 112,
+          schemaEnvelopeTokens: 72,
+          outputTokens: 100,
+          narrativeTokens: 1,
+          minimumNarrativeTokens: 16,
+          missingFacts: [],
+          note: "No pass produced the minimum narrative.",
+        },
+      ),
+    );
+    expect(rejected.findingMemory).toMatchObject({
+      condensedNarrativeStored: false,
+      densification: {
+        status: "fidelity-rejected",
+        passes: 3,
+        schemaEnvelopeTokens: 72,
+        narrativeTokens: 1,
+        minimumNarrativeTokens: 16,
+      },
+    });
 
     const formatted = formatRecallContext(
       [{ finding, similarity: 0.91, rankScore: 0.91, conflicts: [conflict] }],

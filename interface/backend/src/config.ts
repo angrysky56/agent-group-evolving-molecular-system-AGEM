@@ -128,6 +128,12 @@ const ConfigSchema = z.object({
     .int()
     .min(64)
     .default(2048),
+  /** Prevent a schema-only or one-token payload from looking successful. */
+  FINDING_DENSIFICATION_MIN_NARRATIVE_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(16),
 
   /*
    * Depth-of-search budgets for the logic layer.

@@ -70,6 +70,7 @@ describe("FindingNarrativeDensifier", () => {
     });
     expect(result.condensedNarrative).toContain(FACT);
     expect(result.outputTokens).toBeLessThanOrEqual(result.targetTokens!);
+    expect(result.narrativeTokens).toBeGreaterThanOrEqual(16);
     expect(completion.prompts[0]).toContain("without an external codebook");
     expect(completion.prompts[0]).toContain("Do not invent aliases");
     expect(completion.options[0]).toMatchObject({
@@ -81,7 +82,7 @@ describe("FindingNarrativeDensifier", () => {
   it("uses deterministic missing-fact feedback for the next CoD pass", async () => {
     const completion = new QueueCompletion([
       "phi and broadcast differ",
-      payload("phi≠broadcast"),
+      payload("phi excludes global-broadcast"),
     ]);
     const result = await densifier(completion).densify({
       sourceNarrative: SOURCE,
@@ -127,6 +128,103 @@ describe("FindingNarrativeDensifier", () => {
       missingFacts: [FACT],
     });
     expect(result.condensedNarrative).toBeUndefined();
+  });
+
+  it("makes zero model calls when the schema envelope cannot fit the strict ratio", async () => {
+    const completion = new QueueCompletion([payload("would otherwise pass")]);
+    const result = await densifier(completion, {
+      targetRatio: 0.05,
+    }).densify({
+      sourceNarrative: SOURCE,
+      schemaFacts: [FACT],
+      model: "model-a",
+      provider: "ollama",
+    });
+
+    expect(result).toMatchObject({
+      status: "budget-too-small",
+      passes: 0,
+      minimumNarrativeTokens: 16,
+    });
+    expect(
+      result.schemaEnvelopeTokens! + result.minimumNarrativeTokens!,
+    ).toBeGreaterThan(result.targetTokens!);
+    expect(result.note).toContain("No model call was made");
+    expect(result.condensedNarrative).toBeUndefined();
+    expect(completion.prompts).toEqual([]);
+  });
+
+  it("terminates exactly at maxPasses when every candidate is schema-only", async () => {
+    const completion = new QueueCompletion([
+      payload("."),
+      payload("."),
+      payload("."),
+    ]);
+    const result = await densifier(completion, {
+      maxPasses: 3,
+    }).densify({
+      sourceNarrative: SOURCE,
+      schemaFacts: [FACT],
+      model: "model-a",
+      provider: "ollama",
+    });
+
+    expect(result).toMatchObject({
+      status: "fidelity-rejected",
+      passes: 3,
+      narrativeTokens: 1,
+      minimumNarrativeTokens: 16,
+    });
+    expect(result.note).toContain("minimum 16-token dense narrative");
+    expect(result.condensedNarrative).toBeUndefined();
+    expect(completion.prompts).toHaveLength(3);
+  });
+
+  it("uses the production tokenizer to skip an irreducible claim but accept a redundant corpus", async () => {
+    const options: FindingNarrativeDensifierOptions = {
+      enabled: true,
+      targetRatio: 0.28,
+      maxPasses: 3,
+      maxSourceTokens: 8192,
+      maxOutputTokens: 2048,
+      minNarrativeTokens: 16,
+    };
+    const shortCompletion = new QueueCompletion([payload("should not run")]);
+    const shortResult = await new FindingNarrativeDensifier(
+      shortCompletion,
+      options,
+    ).densify({
+      sourceNarrative: "Phi can occur while global broadcast is absent.",
+      schemaFacts: [FACT],
+      model: "model-a",
+      provider: "ollama",
+    });
+    expect(shortResult).toMatchObject({
+      status: "budget-too-small",
+      passes: 0,
+    });
+    expect(shortCompletion.prompts).toEqual([]);
+
+    const longCompletion = new QueueCompletion([
+      payload(
+        "phi excludes global broadcast; evidence spans multiple theoretical comparisons while preserving the verified direction and negative relation for later model-side reasoning",
+      ),
+    ]);
+    const longResult = await new FindingNarrativeDensifier(
+      longCompletion,
+      options,
+    ).densify({
+      sourceNarrative:
+        "The corpus compares several theories of consciousness, their commitments, counterexamples, explanatory scope, and empirical consequences. ".repeat(
+          40,
+        ) + "Phi can occur while global broadcast is absent.",
+      schemaFacts: [FACT],
+      model: "model-a",
+      provider: "ollama",
+    });
+    expect(longResult.status).toBe("condensed");
+    expect(longResult.passes).toBe(1);
+    expect(longCompletion.prompts).toHaveLength(1);
   });
 
   it("refuses oversized source and impossible output budgets without a model call", async () => {

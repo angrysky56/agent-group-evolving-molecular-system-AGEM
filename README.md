@@ -124,7 +124,7 @@ Long-term memory is part of the run lifecycle, not a model-elected tool call:
 
 1. Before the first model turn, AGEM embeds the incoming material once, compares it with stored **verbatim verdict** embeddings, applies `FINDING_RECALL_SIMILARITY_FLOOR`, and then caps the survivors with `FINDING_RECALL_TOP_K`. Unrelated runs therefore recall nothing. Compressed payloads are never retrieval cues.
 2. After a successful logical verification tool call, the engine copies the verdict, coverage, truncation/cap caveats, run-log id, model, method, and supporting claims from the structured tool result. Exploratory prose is not stored.
-3. On the typed-claim path only, AGEM may build an optional `condensed-narrative`: a bounded CoD-style loop targets a BabelTele surface, while every accepted supporting claim's schema-native role signature must survive byte-for-byte. A failed fidelity or token-budget check stores the ordinary finding with no condensed payload.
+3. On the typed-claim path only, AGEM may condense the original corpus into an optional `condensed-narrative`: a bounded CoD-style loop targets a BabelTele surface, while every accepted supporting claim's schema-native role signature must survive byte-for-byte. The ratio is a hard ceiling—if the schema envelope cannot leave room for a real narrative, AGEM makes zero compression calls. Exhausted or failed checks store the ordinary finding with an explicit densification status and no condensed payload.
 4. Opposite conclusive findings become a conflict candidate only when their schema-validated typed claims have an exact structural overlap. Embedding resemblance never creates a conflict, and neither finding is silently retired.
 5. A conflict is retired only through `resolve_finding_conflict`, with an explicit winner and reason. Superseded and unused findings are archived, never deleted.
 
@@ -358,10 +358,11 @@ Finding-memory settings:
 | `FINDING_UNUSED_RETENTION_DAYS`       | `180`   | Grace period before never-recalled, never-cited findings leave the hot index. |
 | `FINDING_MAX_ACTIVE`                  | `500`   | Absolute cap on findings scanned per run; overflow is archived, not deleted. |
 | `FINDING_DENSIFICATION_ENABLED`       | `true`  | Attempt an optional schema-gated payload on typed findings.                  |
-| `FINDING_DENSIFICATION_TARGET_RATIO`  | `0.28`  | Target payload/source token ratio; required schema facts take precedence.    |
+| `FINDING_DENSIFICATION_TARGET_RATIO`  | `0.28`  | Hard payload/source token ceiling; an envelope that cannot fit is skipped.   |
 | `FINDING_DENSIFICATION_MAX_PASSES`    | `3`     | Maximum CoD revisions/provider calls per finding.                            |
 | `FINDING_DENSIFICATION_MAX_SOURCE_TOKENS` | `8192` | Oversized evidence is skipped rather than silently truncated.            |
 | `FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS` | `2048` | Absolute payload ceiling.                                                |
+| `FINDING_DENSIFICATION_MIN_NARRATIVE_TOKENS` | `16` | Prevent a schema-only/trivial payload from being reported as condensed. |
 
 Engine setting (`SOCConfig`, not env): `exactEntropyMaxNodes` (default `250`) — node count above which VNE switches from the exact solver to FINGER.
 
