@@ -1274,8 +1274,22 @@ export class Orchestrator {
    * What this means mathematically:
    *   Consensus (B*x = 0) reads as  x_v * sim_uv = x_u  on each edge. A global
    *   section is any vertex assignment whose neighboring values agree weighted
-   *   by their semantic similarity. H^0 = #components-of-the-similarity-graph
-   *   = the number of disconnected semantic clusters (up to numerical kernel).
+   *   by their semantic similarity.
+   *
+   *   H^0 IS A DIMENSION, NOT A COUNT. It is dim ker(B) = the dimension of the
+   *   global section space. The claim this comment used to make — "H^0 =
+   *   #components-of-the-similarity-graph" — holds only when every stalk is
+   *   1-dimensional. Here vertex stalks are `getConceptSubspace(id, 3)`, so a
+   *   stalk carries up to 3 dimensions and with no edges
+   *       H^0 = c0Dimension = SUM of vertex stalk dims
+   *   (see CohomologyAnalyzer's N1 === 0 branch). One subgraph with a 3-D
+   *   concept subspace therefore reports H^0 = 3 — which reads exactly like
+   *   "three semantic clusters" and is nothing of the kind.
+   *
+   *   MEASURED: H^0 sat at 3 across iterations 12, 13 and 14 while the concept
+   *   graph grew by hundreds of nodes. That constancy was the k=3 cap on
+   *   getConceptSubspace, not a stable finding about the corpus. Successive
+   *   analyses read it as a component count throughout.
    *   H^1 emerges when, around a cycle of subgraphs, the product of similarity
    *   weights around the loop does NOT equal 1 — i.e. the system cannot
    *   self-consistently weigh the same content via two different paths. That

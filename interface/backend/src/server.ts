@@ -14,6 +14,17 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { systemRouter } from "./routes/system.js";
 import { skillRegistry } from "./services/skills.js";
 import { mcpManager } from "./services/mcp.js";
+import { claimStore } from "./services/typedb-claims.js";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Repo root — schema/claims.tql is resolved against this. */
+const PROJECT_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
 
 const app = express();
 
@@ -91,6 +102,22 @@ const server = app.listen(PORT, HOST, () => {
   // Initialize MCP Manager
   mcpManager.initialize().catch((err) => {
     console.error("[MCPManager] Failed to start:", err);
+  });
+
+  /*
+   * Initialize the TypeDB claim store: connect, create the database if absent,
+   * define the schema. Idempotent, so it converges on every boot.
+   *
+   * OPTIONAL BY DESIGN. initialize() never throws — if no server is reachable
+   * it disables itself, logs what to do about it, and AGEM carries on with the
+   * concept graph alone. A missing database must not take reasoning offline.
+   */
+  claimStore.initialize(PROJECT_ROOT).then((status) => {
+    if (!status.available && settings.all.TYPEDB_ENABLED) {
+      console.warn(
+        `[TypeDBClaimStore] claim store OFF — ${status.note ?? "unavailable"}`,
+      );
+    }
   });
 });
 

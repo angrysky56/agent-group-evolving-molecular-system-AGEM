@@ -72,4 +72,17 @@ for (const file of process.argv.slice(2)) {
   );
   if (fabricated.length)
     console.log(`  examples: ${fabricated.slice(0, 6).join(", ")}`);
+
+  /*
+   * Top-degree nodes are what community detection organises around and what
+   * gets reported as "the central concepts". If they are function words, any
+   * structural claim built on them is about English, not the corpus.
+   */
+  const graph = g.getGraph();
+  const degrees = graph
+    .nodes()
+    .map((n) => ({ n, d: graph.degree(n) }))
+    .sort((a, b) => b.d - a.d)
+    .slice(0, 12);
+  console.log(`hubs (top degree)      : ${degrees.map((x) => `${x.n}(${x.d})`).join(" ")}`);
 }

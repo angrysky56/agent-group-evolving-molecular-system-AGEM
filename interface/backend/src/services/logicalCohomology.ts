@@ -351,11 +351,11 @@ export interface LogicalCohomologyOptions {
 }
 
 export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
-  maxArity: 4,
+  maxArity: 6,
   // Was 400, which completed arity 3 for a 10-15 block corpus and then stopped
   // one level short — so the arity-4 search this engine exists to run never
   // actually ran on a real corpus, while the tool contract advertised it.
-  maxChecks: 5000,
+  maxChecks: 50_000,
   extractCores: true,
   maxCoreChecks: 60,
 };
@@ -595,7 +595,34 @@ export async function computeLogicalCohomology(
   /** Arity of the level that was skipped for want of budget. */
   let unreachedArity: number | undefined;
 
-  for (let k = 2; k <= Math.max(2, opts.maxArity); k++) {
+  /*
+   * AUTO-EXHAUST SMALL LATTICES.
+   *
+   * maxArity is a cost guard, but on a small block set it costs nothing to
+   * settle the question completely — and stopping early forces every caller to
+   * carry a "higher-order frustrations not ruled out" caveat that need not
+   * exist. Observed: a run with 6 evaluable blocks (a 64-subset lattice, budget
+   * 5000) still reported truncation at arity 4.
+   *
+   * The bound is the number of subsets of size >= 2, which is a conservative
+   * over-estimate since face-pruning only ever removes candidates. If even that
+   * fits the budget, search the whole lattice.
+   *
+   * ONLY when maxArity was left at its default. An explicitly supplied cap is
+   * an instruction — a caller asking for arity 3 wants arity 3, whether to
+   * reproduce triples-only behaviour or to pin a regression. Two tests caught
+   * an earlier version of this that overrode the explicit value.
+   */
+  const arityWasExplicit = options.maxArity !== undefined;
+  const fullLatticeUpperBound = 2 ** vertices.length - vertices.length - 1;
+  const effectiveMaxArity =
+    !arityWasExplicit &&
+    fullLatticeUpperBound > 0 &&
+    fullLatticeUpperBound <= opts.maxChecks
+      ? vertices.length
+      : opts.maxArity;
+
+  for (let k = 2; k <= Math.max(2, effectiveMaxArity); k++) {
     const candidates: string[][] = [];
     const seen = new Set<string>();
 
@@ -701,7 +728,7 @@ export async function computeLogicalCohomology(
   // The search is exhaustive only if it was not cut short by either cap.
   const searchTruncated =
     budgetExhausted ||
-    (searchedToArity < vertices.length && searchedToArity >= opts.maxArity);
+    (searchedToArity < vertices.length && searchedToArity >= effectiveMaxArity);
 
   // 4) Boundary matrices and homology.
   const vIdx = new Map(vertices.map((v, i) => [v, i]));

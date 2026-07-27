@@ -608,16 +608,19 @@ class AgemBridge {
     const cohom = computeCohomology(sheaf);
 
     /*
-     * With no edges every vertex is its own component, so H⁰ trivially equals
-     * the subgraph count and H¹ is trivially 0. That is a fact about an
-     * unconnected registry, not about the corpus — and it is indistinguishable
-     * from a real result unless it is said out loud.
+     * With no edges the coboundary is empty, so every section is global:
+     * H⁰ = c0Dimension = the SUM of vertex stalk dimensions, and H¹ = 0. Both
+     * are facts about an unconnected registry, not about the corpus — and both
+     * are indistinguishable from a real result unless said out loud.
      */
     const note =
       edges === 0
-        ? `sheaf has ${vertices} vertices and NO edges — no pair of subgraphs ` +
-          `cleared the similarity threshold, so H⁰ is just the subgraph count ` +
-          `and H¹ is trivially 0. This says nothing about the concept graph.`
+        ? `sheaf has ${vertices} vertex/vertices and NO edges — no pair of ` +
+          `subgraphs cleared the similarity threshold, so H¹ is trivially 0 and ` +
+          `H⁰ is just the total stalk dimension. NOTE H⁰ IS A DIMENSION, NOT A ` +
+          `COUNT: vertex stalks are concept subspaces of up to 3 dimensions, so ` +
+          `a single subgraph can report H⁰ = 3. That is not "3 components" and ` +
+          `not "3 semantic clusters". This says nothing about the concept graph.`
         : undefined;
 
     return {

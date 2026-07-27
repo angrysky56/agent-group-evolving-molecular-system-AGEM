@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@typedb/driver-http": "^3.12.1",
     "agent-group-evolving-molecular-system": "file:../..",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

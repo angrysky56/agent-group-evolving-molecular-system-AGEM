@@ -81,6 +81,40 @@ The one external reasoning tool AGEM relies on for contradiction detection is [`
 
 Formulas use ASCII first-order logic: `->` `<->` `&` `|` `-` (negation), parenthesized quantifiers (`all x (p(x) -> q(x))`), one formula per array element. `mcp-logic` normalizes `~`→`-` and reports a clean Mace4 exhaustion as "no model" rather than a false timeout (both fixed at the source; see that repo's regression tests).
 
+## TypeDB claim store (optional)
+
+The concept graph records that two lemmas appeared near each other. It cannot record that IIT **excludes** global broadcast — so a formalizer reading it has to *reconstruct* the claim from keywords, and reconstruction is underdetermined. Measured on one corpus across three runs: 3, then 6, then 2 contradictions, with IIT/GWT flipping from contradictory to consistent because the exclusion silently vanished from the encoding.
+
+The claim store fixes the shape rather than the wording. Claims are stored as **schema-enforced n-ary relations with named roles and mandatory provenance** (`schema/claims.tql`), so a malformed extraction *fails to write* instead of becoming a confident wrong answer:
+
+```
+exclusion missing its `excluded` role  →  [CNT5]  Constraint '@card(1..1)' violated: found 0 instances
+                                          [DVL11] relation 'exclusion' has a relates constraint violation
+causal-claim with no polarity          →  [DVL10] attribute ownership constraint violation
+claim with no source segment           →  [CNT5]  Constraint '@card(1..)' violated
+```
+
+**AGEM runs fine without it.** If no server is reachable the store disables itself, logs what to do, and reasoning continues on the concept graph alone. Set `TYPEDB_ENABLED=false` to silence the warning.
+
+### Setup
+
+```bash
+curl -sSL https://typedb.com/install.sh | sh && export PATH="$HOME/.typedb:$PATH"
+
+# TypeDB defaults HTTP to 8000, which collides with AGEM's own backend PORT.
+typedb server --server.http.listen-address 0.0.0.0:8100
+```
+
+Nothing else is required — the backend creates the database and defines the schema on boot, idempotently. Verify with:
+
+```bash
+cd interface/backend && npx tsx scripts/verify-claim-store.ts
+```
+
+**Driver note.** TypeDB 3.x has no gRPC driver for Node; the npm package `typedb-driver` is 2.x-only and will *not* talk to a 3.x server. AGEM uses `@typedb/driver-http`, and `TYPEDB_ADDRESS` is therefore the **HTTP** port (8100), not gRPC 1729.
+
+**Writing TypeQL.** TypeDB 3.x is a rewrite — `thing` is no longer a root type, inserts use `links (role: $x)`, and queries are pipelines. The vendored reference at `skills/typeql/SKILL.md` raises TypeQL pass rates from 23–43% to 86–96% by TypeDB's own benchmark; use it rather than writing 3.x from memory. Optionally add the syntax checker with `sudo apt install typeql-check=3.12.0` (pin the version — apt's default candidate `3.12.0-rc0` is a truncated artifact on their CDN at time of writing). It isn't needed: loading a schema against a scratch database validates semantics as well as grammar.
+
 ## Run logging & observability
 
 Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_<id>.jsonl` and a `.md` transcript alongside it: the **exact text fed into the graph each cycle**, the **full input and output of every tool call** (including the `checkLog` from `evaluate_logical_consistency`), and a run-end summary. The run-log id is also surfaced in tool output. This makes after-the-fact debugging a matter of reading one file rather than reconstructing from terminal scrollback.

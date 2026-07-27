@@ -258,6 +258,28 @@ export class Preprocessor {
    *
    * Legitimate 2-char content words ("go", "no", "so", "us") are deliberately
    * NOT in this set.
+   *
+   * THE INCLUSION RULE — closed class only.
+   *   Filter function words: determiners, pronouns, possessives, prepositions,
+   *   conjunctions, particles, negation. These co-occur with EVERYTHING, so as
+   *   graph nodes they become high-degree hubs that bridge every community and
+   *   are then read as "central concepts".
+   *
+   *   Do NOT filter open-class content words merely for being generic. "kind",
+   *   "state", "question", "theory", "problem" are technical vocabulary in this
+   *   domain ("mental kinds", "mental states") and removing them would destroy
+   *   real signal. That is a domain judgement the preprocessor cannot make.
+   *
+   * MEASURED: before this list was extended, a corpus of 10 philosophical
+   * distinctions produced its single most-bridged community labelled
+   * "different · not · accompany", with sibling communities labelled
+   * "its · constrain · own" and "without · mismatch · prediction". An analysis
+   * built on that graph concluded that "the act of distinguishing is the most
+   * structurally central concept in the corpus". That conclusion was reading a
+   * hub of negation and possessive particles.
+   *
+   * Note "mot" below: someone previously noticed "not" was a problem and
+   * filtered only its lemmatizer artifact, leaving "not" itself in the graph.
    */
   static readonly #DOMAIN_NOISE: ReadonlySet<string> = new Set([
     // 2-char math/formula leftovers and abbreviation fragments observed as junk nodes.
@@ -296,6 +318,91 @@ export class Preprocessor {
     "thus",
     "hence",
     "etc",
+
+    // ---- Closed class: negation particles ----
+    // "not" co-occurs with every claim in argumentative prose. As a node it is
+    // a universal bridge. Negation is handled properly by the logic layer's
+    // "-" operator, not by a concept node named "not".
+    "not",
+    "nor",
+    "neither",
+    "none",
+
+    // ---- Closed class: pronouns, possessives, generic referents ----
+    "its",
+    "own",
+    "their",
+    "our",
+    "your",
+    "his",
+    "her",
+    "hers",
+    "them",
+    "themselves",
+    "itself",
+    "oneself",
+    "other",
+    "others",
+    "another",
+    "someone",
+    "something",
+    "anything",
+    "everything",
+    "nothing",
+
+    // ---- Closed class: prepositions and subordinators ----
+    "without",
+    "within",
+    "upon",
+    "across",
+    "toward",
+    "towards",
+    "onto",
+    "into",
+    "via",
+    "per",
+    "than",
+    "then",
+    "although",
+    "though",
+    "unless",
+    "whereas",
+    "while",
+    "since",
+    "because",
+
+    // ---- Closed class: degree and quantity modifiers ----
+    "such",
+    "much",
+    "many",
+    "more",
+    "most",
+    "less",
+    "least",
+    "very",
+    "quite",
+    "somewhat",
+    "several",
+    "various",
+
+    // ---- Closed class: measured hubs that survived the first pass ----
+    // Found by ranking node degree on a real corpus after the additions above:
+    // "one" (degree 53) and "do" (degree 50) were still top-12 hubs. "do" is
+    // where the lemmatizer collapses does/did/done and, via fallback, several
+    // other auxiliaries — so it accumulates degree from words that carry no
+    // content at all.
+    "one",
+    "ones",
+    "do",
+
+    // ---- Discourse connectives ----
+    "moreover",
+    "furthermore",
+    "nevertheless",
+    "nonetheless",
+    "therefore",
+    "accordingly",
+    "consequently",
   ]);
 
   // --------------------------------------------------------------------------

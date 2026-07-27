@@ -487,6 +487,26 @@ describe("search accounting is honest", () => {
     expect(rerun.searchedToArity).toBeGreaterThan(r.searchedToArity);
   });
 
+  /*
+   * Regression: 6 evaluable blocks is a 64-subset lattice against a 5000-check
+   * budget, and the engine still stopped at arity 4 and reported truncation.
+   * A cost guard that fires when there is no cost forces every caller to carry
+   * a caveat that need not exist.
+   */
+  it("exhausts a small lattice instead of stopping at the arity cap", async () => {
+    const r = await computeLogicalCohomology(filler(6), sat);
+    expect(r.searchedToArity).toBe(6);
+    expect(r.searchTruncated).toBe(false);
+    expect(r.truncationNote).toBeUndefined();
+  });
+
+  it("still honours the arity cap when the lattice does NOT fit the budget", async () => {
+    // 2^20 subsets is far past any sane budget, so the guard must still apply.
+    const r = await computeLogicalCohomology(filler(20), sat, { maxChecks: 500 });
+    expect(r.searchedToArity).toBeLessThan(20);
+    expect(r.searchTruncated).toBe(true);
+  });
+
   it("distinguishes an arity cap from a budget cap in the note", async () => {
     const r = await computeLogicalCohomology(TRIPLE, sat, { maxArity: 2 });
     expect(r.searchTruncated).toBe(true);
@@ -502,24 +522,26 @@ describe("search accounting is honest", () => {
   });
 
   /*
-   * The default budget must clear arity 4 at the corpus sizes AGEM actually
-   * produces — blocks come from concept communities, so 10-15 is typical. The
-   * old default of 400 completed arity 3 and stopped, which silently disabled
-   * the 4-wise search on every real run.
+   * AGEM is for deep thinking, so the defaults are generous: a 13-block corpus
+   * is an 8178-subset lattice, well inside the default budget, and therefore
+   * gets EXHAUSTED rather than cut off at arity 4 with a caveat.
+   *
+   * This test previously asserted searchedToArity === 4 and searchTruncated ===
+   * true — it had encoded the old, tighter limitation as the expected result.
+   * A test that pins a budget artefact will keep passing while the engine
+   * silently under-searches.
    */
-  it("default budget reaches arity 4 on a 13-block corpus", async () => {
+  it("exhausts a 13-block corpus at the default budget, no caveat", async () => {
     const blocks = [...QUAD_FOR_DEFAULTS, ...filler(9)];
     expect(blocks).toHaveLength(13);
     const r = await computeLogicalCohomology(blocks, sat);
-    expect(r.searchedToArity).toBe(4);
     expect(r.hasContradiction).toBe(true);
     expect(r.frustrations.some((f) => f.arity === 4)).toBe(true);
-    // The budget must NOT be what stopped it — that was the old failure.
+    expect(r.searchedToArity).toBeGreaterThan(4);
+    // Neither cap stopped it, so there is nothing to caveat.
+    expect(r.searchTruncated).toBe(false);
+    expect(r.truncationNote).toBeUndefined();
     expect(r.checksRequiredForNextLevel).toBeUndefined();
-    // It is still honestly truncated, but now by the arity cap, and the note
-    // has to say so rather than leaving the reader to guess which cap it was.
-    expect(r.searchTruncated).toBe(true);
-    expect(r.truncationNote).toMatch(/arity cap/);
   });
 
   it("does not claim truncation when the lattice was exhausted", async () => {

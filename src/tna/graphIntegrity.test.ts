@@ -91,6 +91,40 @@ describe("co-occurrence graph integrity", () => {
     expect(after).toBeGreaterThanOrEqual(strong);
   });
 
+  /*
+   * Function words co-occur with everything, so as graph nodes they become
+   * universal bridges and get read as central concepts. A real run produced a
+   * most-bridged community labelled "different · not · accompany", from which
+   * an analysis concluded "the act of distinguishing is the most structurally
+   * central concept in the corpus" — a hub of negation and possessives.
+   */
+  it("keeps closed-class function words out of the graph", () => {
+    const g = freshGraph();
+    g.ingest(
+      "It is not different without its own others and their several such more claims.",
+      1,
+    );
+    const nodes = g.getNodes().map((n) => n.lemma);
+    for (const fw of [
+      "not", "its", "own", "other", "others", "without",
+      "their", "several", "such", "more",
+    ]) {
+      expect(nodes).not.toContain(fw);
+    }
+  });
+
+  it("keeps domain terms that merely look generic", () => {
+    // The filter is closed-class only. "kind", "state", "question", "theory"
+    // are technical vocabulary here ("mental kinds", "mental states") and
+    // dropping them for being generic would destroy real signal.
+    const g = freshGraph();
+    g.ingest("Mental kinds and mental states raise the question for any theory.", 1);
+    const nodes = g.getNodes().map((n) => n.lemma);
+    for (const term of ["kind", "state", "question", "theory"]) {
+      expect(nodes).toContain(term);
+    }
+  });
+
   it("still ingests genuinely new material after skipping a repeat", () => {
     // Idempotence must not degrade into "ignores everything after the first
     // call" — the dedup is per segment, not per ingest.

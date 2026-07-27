@@ -1,0 +1,131 @@
+# AGEM claim schema — TypeDB 3.x
+#
+# PURPOSE: make the SHAPE of a claim checkable at write time.
+#
+# The failure this exists to prevent: a formalizer read the IIT/GWT sections and
+# emitted `all x (conscious(x) -> integrated_intrinsic(x))` against
+# `all x (conscious(x) -> globally_broadcast(x))` — no negation anywhere, so
+# trivially co-satisfiable — and reported "CONSISTENT". Three runs over one
+# corpus produced 3, then 6, then 2 contradictions. Nothing could catch it,
+# because a bag of lemmas has no shape to violate.
+#
+# Here, a position that excludes another must say so via an `exclusion` relation
+# with both roles filled. An extraction that drops the exclusion has nothing to
+# insert; it fails rather than silently becoming a wrong answer.
+#
+# STATUS: NOT YET VALIDATED. typeql-check is not installed (the apt candidate
+# 3.12.0-rc0 is a truncated artifact on TypeDB's CDN; pin =3.12.0 instead).
+# Treat every line here as a draft until `typeql-check schema/claims.tql` passes.
+
+define
+
+  # ---- Attributes ----
+
+  attribute label, value string;
+  # Verbatim source text. Provenance is mandatory on every claim: an assertion
+  # nobody can trace to a sentence is exactly the soup we are removing.
+  attribute text, value string;
+  attribute segment-id, value string;
+  attribute corpus-id, value string;
+
+  # Epistemic vs modal vs functional. Distinction #9 (explanatory gap vs zombie
+  # argument) is ONLY expressible if modality is first-class — the two make the
+  # same-shaped claim in different modalities, which is why they are compatible.
+  attribute modality, value string @values("epistemic", "modal", "functional", "metaphysical");
+
+  # Whether a claim asserts or denies. Distinction #8 (epiphenomenalism vs
+  # interactionism) is a polarity flip on one causal claim, not two claims.
+  attribute polarity, value string @values("asserts", "denies");
+
+  # Difference in kind vs difference in degree. Distinction #1 turns on exactly
+  # this: Chalmers' point is categorical, not a difficulty ranking.
+  attribute difference-kind, value string @values("in-kind", "in-degree");
+
+  # ---- Entities ----
+
+  # A sentence as ingested. The unit of assertion, and the anchor for every claim.
+  entity segment,
+    owns segment-id @key,
+    owns text,
+    owns corpus-id;
+
+  # A theoretical term: phenomenal-consciousness, phi, broadcast, pain, c-fiber.
+  entity concept,
+    owns label @key;
+
+  # A named theoretical position: IIT, global-workspace, type-physicalism.
+  entity position,
+    owns label @key;
+
+  # ---- Claims ----
+
+  # Abstract parent: anything asserted must cite at least one segment.
+  relation claim @abstract,
+    relates source @card(1..),
+    owns modality @card(0..1);
+
+  # "A is not B" — the corpus's core move, applied ten times.
+  # @card(2..) because a distinction needs at least two relata; difference-kind
+  # records whether it is categorical (#1) or otherwise.
+  relation distinction sub claim,
+    relates distinguished @card(2..),
+    owns difference-kind @card(0..1);
+
+  # "X and Y can come apart" — stronger than distinction. Block's P/A case (#2):
+  # they usually co-occur, which is why they get fused, but they dissociate.
+  relation dissociation sub claim,
+    relates dissociable @card(2..);
+
+  # "Consciousness IS Φ" / "pain IS C-fibre firing". The identity claims that
+  # collide in #3 and #7.
+  relation identity-claim sub claim,
+    relates identified @card(1),
+    relates identified-with @card(1);
+
+  # THE ONE THAT WENT MISSING. "Φ-systems do not broadcast." Without this
+  # relation, IIT and GWT are two compatible identity claims and the solver
+  # correctly reports no contradiction. Both roles are mandatory.
+  relation exclusion sub claim,
+    relates excluder @card(1),
+    relates excluded @card(1);
+
+  # #8: epiphenomenalism and interactionism are one causal claim at opposite
+  # polarity. polarity is mandatory — an unsigned causal claim is meaningless.
+  relation causal-claim sub claim,
+    relates cause @card(1),
+    relates effect @card(1),
+    owns polarity @card(1);
+
+  # #10: multiple realizability vs substrate independence — one is strictly
+  # stronger, so the relation is directional and must not be read symmetrically.
+  relation entailment sub claim,
+    relates antecedent @card(1),
+    relates consequent @card(1);
+
+  # Which position advances which claim.
+  relation attribution,
+    relates holder @card(1),
+    relates attributed-claim @card(1);
+
+  # ---- Role assignments ----
+
+  entity concept,
+    plays distinction:distinguished,
+    plays dissociation:dissociable,
+    plays identity-claim:identified,
+    plays identity-claim:identified-with,
+    plays exclusion:excluder,
+    plays exclusion:excluded,
+    plays causal-claim:cause,
+    plays causal-claim:effect,
+    plays entailment:antecedent,
+    plays entailment:consequent;
+
+  entity segment,
+    plays claim:source;
+
+  entity position,
+    plays attribution:holder;
+
+  relation claim,
+    plays attribution:attributed-claim;

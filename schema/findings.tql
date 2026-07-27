@@ -1,0 +1,55 @@
+# Long-term memory: what a RUN concluded, not what a corpus says.
+#
+# claims.tql holds assertions extracted FROM a corpus. This holds AGEM's own
+# conclusions ABOUT a corpus, so a later run can start where the last stopped
+# instead of re-deriving. The TNA concept graph is working memory and resets;
+# this persists.
+#
+# Verbatim by design: verdict, coverage and not-ruled-out are copied, never
+# condensed. Only `condensed-narrative` may be BabelTele — a compressed verdict
+# cannot be audited, and an unaudited verdict is a rumour.
+
+define
+
+  attribute finding-id, value string;
+  attribute verdict, value string;
+  attribute coverage, value string;
+  attribute not-ruled-out, value string;
+  attribute run-log-id, value string;
+  attribute produced-by-model, value string;
+  attribute method, value string @values("derived-from-claims", "hand-authored");
+  attribute condensed-narrative, value string;
+  attribute reason, value string;
+
+  entity finding,
+    owns finding-id @key,
+    owns verdict,
+    owns coverage,
+    owns not-ruled-out @card(0..1),
+    owns run-log-id,
+    owns produced-by-model,
+    owns method,
+    owns condensed-narrative @card(0..1),
+    owns corpus-id;
+
+  # One n-ary fact: this conclusion rests on these claims, about this corpus.
+  # Not a fan of pairwise edges with the arity discarded.
+  relation evidences,
+    relates conclusion @card(1),
+    relates supporting-claim @card(1..),
+    relates about-corpus @card(0..1);
+
+  # Memory corrects itself in the open. Never delete an overturned finding —
+  # the correction is usually the most valuable record.
+  relation supersedes,
+    relates newer @card(1),
+    relates older @card(1),
+    owns reason;
+
+  entity finding,
+    plays evidences:conclusion,
+    plays supersedes:newer,
+    plays supersedes:older;
+
+  relation claim, plays evidences:supporting-claim;
+  entity segment, plays evidences:about-corpus;

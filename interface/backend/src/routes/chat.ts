@@ -22,6 +22,12 @@ import {
   makeMcpLogicOracle,
   type LogicalCohomologyOptions,
 } from "../services/logicalCohomology.js";
+import { claimStore } from "../services/typedb-claims.js";
+import {
+  extractIntoStore,
+  claimToPropositions,
+} from "../services/claim-extractor.js";
+import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
 import { RecoveryProtocol } from "../services/recovery-protocol.js";
 import {
@@ -420,6 +426,29 @@ ${skillContent}`,
               },
             },
             required: ["blocks"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "extract_and_verify_claims",
+          description:
+            "PREFERRED over evaluate_logical_consistency for contested corpora. Give it the corpus TEXT and it does the whole chain with no hand-written logic: splits into sentences, extracts typed claims (exclusion, identity-claim, causal-claim, distinction, dissociation, entailment) with named roles and mandatory provenance, stores them in the schema-enforced claim store (a malformed claim is REJECTED, not silently accepted), derives first-order logic DETERMINISTICALLY from the claim types, and runs the consistency check on the result. The negation in an exclusion is emitted because the relation is typed 'exclusion' — it cannot be forgotten, which is the failure mode that makes hand-written encodings of the same corpus disagree with each other run to run. Returns the extraction report (accepted/rejected counts with reasons) and the consistency verdict.",
+          parameters: {
+            type: "object",
+            properties: {
+              text: {
+                type: "string",
+                description:
+                  "The corpus text to extract claims from. Sentences are the unit of assertion.",
+              },
+              corpusId: {
+                type: "string",
+                description: "Label for this corpus, used for provenance.",
+              },
+            },
+            required: ["text"],
           },
         },
       },
@@ -1243,11 +1272,165 @@ ${skillContent}`,
                         `so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""} ` +
                         `Do NOT report this as "no contradiction"; it is "not yet checked".`
                       : `No contradiction: all subsets up to arity ${result.searchedToArity} are jointly satisfiable.`;
+
+                /*
+                 * State the DENOMINATOR. Blocks that are internally
+                 * inconsistent or fail to parse never enter the search, so a
+                 * clean verdict covers only what was actually evaluated.
+                 * Observed: a run submitted 10 blocks, evaluated 6 (2 self-
+                 * contradictory, 2 syntax errors) and reported "no
+                 * contradictions between any pair or triple of the 10
+                 * distinction claims". The engine knew the real number; the
+                 * verdict line did not carry it, so the write-up used 10.
+                 */
+                const submitted = blocks.length;
+                const evaluated = result.vertices.length;
+                const coverage =
+                  evaluated === submitted
+                    ? `Coverage: all ${submitted} submitted blocks were evaluated.`
+                    : `COVERAGE: only ${evaluated} of ${submitted} submitted blocks were ` +
+                      `evaluated. Excluded — ` +
+                      [
+                        result.internallyInconsistent.length
+                          ? `${result.internallyInconsistent.length} internally inconsistent ` +
+                            `(${result.internallyInconsistent.join(", ")})`
+                          : "",
+                        result.checkFailures.length
+                          ? `${result.checkFailures.length} check failure(s)`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join("; ") +
+                      `. Any verdict below is about those ${evaluated} blocks, NOT about ` +
+                      `all ${submitted}. Do not report it as covering the full set.`;
                 output = JSON.stringify(
-                  { runLogId: runLog.runId, verdict, ...result },
+                  {
+                    runLogId: runLog.runId,
+                    coverage,
+                    blocksSubmitted: submitted,
+                    blocksEvaluated: evaluated,
+                    verdict,
+                    ...result,
+                  },
                   null,
                   2,
                 );
+              }
+            } else if (fnName === "extract_and_verify_claims") {
+              /*
+               * The whole chain with no hand-written logic. This exists because
+               * evaluate_logical_consistency takes model-authored propositions,
+               * and freehand encoding of ONE corpus produced contradictory
+               * answers across runs: IIT/GWT contradictory in an exhaustive
+               * run, consistent in a later one (the exclusion silently
+               * vanished), and Hard/Easy manufactured as a contradiction the
+               * corpus never made. Typed claims remove the improvisation.
+               */
+              const text = String(args.text ?? "");
+              const corpusId = String(args.corpusId ?? "corpus");
+              if (!claimStore.available) {
+                output = JSON.stringify({
+                  error:
+                    "Claim store unavailable — " +
+                    (claimStore.status().note ?? "TypeDB not reachable") +
+                    " Fall back to evaluate_logical_consistency, and say in your " +
+                    "report that the encoding was hand-written and may vary between runs.",
+                });
+              } else if (text.trim().length === 0) {
+                output = JSON.stringify({ error: "Provide the corpus text." });
+              } else {
+                const segs = segmentText(text).map((t, i) => ({
+                  id: `${corpusId}-${i}`,
+                  text: t,
+                }));
+                const extraction = await extractIntoStore(segs, corpusId);
+
+                // Derive FOL from the claim TYPES, not from prose.
+                const derived = extraction.outcomes
+                  .filter((o) => o.accepted)
+                  .map((o) => claimToPropositions(o.claim))
+                  .filter((b): b is { name: string; propositions: string[] } => !!b);
+
+                /*
+                 * Distinct names only. The same claim extracted from five
+                 * sentences is ONE block; duplicates would inflate the lattice
+                 * and collapse the complex.
+                 */
+                const seenNames = new Set<string>();
+                const distinct = derived.filter((b) =>
+                  seenNames.has(b.name) ? false : (seenNames.add(b.name), true),
+                );
+
+                /*
+                 * CAP THE BLOCK COUNT. Unlike the hand-curated path, extraction
+                 * decides how many blocks there are, and EVERY satisfiability
+                 * check is an MCP round-trip to a Prover9/Mace4 subprocess —
+                 * far costlier than the direct-Mace4 timings the 5000-check
+                 * budget was sized against. 60 blocks is 1770 pair checks
+                 * before any triple. Cap it, and say so, rather than appearing
+                 * to hang.
+                 */
+                const BLOCK_CAP = settings.all.LOGIC_MAX_BLOCKS;
+                const capped = distinct.length > BLOCK_CAP;
+                const blocks = distinct.slice(0, BLOCK_CAP);
+                const capNote = capped
+                  ? `NOTE: extraction produced ${distinct.length} distinct claim blocks; ` +
+                    `only the first ${BLOCK_CAP} were checked, because each check is a ` +
+                    `Prover9 call. Contradictions involving the remaining ` +
+                    `${distinct.length - BLOCK_CAP} were NOT ruled out. Narrow the corpus ` +
+                    `or raise the cap deliberately.`
+                  : undefined;
+
+                if (blocks.length < 2) {
+                  output = JSON.stringify({
+                    runLogId: runLog.runId,
+                    extraction,
+                    verdict:
+                      `Only ${blocks.length} distinct claim block(s) were extracted — ` +
+                      `too few to check for contradiction. This is a finding about the ` +
+                      `EXTRACTION, not about the corpus: report it as such, do not report ` +
+                      `"no contradiction".`,
+                  });
+                } else {
+                  const oracle = makeMcpLogicOracle((server, tool, a) =>
+                    mcpManager.executeTool(server, tool, a),
+                  );
+                  const result = await computeLogicalCohomology(blocks, oracle, {
+                    maxChecks: settings.all.LOGIC_MAX_CHECKS,
+                    maxArity: settings.all.LOGIC_MAX_ARITY,
+                  });
+                  output = JSON.stringify(
+                    {
+                      runLogId: runLog.runId,
+                      capNote,
+                      distinctBlocksExtracted: distinct.length,
+                      blocksChecked: blocks.length,
+                      extraction: {
+                        segmentsProcessed: extraction.segmentsProcessed,
+                        claimsProposed: extraction.claimsProposed,
+                        claimsAccepted: extraction.claimsAccepted,
+                        claimsRejected: extraction.claimsRejected,
+                        parseFailures: extraction.parseFailures.length,
+                        rejections: extraction.outcomes
+                          .filter((o) => !o.accepted)
+                          .slice(0, 10)
+                          .map((o) => ({ claim: o.claim, why: o.rejection })),
+                      },
+                      derivedBlocks: blocks,
+                      verdict: result.hasContradiction
+                        ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal ` +
+                          `unsatisfiable set(s): ` +
+                          result.frustrations
+                            .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
+                            .join("; ")
+                        : `No contradiction among ${blocks.length} extracted claim blocks ` +
+                          `up to arity ${result.searchedToArity}.`,
+                      ...result,
+                    },
+                    null,
+                    2,
+                  );
+                }
               }
             } else if (fnName === "get_graph_topology") {
               const detail = args.detail ?? args.level ?? "concepts";

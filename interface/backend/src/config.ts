@@ -63,6 +63,56 @@ const ConfigSchema = z.object({
     .string()
     .default(resolve(PROJECT_ROOT, "knowledge_base")),
 
+  // TypeDB claim store (OPTIONAL — AGEM runs fine without it)
+  /**
+   * Enable the schema-enforced claim store. When false, or when no server is
+   * reachable, AGEM degrades to concept-graph-only operation and logs a note.
+   * A missing database must never take the reasoning engine offline.
+   */
+  TYPEDB_ENABLED: z
+    .union([z.boolean(), z.string()])
+    .default("true")
+    .transform((v) => (typeof v === "boolean" ? v : v !== "false" && v !== "0")),
+  /**
+   * TypeDB HTTP endpoint. NOTE this is the HTTP port, not gRPC 1729 — the
+   * TypeScript path for TypeDB 3.x is the HTTP driver (@typedb/driver-http);
+   * the gRPC Node driver (npm `typedb-driver`) is 2.x-only and will not talk
+   * to a 3.x server. TypeDB defaults HTTP to 8000, which collides with AGEM's
+   * own backend PORT, so start the server with
+   *   typedb server --server.http.listen-address 0.0.0.0:8100
+   */
+  TYPEDB_ADDRESS: z.string().default("http://127.0.0.1:8100"),
+  TYPEDB_DATABASE: z.string().default("agem-claims"),
+  TYPEDB_USERNAME: z.string().default("admin"),
+  TYPEDB_PASSWORD: z.string().default("password"),
+
+  /*
+   * Depth-of-search budgets for the logic layer.
+   *
+   * These were hardcoded constants, and every one of them was eventually found
+   * to be silently truncating real work: a 400-check budget stopped the arity-4
+   * search dead on every real corpus, and an arity cap of 4 left a 64-subset
+   * lattice unfinished against a 5000-check budget. AGEM is for deep thinking;
+   * these should be generous by default and raisable without a code change.
+   *
+   * Cost note: with the mcp-logic oracle each check is an MCP round-trip to a
+   * Prover9/Mace4 subprocess, so wall-clock scales with the budget. Raise
+   * deliberately, and prefer letting a search finish to getting a fast answer
+   * carrying a "not ruled out" caveat.
+   */
+  LOGIC_MAX_CHECKS: z.coerce.number().min(1).default(50000),
+  /** Highest subset size to test. Small lattices auto-exhaust regardless. */
+  LOGIC_MAX_ARITY: z.coerce.number().min(2).default(6),
+  /**
+   * Ceiling on distinct claim blocks fed to the consistency search. Extraction
+   * decides how many blocks exist, unlike the hand-curated path, so this is the
+   * only guard against a corpus producing hundreds. Exceeding it is reported,
+   * never silent.
+   */
+  LOGIC_MAX_BLOCKS: z.coerce.number().min(2).default(120),
+  /** Output budget per claim-extraction batch. Truncation silently voids a batch. */
+  EXTRACTION_MAX_TOKENS: z.coerce.number().min(1024).default(32768),
+
   // AGEM Engine
   MAX_AGENT_POOL_SIZE: z.coerce.number().default(20),
   MAX_ITERATIONS: z.coerce.number().default(50),
