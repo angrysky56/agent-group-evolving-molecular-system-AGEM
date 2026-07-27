@@ -60,13 +60,25 @@ const ConfigSchema = z.object({
   OPENROUTER_EMBEDDING_MODEL: z
     .string()
     .default("nvidia/nemotron-3-embed-1b:free"),
-  OPENROUTER_MAX_TOKENS: z.coerce.number().default(16384),
+  /*
+   * Output cap for OpenRouter completions.
+   *
+   * Was 16384, which silently truncated long analyses — the provider reports
+   * finish_reason=length and the run continues with a cut-off answer. The
+   * configured model advertises far more headroom than that: as measured from
+   * OpenRouter's /models, deepseek-v4-flash allows 393,216 completion tokens
+   * against a 1,048,576 context. 32768 is a working default rather than a
+   * ceiling; raise it here or in .env if a report is still being cut short.
+   */
+  OPENROUTER_MAX_TOKENS: z.coerce.number().default(32768),
 
   // Anthropic
   ANTHROPIC_API_KEY: z.string().default(""),
   ANTHROPIC_BASE_URL: z.string().default("https://api.anthropic.com/v1"),
   ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
   ANTHROPIC_EMBEDDING_MODEL: z.string().default(""),
+  /** Was hardcoded in AnthropicProvider with no way to change it. */
+  ANTHROPIC_MAX_TOKENS: z.coerce.number().default(8192),
 
   // MiniMax
   MINIMAX_API_KEY: z.string().default(""),

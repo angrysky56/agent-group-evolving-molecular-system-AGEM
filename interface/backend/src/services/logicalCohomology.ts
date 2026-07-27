@@ -173,11 +173,44 @@ export interface FormalizationWarning {
     | "negation_free"
     | "pseudo_negation"
     | "isolated_predicates"
-    | "no_existential_witness";
+    | "no_existential_witness"
+    | "inconsistent_arity"
+    | "disjoint_predicates";
   /** `critical` = the consistency result is vacuous and must not be reported. */
   severity: "critical" | "warning";
   message: string;
   detail?: string[];
+}
+
+/** Keywords that look like a symbol applied to arguments but are not. */
+const QUANTIFIER_WORDS: ReadonlySet<string> = new Set(["all", "exists"]);
+
+/**
+ * The predicates a block quantifies OVER, as opposed to those it predicates.
+ *
+ * In `all x (assignment(x) -> arbitrary(x))` the subject is `assignment` and
+ * the property is `arbitrary`. Two blocks meet only if their subjects meet:
+ * agreeing on a property name while quantifying over different subjects leaves
+ * their models independent, so no contradiction can arise. Ground atoms have no
+ * antecedent, so the atom's own symbol counts as its subject.
+ */
+function subjectSymbols(formulas: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const formula of formulas) {
+    const implication = formula.indexOf("->");
+    const head = implication >= 0 ? formula.slice(0, implication) : formula;
+    /*
+     * Strip the quantifier and its variable first. Without this, "all x (p(x)"
+     * matches `x (` and captures the bound VARIABLE as a symbol — so every
+     * quantified block appears to share `x` with every other and the check can
+     * never fire. That is how this shipped broken the first time.
+     */
+    const bare = head.replace(/\b(all|exists)\s+[a-zA-Z_][\w]*/g, " ");
+    for (const [, symbol] of bare.matchAll(/\b([a-z_][A-Za-z0-9_]*)\s*\(/g)) {
+      if (!QUANTIFIER_WORDS.has(symbol)) out.add(symbol);
+    }
+  }
+  return out;
 }
 
 /** Strip quantifier keywords and grab predicate / propositional symbols. */
@@ -219,6 +252,125 @@ export function analyzeFormalization(
   const warnings: FormalizationWarning[] = [];
   const allFormulas = blocks.flatMap((b) => b.propositions);
   if (allFormulas.length === 0) return warnings;
+
+  /*
+   * A symbol used with two different argument counts is not valid first-order
+   * logic, and Prover9 rejects the whole block.
+   *
+   * This is checked here because nothing else catches it. mcp-logic's
+   * check_well_formed validates each formula IN ISOLATION, so it returns
+   * valid:true for both `exists x (biosynthetic_precursor(x))` and
+   * `exists x (biosynthetic_precursor(glutamate, glutamine))` — verified
+   * against the live server. The pair is still rejected together, and the only
+   * feedback was the note "Syntax error or invalid input", naming nothing.
+   *
+   * Observed consequence: a run wrote that exact pair, asked check_well_formed,
+   * was told the formulas were fine, and retried the identical block three
+   * times before giving up with the block dropped from the search. Naming the
+   * symbol and its conflicting arities turns that dead end into a one-line fix.
+   */
+  for (const block of blocks) {
+    const arities = new Map<string, Set<number>>();
+    for (const formula of block.propositions) {
+      for (const [, symbol, args] of formula.matchAll(
+        /\b([a-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g,
+      )) {
+        if (QUANTIFIER_WORDS.has(symbol)) continue;
+        const arity = args.trim() === "" ? 0 : args.split(",").length;
+        if (!arities.has(symbol)) arities.set(symbol, new Set());
+        arities.get(symbol)!.add(arity);
+      }
+    }
+    const clashes = [...arities.entries()].filter(([, set]) => set.size > 1);
+    if (clashes.length === 0) continue;
+    warnings.push({
+      code: "inconsistent_arity",
+      severity: "critical",
+      message:
+        `Block "${block.name}" uses ${clashes.length} symbol(s) with more than ` +
+        "one argument count. That is not well-formed first-order logic and the " +
+        "prover rejects the entire block, so it contributes nothing to the " +
+        "search. Note that check_well_formed will NOT catch this: it validates " +
+        "each formula separately, and each one is individually fine. Give each " +
+        "symbol a single fixed arity — if you need both a type and a relation, " +
+        "name them differently (e.g. 'amino_acid(x)' and " +
+        "'precursor_of(glutamate, glutamine)').",
+      detail: clashes.map(
+        ([symbol, set]) =>
+          `${symbol} used with arity ${[...set].sort().join(" and ")}`,
+      ),
+    });
+  }
+
+  /*
+   * Blocks that share no predicate symbol cannot contradict each other.
+   *
+   * Two formula sets over disjoint vocabularies are always jointly satisfiable
+   * — interpret each block's symbols independently and both are satisfied. So
+   * a "no contradiction" verdict across such a pair is a property of the
+   * encoding, exactly like the negation-free case, and carries no information
+   * about the claims.
+   *
+   * This is the failure that survived the paraphrase fix. A run encoded
+   * Frozen Accident as
+   *     all x (allocation_of_particular_codons_to_particular_amino_acids(x) -> arbitrary(x))
+   * and Stereochemical Affinity as
+   *     all x (assignment(x) -> -arbitrary(x))
+   * Both quantify over corpus entities and both use `-`, so every existing
+   * check passed — but nothing forces anything to be both an `allocation...`
+   * and an `assignment`, so the two positions could not collide whatever the
+   * corpus said. Sharing `arbitrary` is not enough: the SUBJECT predicates
+   * must meet.
+   */
+  const subjectsByBlock = blocks.map((block) => ({
+    name: block.name,
+    subjects: subjectSymbols(block.propositions),
+    /*
+     * Only blocks that introduce their OWN witnesses can drift apart.
+     *
+     * `p(x)`, `p(x) -> q(x)`, `-q(x)` share no subject either, yet they are a
+     * real contradiction — the free variable ranges over the same individuals
+     * in every block, so the chain closes. What makes the genetic-code pair
+     * inert is that each side wrote `exists x (its_own_subject(x))`: the prover
+     * can satisfy both by choosing different witnesses, and no amount of shared
+     * property vocabulary forces them to meet.
+     *
+     * So the defect is specifically: a block that populates a private domain
+     * over a subject predicate nobody else quantifies. Requiring an existential
+     * here is what keeps the check from firing on the classic frustrated
+     * triple, which it did on the first attempt.
+     */
+    introducesOwnWitness: block.propositions.some((f) => /\bexists\b/.test(f)),
+  }));
+  const evaluated = subjectsByBlock.filter((b) => b.subjects.size > 0);
+  const disconnectedBlocks = evaluated.filter(
+    (block) =>
+      block.introducesOwnWitness &&
+      evaluated.every(
+        (other) =>
+          other.name === block.name ||
+          [...block.subjects].every((s) => !other.subjects.has(s)),
+      ),
+  );
+  if (evaluated.length > 1 && disconnectedBlocks.length > 0) {
+    warnings.push({
+      code: "disjoint_predicates",
+      severity: "critical",
+      message:
+        `${disconnectedBlocks.length} block(s) share no SUBJECT predicate with any other ` +
+        "block. Formula sets over disjoint vocabularies are jointly satisfiable " +
+        "by construction, so those blocks cannot contradict anything and a " +
+        "clean verdict involving them says nothing about the claims. Where two " +
+        "positions disagree about the same thing, they must quantify over the " +
+        "same predicate — write 'all x (assignment(x) -> arbitrary(x))' against " +
+        "'all x (assignment(x) -> -arbitrary(x))', not two differently-named " +
+        "subjects that happen to share a property symbol.",
+      detail: disconnectedBlocks.map(
+        (block) =>
+          `${block.name}: subjects {${[...block.subjects].sort().join(", ")}}`,
+      ),
+    });
+  }
 
   // 1) No negation anywhere ⇒ satisfiability is a theorem, not a finding.
   if (!allFormulas.some(hasNegation)) {

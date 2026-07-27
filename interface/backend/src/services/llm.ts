@@ -923,7 +923,7 @@ class AnthropicProvider implements LLMProvider {
       messages,
       system,
       tools: tools && tools.length > 0 ? tools : undefined,
-      max_tokens: options.maxTokens ?? 8192,
+      max_tokens: options.maxTokens ?? settings.all.ANTHROPIC_MAX_TOKENS,
       stream: true,
     };
   }
