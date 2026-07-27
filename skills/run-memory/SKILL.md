@@ -16,8 +16,11 @@ description: "Long-term memory across runs: check what you already concluded abo
 Ask whether this corpus has been analysed before, **before** running a cycle.
 
 - A prior finding exists, same model → **cite it. Do not re-derive.**
-- A prior finding exists, different model → treat as unverified. Cross-model
-  recall of condensed memory is measurably weaker; re-check rather than repeat.
+- A prior finding exists, different model → treat as unverified and re-check.
+  Not because cross-model recall is known to be worse — measured multi-agent
+  scores were 96.6% same-model and 99.7% cross-model, so it is not — but
+  because portability depends on the specific compressor/reader pair and has
+  not been characterised for yours. Unknown, not bad.
 - A prior finding exists and you now disagree → record both and link
   `supersedes` with a reason. Never silently replace it.
 
