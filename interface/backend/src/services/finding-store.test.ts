@@ -1,0 +1,274 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import type { IEmbedder } from "#agem/lcm/interfaces.js";
+import {
+  FindingStore,
+  type FindingGraph,
+  type FindingInput,
+  type StoredFinding,
+} from "./finding-store.js";
+
+class FakeEmbedder implements IEmbedder {
+  readonly calls: string[] = [];
+  constructor(readonly vectors: Record<string, number[]>) {}
+
+  async embed(text: string): Promise<Float64Array> {
+    this.calls.push(text);
+    return new Float64Array(this.vectors[text] ?? [0, 1]);
+  }
+}
+
+class FakeGraph implements FindingGraph {
+  findings: StoredFinding[] = [];
+  supersedes: Array<[string, string, string]> = [];
+
+  async recordFinding(finding: StoredFinding): Promise<void> {
+    this.findings.push(finding);
+  }
+
+  async recordSupersedes(
+    winner: string,
+    loser: string,
+    reason: string,
+  ): Promise<void> {
+    this.supersedes.push([winner, loser, reason]);
+  }
+}
+
+const input = (
+  verdict: string,
+  outcome: FindingInput["outcome"],
+  claims: string[],
+  runLogId = verdict,
+  method: FindingInput["method"] = "hand-authored",
+): FindingInput => ({
+  verdict,
+  coverage: "Coverage: all 2 submitted blocks were evaluated.",
+  runLogId,
+  producedByModel: "test-model",
+  method,
+  outcome,
+  corpusId: "provenance-only",
+  supportingClaims: claims,
+});
+
+describe("FindingStore", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), "agem-findings-"));
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("uses one cue embedding, a raw similarity floor, and top-k", async () => {
+    const embedder = new FakeEmbedder({
+      relevant: [1, 0],
+      secondary: [0.8, 0.6],
+      unrelated: [0, 1],
+      cue: [1, 0],
+    });
+    const store = new FindingStore(embedder, {
+      directory,
+      similarityFloor: 0.7,
+      topK: 2,
+    });
+    await store.store(input("relevant", "contradiction", ["a"]));
+    await store.store(input("secondary", "no-contradiction", ["b"]));
+    await store.store(input("unrelated", "contradiction", ["c"]));
+
+    const recalled = await store.recall("cue");
+
+    expect(embedder.calls.filter((call) => call === "cue")).toHaveLength(1);
+    expect(recalled.map((match) => match.finding.verdict)).toEqual([
+      "relevant",
+      "secondary",
+    ]);
+    expect(recalled.every((match) => match.similarity >= 0.7)).toBe(true);
+  });
+
+  it("recalls nothing for unrelated material instead of forcing a top-k match", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ finding: [1, 0], unrelatedCue: [0, 1] }),
+      { directory, similarityFloor: 0.4, topK: 3 },
+    );
+    await store.store(input("finding", "contradiction", ["a"]));
+    await expect(store.recall("unrelatedCue")).resolves.toEqual([]);
+  });
+
+  it("detects conflict only from exact shared claims and opposite outcomes", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ old: [1, 0], newer: [1, 0], fuzzy: [1, 0], same: [1, 0] }),
+      { directory },
+    );
+    const old = await store.store(
+      input("old", "no-contradiction", ["claim:shared"], "old", "derived-from-claims"),
+    );
+    const fuzzy = await store.store(
+      input("fuzzy", "contradiction", ["claim:different"], "fuzzy", "derived-from-claims"),
+    );
+    const same = await store.store(
+      input("same", "no-contradiction", ["claim:shared"], "same", "derived-from-claims"),
+    );
+    const newer = await store.store(
+      input("newer", "contradiction", ["claim:shared"], "newer", "derived-from-claims"),
+    );
+
+    expect(fuzzy.conflicts).toEqual([]);
+    expect(same.conflicts).toEqual([]);
+    expect(newer.conflicts).toHaveLength(2);
+    expect(newer.conflicts.map((c) => c.olderFindingId).sort()).toEqual(
+      [old.finding.id, same.finding.id].sort(),
+    );
+    expect(await store.getStats()).toMatchObject({
+      active: 4,
+      openConflicts: 2,
+    });
+  });
+
+  it("surfaces a candidate without silently superseding, then archives on explicit resolution", async () => {
+    const graph = new FakeGraph();
+    const store = new FindingStore(
+      new FakeEmbedder({ old: [1, 0], newer: [1, 0] }),
+      { directory, graph },
+    );
+    const old = await store.store(
+      input("old", "no-contradiction", ["claim:shared"], "old", "derived-from-claims"),
+    );
+    const newer = await store.store(
+      input("newer", "contradiction", ["claim:shared"], "newer", "derived-from-claims"),
+    );
+    const candidate = newer.conflicts[0];
+
+    expect(await store.getStats()).toMatchObject({ active: 2, archived: 0 });
+    const resolved = await store.resolveConflict(
+      candidate.id,
+      newer.finding.id,
+      "The newer run covered the missing claim.",
+    );
+
+    expect(resolved.status).toBe("resolved");
+    expect(await store.getStats()).toMatchObject({ active: 1, archived: 1 });
+    expect(graph.supersedes).toEqual([
+      [
+        newer.finding.id,
+        old.finding.id,
+        "The newer run covered the missing claim.",
+      ],
+    ]);
+  });
+
+  it("does not turn matching hand-authored formula strings into graph conflicts", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ old: [1, 0], newer: [1, 0] }),
+      { directory },
+    );
+    await store.store(input("old", "no-contradiction", ["fol:shared"]));
+    const newer = await store.store(
+      input("newer", "contradiction", ["fol:shared"]),
+    );
+    expect(newer.conflicts).toEqual([]);
+  });
+
+  it("sinks old findings that were never recalled or cited but preserves cited findings", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z");
+    const store = new FindingStore(
+      new FakeEmbedder({ unused: [1, 0], cited: [1, 0], miss: [0, 1] }),
+      {
+        directory,
+        similarityFloor: 0.9,
+        unusedRetentionDays: 10,
+        now: () => now,
+      },
+    );
+    const unused = await store.store(
+      input("unused", "contradiction", ["unused"]),
+    );
+    const cited = await store.store(
+      input("cited", "contradiction", ["cited"]),
+    );
+    await store.recordCitations(
+      `Used [finding:${cited.finding.id}]`,
+      [unused.finding.id, cited.finding.id],
+    );
+
+    now = new Date("2026-01-12T00:00:00.000Z");
+    await store.recall("miss");
+
+    expect(await store.getStats()).toEqual({
+      active: 1,
+      archived: 1,
+      openConflicts: 0,
+    });
+  });
+
+  it("enforces an absolute hot-index cap and deduplicates retries within one run", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ one: [1, 0], two: [1, 0], three: [1, 0] }),
+      { directory, maxActive: 2 },
+    );
+    const one = input("one", "contradiction", ["a"], "run-1");
+    expect((await store.store(one)).stored).toBe(true);
+    expect((await store.store(one)).stored).toBe(false);
+    await store.store(input("two", "contradiction", ["b"], "run-2"));
+    await store.store(input("three", "contradiction", ["c"], "run-3"));
+    expect(await store.getStats()).toEqual({
+      active: 2,
+      archived: 1,
+      openConflicts: 0,
+    });
+  });
+
+  it("keeps open conflict records resolvable without exceeding the cosine hot cap", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ one: [1, 0], two: [1, 0], three: [1, 0], cue: [1, 0] }),
+      { directory, maxActive: 1, topK: 3, similarityFloor: 0.4 },
+    );
+    await store.store(
+      input("one", "no-contradiction", ["claim:x"], "one", "derived-from-claims"),
+    );
+    await store.store(
+      input("two", "contradiction", ["claim:x"], "two", "derived-from-claims"),
+    );
+    await store.store(
+      input("three", "no-contradiction", ["claim:x"], "three", "derived-from-claims"),
+    );
+
+    expect(await store.recall("cue")).toHaveLength(1);
+    expect((await store.listOpenConflicts()).length).toBeGreaterThan(0);
+  });
+
+  it("dismisses other open candidates involving a finding once it is superseded", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ old: [1, 0], newer: [1, 0], peer: [1, 0] }),
+      { directory },
+    );
+    const old = await store.store(
+      input("old", "no-contradiction", ["claim:x"], "old", "derived-from-claims"),
+    );
+    const peer = await store.store(
+      input("peer", "no-contradiction", ["claim:x"], "peer", "derived-from-claims"),
+    );
+    const newer = await store.store(
+      input("newer", "contradiction", ["claim:x"], "newer", "derived-from-claims"),
+    );
+    expect(newer.conflicts).toHaveLength(2);
+
+    const againstOld = newer.conflicts.find(
+      (candidate) => candidate.olderFindingId === old.finding.id,
+    )!;
+    await store.resolveConflict(
+      againstOld.id,
+      old.finding.id,
+      "Keep the older result.",
+    );
+
+    expect(await store.listOpenConflicts()).toEqual([]);
+    expect((await store.getStats()).active).toBe(2);
+    expect(peer.finding.id).not.toBe(old.finding.id);
+  });
+});

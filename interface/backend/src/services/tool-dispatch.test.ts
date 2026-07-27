@@ -30,7 +30,7 @@ describe("sideEffectClass", () => {
       "get_soc_metrics",
       "detect_gaps",
       "search_context",
-      "evaluate_logical_consistency",
+      "list_finding_conflicts",
     ]) {
       expect(sideEffectClass(t)).toBe("pure");
     }
@@ -43,6 +43,9 @@ describe("sideEffectClass", () => {
       "reset_agem_engine",
       "record_scenario_turn",
       "complete_scenario",
+      "evaluate_logical_consistency",
+      "extract_and_verify_claims",
+      "resolve_finding_conflict",
     ]) {
       expect(sideEffectClass(t)).toBe("mutating");
     }
@@ -98,6 +101,8 @@ describe("isRetrySafe", () => {
     expect(isRetrySafe("get_cohomology")).toBe(true);
     expect(isRetrySafe("reset_agem_engine")).toBe(true);
     expect(isRetrySafe("create_skill")).toBe(true);
+    expect(isRetrySafe("resolve_finding_conflict")).toBe(true);
+    expect(isRetrySafe("evaluate_logical_consistency")).toBe(true);
   });
 
   it("does not blind-retry arbitrary MCP calls", () => {

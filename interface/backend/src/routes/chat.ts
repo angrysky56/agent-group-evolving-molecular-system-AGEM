@@ -29,6 +29,12 @@ import {
 } from "../services/claim-extractor.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
+import { findingStore } from "../services/run-memory.js";
+import {
+  attachFindingMemory,
+  captureFindingFromTool,
+  formatRecallContext,
+} from "../services/finding-capture.js";
 import { RecoveryProtocol } from "../services/recovery-protocol.js";
 import {
   dispatchBatch,
@@ -231,6 +237,45 @@ chatRouter.post("/completions", async (req, res) => {
     const isCacheSupported = ["anthropic", "minimax"].includes(
       resolvedProvider ?? "",
     );
+    const effectiveModel = String(
+      model ?? settings.getLLMConfig(resolvedProvider).model,
+    );
+
+    // Create the run trace before recall so automatic memory activity is
+    // auditable alongside cycle and tool activity.
+    const runLog = createRunLogger({
+      model: effectiveModel,
+      sessionId: typeof sessionId === "string" ? sessionId : undefined,
+      message,
+    });
+    sendEvent("system", { content: `[run-log: ${runLog.runId}]` });
+
+    // Cue, don't query: one embedding of the incoming material, a raw cosine
+    // floor, then top-k. This happens before the model sees the prompt.
+    let recalledFindingIds: string[] = [];
+    let recalledContext: string | null = null;
+    try {
+      const recalled = await findingStore.recall(
+        message,
+        abortController.signal,
+      );
+      recalledFindingIds = recalled.map((match) => match.finding.id);
+      recalledContext = formatRecallContext(recalled, effectiveModel);
+      runLog.event("finding_recall", {
+        cueChars: message.length,
+        matches: recalled.map((match) => ({
+          findingId: match.finding.id,
+          similarity: match.similarity,
+          conflictCandidates: match.conflicts.map((c) => c.id),
+        })),
+      });
+    } catch (error) {
+      // Long-term memory must degrade safely just as TypeDB does.
+      runLog.event("finding_recall_error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      console.warn("[Chat] Automatic finding recall unavailable:", error);
+    }
 
     // Inject system prompt with all loaded skills
     const allSkills = Array.from(
@@ -269,10 +314,18 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back in via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
 7. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
 
+# Cross-run finding memory is automatic
+
+Before your first turn, the engine has already recalled semantically relevant findings (if any) using a cosine floor plus top-k. After a conclusive verification, the engine writes the finding automatically from the structured tool result. Do not spend a tool turn asking a memory service whether the corpus id was seen before, and do not rely on remembering to save a verdict yourself.
+
+Recalled findings are context, not an agenda. Cite one you actually use with its exact \`[finding:<id>]\` marker. An opposite new verdict is not silently allowed to replace an old one: exact overlap between typed supporting claims creates a supersedes candidate in the tool result. Review candidates with list_finding_conflicts and resolve them explicitly with resolve_finding_conflict.
+
 # Native AGEM tools (call directly)
 - run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
 - evaluate_logical_consistency (minimal unsatisfiable sets — the real contradiction detector; read "frustrations", not H¹)
+- extract_and_verify_claims (preferred typed-claim path for contested corpora)
 - detect_gaps, generate_catalyst_questions, search_context
+- list_finding_conflicts, resolve_finding_conflict
 - spawn_agem_agent, reset_agem_engine, read_skill
 
 # Formal logic — mcp-logic (REQUIRED for contested/multi-position topics)
@@ -319,6 +372,10 @@ ALWAYS put tool arguments INSIDE the "arguments" object, and call list_server_to
 ${skillContent}`,
       cache_control: isCacheSupported ? { type: "ephemeral" } : undefined,
     } as any);
+
+    if (recalledContext) {
+      historyMessages.push({ role: "system", content: recalledContext });
+    }
 
     const messages = session?.messages ?? [userMessage];
     messages.forEach((m: any, idx) => {
@@ -424,6 +481,11 @@ ${skillContent}`,
                   required: ["name", "propositions"],
                 },
               },
+              corpusId: {
+                type: "string",
+                description:
+                  "Optional provenance label only. Recall is semantic and does not use corpus-id equality.",
+              },
             },
             required: ["blocks"],
           },
@@ -449,6 +511,32 @@ ${skillContent}`,
               },
             },
             required: ["text"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "list_finding_conflicts",
+          description:
+            "List automatically detected supersedes candidates. Candidates require exact shared supporting claims and opposite verified outcomes; no finding is retired automatically.",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "resolve_finding_conflict",
+          description:
+            "Resolve one supersedes candidate after reviewing both findings. Select the authoritative finding and give an explicit reason; the losing finding is archived, never deleted.",
+          parameters: {
+            type: "object",
+            properties: {
+              candidateId: { type: "string" },
+              winnerFindingId: { type: "string" },
+              reason: { type: "string" },
+            },
+            required: ["candidateId", "winnerFindingId", "reason"],
           },
         },
       },
@@ -924,17 +1012,6 @@ ${skillContent}`,
     const allTurnToolResults: any[] = [];
     const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
 
-    // Persistent, readable trace of this run (graph inputs + full tool I/O).
-    // Written to <KNOWLEDGE_BASE_PATH>/runs/<id>.{jsonl,md}. Never throws.
-    // This file IS the diagnostic context C_diag: full failure detail goes
-    // here and NOT into historyMessages.
-    const runLog = createRunLogger({
-      model: String(model ?? "unknown"),
-      sessionId: typeof sessionId === "string" ? sessionId : undefined,
-      message,
-    });
-    sendEvent("system", { content: `[run-log: ${runLog.runId}]` });
-
     // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
     // every tool call in this run, so the retry budget is per-run, not per-call.
     const recovery = new RecoveryProtocol({
@@ -1347,9 +1424,27 @@ ${skillContent}`,
 
                 // Derive FOL from the claim TYPES, not from prose.
                 const derived = extraction.outcomes
-                  .filter((o) => o.accepted)
-                  .map((o) => claimToPropositions(o.claim))
-                  .filter((b): b is { name: string; propositions: string[] } => !!b);
+                  .filter((o) => o.accepted && o.claimKey && o.claimId)
+                  .map((o) => {
+                    const block = claimToPropositions(o.claim);
+                    return block
+                      ? {
+                          ...block,
+                          claimKey: o.claimKey!,
+                          claimRef: o.claimId!,
+                        }
+                      : null;
+                  })
+                  .filter(
+                    (
+                      block,
+                    ): block is {
+                      name: string;
+                      propositions: string[];
+                      claimKey: string;
+                      claimRef: string;
+                    } => !!block,
+                  );
 
                 /*
                  * Distinct names only. The same claim extracted from five
@@ -1372,7 +1467,11 @@ ${skillContent}`,
                  */
                 const BLOCK_CAP = settings.all.LOGIC_MAX_BLOCKS;
                 const capped = distinct.length > BLOCK_CAP;
-                const blocks = distinct.slice(0, BLOCK_CAP);
+                const selected = distinct.slice(0, BLOCK_CAP);
+                const blocks = selected.map(({ name, propositions }) => ({
+                  name,
+                  propositions,
+                }));
                 const capNote = capped
                   ? `NOTE: extraction produced ${distinct.length} distinct claim blocks; ` +
                     `only the first ${BLOCK_CAP} were checked, because each check is a ` +
@@ -1399,12 +1498,48 @@ ${skillContent}`,
                     maxChecks: settings.all.LOGIC_MAX_CHECKS,
                     maxArity: settings.all.LOGIC_MAX_ARITY,
                   });
+                  const evaluatedNames = new Set(result.vertices);
+                  const supporting = selected.filter((block) =>
+                    evaluatedNames.has(block.name),
+                  );
+                  const evaluated = supporting.length;
+                  const coverageDetails = [
+                    capped
+                      ? `${distinct.length - BLOCK_CAP} block(s) excluded by LOGIC_MAX_BLOCKS`
+                      : "",
+                    result.internallyInconsistent.length
+                      ? `${result.internallyInconsistent.length} internally inconsistent block(s) excluded`
+                      : "",
+                    result.checkFailures.length
+                      ? `${result.checkFailures.length} check failure(s)`
+                      : "",
+                  ].filter(Boolean);
+                  const coverage =
+                    evaluated === distinct.length
+                      ? `Coverage: all ${distinct.length} distinct extracted claim blocks were evaluated.`
+                      : `Coverage: ${evaluated} of ${distinct.length} distinct extracted claim blocks were evaluated` +
+                        (coverageDetails.length
+                          ? `. Excluded or unresolved — ${coverageDetails.join("; ")}.`
+                          : ".");
+                  const verdict = result.resultIsVacuous
+                    ? `INVALID FORMALIZATION — the derived consistency result is VACUOUS and must not be reported as a finding.`
+                    : result.hasContradiction
+                      ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal ` +
+                        `unsatisfiable set(s): ` +
+                        result.frustrations
+                          .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
+                          .join("; ")
+                      : result.searchTruncated
+                        ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""}`
+                        : `No contradiction among ${evaluated} evaluated extracted claim blocks up to arity ${result.searchedToArity}.`;
                   output = JSON.stringify(
                     {
                       runLogId: runLog.runId,
                       capNote,
+                      coverage,
                       distinctBlocksExtracted: distinct.length,
                       blocksChecked: blocks.length,
+                      blocksEvaluated: evaluated,
                       extraction: {
                         segmentsProcessed: extraction.segmentsProcessed,
                         claimsProposed: extraction.claimsProposed,
@@ -1417,14 +1552,13 @@ ${skillContent}`,
                           .map((o) => ({ claim: o.claim, why: o.rejection })),
                       },
                       derivedBlocks: blocks,
-                      verdict: result.hasContradiction
-                        ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal ` +
-                          `unsatisfiable set(s): ` +
-                          result.frustrations
-                            .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
-                            .join("; ")
-                        : `No contradiction among ${blocks.length} extracted claim blocks ` +
-                          `up to arity ${result.searchedToArity}.`,
+                      supportingClaimKeys: supporting.map(
+                        (block) => block.claimKey,
+                      ),
+                      supportingClaimRefs: supporting.map(
+                        (block) => block.claimRef,
+                      ),
+                      verdict,
                       ...result,
                     },
                     null,
@@ -1432,6 +1566,25 @@ ${skillContent}`,
                   );
                 }
               }
+            } else if (fnName === "list_finding_conflicts") {
+              output = JSON.stringify(
+                await findingStore.listOpenConflicts(),
+                null,
+                2,
+              );
+            } else if (fnName === "resolve_finding_conflict") {
+              const candidateId = String(args.candidateId ?? "");
+              const winnerFindingId = String(args.winnerFindingId ?? "");
+              const reason = String(args.reason ?? "");
+              output = JSON.stringify(
+                await findingStore.resolveConflict(
+                  candidateId,
+                  winnerFindingId,
+                  reason,
+                ),
+                null,
+                2,
+              );
             } else if (fnName === "get_graph_topology") {
               const detail = args.detail ?? args.level ?? "concepts";
               const full = agemBridge.getGraphSummary();
@@ -1835,6 +1988,48 @@ ${skillContent}`,
               onDiagnostic: (event) => runLog.event("recovery", event),
             });
 
+            let effectiveOutput = outcome.output;
+            if (outcome.ok) {
+              try {
+                const finding = captureFindingFromTool(
+                  fnName,
+                  args,
+                  outcome.output,
+                  {
+                    runLogId: runLog.runId,
+                    producedByModel: effectiveModel,
+                  },
+                );
+                if (finding) {
+                  const memory = await findingStore.store(
+                    finding,
+                    abortController.signal,
+                  );
+                  effectiveOutput = attachFindingMemory(outcome.output, memory);
+                  runLog.event("finding_write", {
+                    findingId: memory.finding.id,
+                    stored: memory.stored,
+                    conflictCandidates: memory.conflicts.map((c) => c.id),
+                    method: memory.finding.method,
+                    outcome: memory.finding.outcome,
+                  });
+                  sendEvent("finding_memory", {
+                    finding_id: memory.finding.id,
+                    conflict_candidates: memory.conflicts,
+                  });
+                }
+              } catch (error) {
+                // A verified tool result remains valid if memory persistence is
+                // temporarily unavailable. Log the degradation; never relabel
+                // the underlying logic call as failed.
+                runLog.event("finding_write_error", {
+                  tool: fnName,
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                });
+                console.warn("[Chat] Automatic finding write unavailable:", error);
+              }
+            }
             const elapsedMs = Date.now() - toolStart;
             if (!outcome.ok) {
               console.error(
@@ -1845,13 +2040,13 @@ ${skillContent}`,
             // The run log gets the real story; history gets the terse notice.
             runLog.toolResult(
               fnName,
-              outcome.ok ? outcome.output : (outcome.detail ?? outcome.output),
+              outcome.ok ? effectiveOutput : (outcome.detail ?? outcome.output),
             );
             if (elapsedMs > 10000) {
               console.warn(`[Chat] Slow tool: ${fnName} took ${elapsedMs}ms`);
             } else if (outcome.ok) {
               console.log(
-                `[Chat] Tool ${fnName} completed in ${elapsedMs}ms (${outcome.output.length} chars)`,
+                `[Chat] Tool ${fnName} completed in ${elapsedMs}ms (${effectiveOutput.length} chars)`,
               );
             }
 
@@ -1862,7 +2057,7 @@ ${skillContent}`,
               tc,
               fnName,
               toolLabel: outcome.label,
-              output: outcome.output,
+              output: effectiveOutput,
               elapsedMs,
               ok: outcome.ok,
             };
@@ -1967,22 +2162,6 @@ ${skillContent}`,
       });
     }
 
-    const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
-    console.log(
-      `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
-    );
-    runLog.end({
-      turns: turnCount,
-      elapsedSeconds: elapsed,
-      contract: workflowContract.summary(),
-      recoveryLedger: recovery.snapshot(),
-    });
-
-    // Send usage
-    if (lastResult?.usage) {
-      sendEvent("usage", lastResult.usage);
-    }
-
     // Attach metadata to the final assistant message
     const finalAssistantMessage = [...historyMessages]
       .reverse()
@@ -1999,6 +2178,43 @@ ${skillContent}`,
         tool_results:
           finalAssistantMessage.metadata?.tool_results ?? allTurnToolResults,
       };
+    }
+
+    // Recalled findings only earn a citation when the final answer contains the
+    // exact injected marker. This is the second half of retention accounting.
+    let citedFindingIds: string[] = [];
+    if (finalAssistantMessage?.content && recalledFindingIds.length > 0) {
+      try {
+        citedFindingIds = await findingStore.recordCitations(
+          String(finalAssistantMessage.content),
+          recalledFindingIds,
+        );
+        if (citedFindingIds.length > 0) {
+          runLog.event("finding_citations", { findingIds: citedFindingIds });
+        }
+      } catch (error) {
+        runLog.event("finding_citation_error", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
+    console.log(
+      `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
+    );
+    runLog.end({
+      turns: turnCount,
+      elapsedSeconds: elapsed,
+      recalledFindingIds,
+      citedFindingIds,
+      contract: workflowContract.summary(),
+      recoveryLedger: recovery.snapshot(),
+    });
+
+    // Send usage
+    if (lastResult?.usage) {
+      sendEvent("usage", lastResult.usage);
     }
 
     // Save history (filter out the system messages, keep standard multi-turn)

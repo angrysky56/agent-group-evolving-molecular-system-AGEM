@@ -13,6 +13,8 @@
 import { TypeDBClaimStore, claimStore } from "../src/services/typedb-claims.js";
 import { isOkResponse } from "@typedb/driver-http";
 import path from "node:path";
+import { TypeDBFindingGraph } from "../src/services/typedb-findings.js";
+import type { StoredFinding } from "../src/services/finding-store.js";
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -57,7 +59,9 @@ match
   $b isa concept, has label "verify-broadcast";
   $s isa segment, has segment-id "verify-1";
 insert
-  $_ isa exclusion, links (excluder: $a, excluded: $b, source: $s);`);
+  $_ isa exclusion, links (excluder: $a, excluded: $b, source: $s),
+    has claim-id "verify-claim-occurrence-1",
+    has claim-key "verify-claim-structural-1";`);
 check("well-formed exclusion ACCEPTED", !!good && isOkResponse(good));
 
 const bad = await claimStore.write(`
@@ -71,7 +75,55 @@ check(
   !!bad && !isOkResponse(bad),
 );
 
-console.log("\n3. Degradation when TypeDB is absent");
+console.log("\n3. Finding, evidence, and supersedes graph writes");
+const findingGraph = new TypeDBFindingGraph();
+const finding = (
+  id: string,
+  outcome: StoredFinding["outcome"],
+): StoredFinding => ({
+  id,
+  verdict:
+    outcome === "contradiction"
+      ? "CONTRADICTION FOUND"
+      : "No contradiction found.",
+  coverage: "Coverage: all 2 submitted blocks were evaluated.",
+  runLogId: `verify-run-${id}`,
+  producedByModel: "verify-model",
+  method: "derived-from-claims",
+  outcome,
+  corpusId: "verify",
+  supportingClaims: ["verify-claim-structural-1"],
+  supportingClaimRefs: ["verify-claim-occurrence-1"],
+  createdAt: "2026-07-27T06:00:00.000Z",
+  embedding: [1, 0],
+  recallCount: 0,
+  citationCount: 0,
+  status: "active",
+  fingerprint: `verify-${id}`,
+});
+let findingWritesPassed = true;
+try {
+  await findingGraph.recordFinding(
+    finding("verify-finding-old", "no-contradiction"),
+  );
+  await findingGraph.recordFinding(
+    finding("verify-finding-new", "contradiction"),
+  );
+  await findingGraph.recordSupersedes(
+    "verify-finding-new",
+    "verify-finding-old",
+    "Live verification of explicit supersession.",
+  );
+} catch (error) {
+  findingWritesPassed = false;
+  console.error(error);
+}
+check(
+  "finding entities + n-ary evidence + supersedes ACCEPTED",
+  findingWritesPassed,
+);
+
+console.log("\n4. Degradation when TypeDB is absent");
 // A port nothing is listening on. Injected rather than set via process.env,
 // because `settings` parses the environment once at module load — mutating it
 // here silently does nothing, which made an earlier version of this test pass

@@ -12,6 +12,7 @@
 | **Add Knowledge** | Drop `.md` in `skills/`            | Agent Skill Loading                |
 | **Run Tests**     | `npm test`                         | Core Engine Validation             |
 | **Inspect a run** | Read `knowledge_base/runs/<id>.md` | Full tool I/O + graph-ingest trace |
+| **Inspect memory** | Read `knowledge_base/findings/index.json` | Hot findings + conflict candidates |
 | **Benchmark**     | `npx tsx benchmarks/phase-timing.bench.ts` | Per-phase cycle cost vs graph size |
 
 ## What AGEM does
@@ -66,6 +67,8 @@ AGEM exposes its own capabilities as tools any connected LLM agent calls directl
 - **`get_graph_topology`** — concept communities and inter-community bridges (the primary inspection tool).
 - **`get_cohomology`** — geometric sheaf H⁰/H¹ (connectivity; see the honesty note above).
 - **`evaluate_logical_consistency`** — **logic-based H⁰/H¹** contradiction detection (the distinctive capability).
+- **`extract_and_verify_claims`** — typed claim extraction plus deterministic formalization and verification.
+- **`list_finding_conflicts` / `resolve_finding_conflict`** — inspect and explicitly resolve structural supersedes candidates.
 - **`get_soc_metrics`** — SOC metrics and regime classification.
 - **`detect_gaps` / `generate_catalyst_questions`** — structural gaps and the questions that would bridge them.
 - **`search_context`** — semantic search over the LCM store.
@@ -114,6 +117,17 @@ cd interface/backend && npx tsx scripts/verify-claim-store.ts
 **Driver note.** TypeDB 3.x has no gRPC driver for Node; the npm package `typedb-driver` is 2.x-only and will *not* talk to a 3.x server. AGEM uses `@typedb/driver-http`, and `TYPEDB_ADDRESS` is therefore the **HTTP** port (8100), not gRPC 1729.
 
 **Writing TypeQL.** TypeDB 3.x is a rewrite — `thing` is no longer a root type, inserts use `links (role: $x)`, and queries are pipelines. The vendored reference at `skills/typeql/SKILL.md` raises TypeQL pass rates from 23–43% to 86–96% by TypeDB's own benchmark; use it rather than writing 3.x from memory. Optionally add the syntax checker with `sudo apt install typeql-check=3.12.0` (pin the version — apt's default candidate `3.12.0-rc0` is a truncated artifact on their CDN at time of writing). It isn't needed: loading a schema against a scratch database validates semantics as well as grammar.
+
+## Automatic cross-run finding memory
+
+Long-term memory is part of the run lifecycle, not a model-elected tool call:
+
+1. Before the first model turn, AGEM embeds the incoming material once, compares it with stored verdict embeddings, applies `FINDING_RECALL_SIMILARITY_FLOOR`, and then caps the survivors with `FINDING_RECALL_TOP_K`. Unrelated runs therefore recall nothing.
+2. After a successful logical verification tool call, the engine copies the verdict, coverage, truncation/cap caveats, run-log id, model, method, and supporting claims from the structured tool result. Exploratory prose is not stored.
+3. Opposite conclusive findings become a conflict candidate only when their schema-validated typed claims have an exact structural overlap. Embedding resemblance never creates a conflict, and neither finding is silently retired.
+4. A conflict is retired only through `resolve_finding_conflict`, with an explicit winner and reason. Superseded and unused findings are archived, never deleted.
+
+The cosine-scanned hot index is `knowledge_base/findings/index.json`; sunk records are append-only in `archive.jsonl`. TypeDB mirrors findings, n-ary `evidences`, and resolved `supersedes` relations when available, but semantic recall continues without TypeDB. Recalled findings count as cited only when the final response uses the exact `[finding:<id>]` marker.
 
 ## Run logging & observability
 
@@ -197,6 +211,7 @@ AGEM does not require any MCP server other than `mcp-logic` (for contradiction d
 - **Lumpability auditing** — `LumpabilityAuditor` detects information loss at LCM compaction boundaries by comparing embedding-entropy profiles of source entries vs summary nodes.
 - **Molecular Chain-of-Thought** — reasoning topology using covalent (strong dependency), hydrogen (self-reflection), and Van der Waals (exploration) bond metaphors.
 - **Run logging** — full per-run trace (graph inputs + tool I/O) to `knowledge_base/runs/`.
+- **Automatic run memory** — floor-bounded semantic recall, exact-claim conflict candidates, explicit supersession, and a capped archival hot index.
 - **Full-stack chat interface** — React + Express with SSE streaming, session history, knowledge-base persistence, and a real-time system dashboard (vitals strip, SOC sparklines, event log, graph visualization).
 - **Meta-Tool MCP Access** — 3 meta-tools give models dynamic access to any configured MCP server without flooding context with raw schemas.
 - **Provider Embeddings** — `ProviderEmbedder` calls Ollama or OpenRouter for real semantic similarity, with dimension-aware fallback.
@@ -250,6 +265,7 @@ agent-group-evolving-molecular-system-AGEM/
 │   ├── tool-execution-controllability.md               # Recovery/contract layer + FINGER derivation
 │   └── logic-corpus/          # Calibrated test corpus for logic-based H¹
 ├── knowledge_base/runs/       # Per-run traces (graph inputs + full tool I/O)
+├── knowledge_base/findings/   # Hot semantic index + append-only archive (generated)
 └── mcp.json                   # MCP server configuration (mcp-logic + optional utilities)
 ```
 
@@ -332,6 +348,15 @@ Tool-execution settings:
 | `CHAT_ENFORCE_WORKFLOW_CONTRACT` | `true`  | Require ingest → inspect → verify-if-multi-position before a run may finish.                                    |
 | `CHAT_CONTRACT_MATERIAL_CHARS`   | `600`   | User-message size at which a run counts as an analysis, so short maintenance commands are never nudged.          |
 
+Finding-memory settings:
+
+| Variable                              | Default | Description                                                                 |
+| ------------------------------------- | ------- | --------------------------------------------------------------------------- |
+| `FINDING_RECALL_SIMILARITY_FLOOR`     | `0.4`   | Raw cosine floor; top-k cannot promote a weaker match.                       |
+| `FINDING_RECALL_TOP_K`                | `3`     | Maximum findings injected before the first model turn.                       |
+| `FINDING_UNUSED_RETENTION_DAYS`       | `180`   | Grace period before never-recalled, never-cited findings leave the hot index. |
+| `FINDING_MAX_ACTIVE`                  | `500`   | Absolute cap on findings scanned per run; overflow is archived, not deleted. |
+
 Engine setting (`SOCConfig`, not env): `exactEntropyMaxNodes` (default `250`) — node count above which VNE switches from the exact solver to FINGER.
 
 ## Architecture
@@ -347,6 +372,8 @@ User Prompt → Orchestrator.runReasoning()
     │
     ├─→ evaluate_logical_consistency: blocks → mcp-logic satisfiability checks
     │   → consistency complex → logic-based H⁰/H¹ + checkLog
+    ├─→ Finding memory: cue embedding → floor + top-k recall
+    │   → verified verdict write → exact-claim conflict candidate
     │
     ├─→ Dashboard SSE: /api/v1/system/events → vitals + sparklines + event log
     └─→ Run logger: knowledge_base/runs/<id>.{jsonl,md}

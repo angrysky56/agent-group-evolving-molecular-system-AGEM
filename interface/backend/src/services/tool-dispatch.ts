@@ -52,9 +52,9 @@ export const PURE_TOOLS: ReadonlySet<string> = new Set([
   "load_scenario",
   "list_mcp_servers",
   "list_server_tools",
-  // Computes logic-based H⁰/H¹ over agent-supplied blocks via mcp-logic.
-  // Reads no engine state and writes none — the blocks come from the model.
-  "evaluate_logical_consistency",
+  "list_finding_conflicts",
+  // evaluate_logical_consistency used to be pure. A conclusive result now
+  // automatically writes long-term finding memory, so it must be serialized.
 ]);
 
 /**
@@ -119,6 +119,10 @@ export const IDEMPOTENT_MUTATING_TOOLS: ReadonlySet<string> = new Set([
   "reset_agem_engine", // resetting twice == resetting once
   "create_skill", // writes the same file
   "generate_scenario", // writes the same scenario id
+  "resolve_finding_conflict", // repeating the same resolution is a no-op
+  // The logic computation is pure and its automatic memory write is
+  // fingerprint-deduplicated within the run.
+  "evaluate_logical_consistency",
 ]);
 
 /**

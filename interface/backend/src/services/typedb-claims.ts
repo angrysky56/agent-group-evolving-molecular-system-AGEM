@@ -35,8 +35,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { settings } from "../config.js";
 
-/** Where the committed schema lives, relative to the repo root. */
-const SCHEMA_RELATIVE_PATH = path.join("schema", "claims.tql");
+/** Schemas are ordered: findings.tql refers to types defined by claims.tql. */
+export const SCHEMA_RELATIVE_PATHS = [
+  path.join("schema", "claims.tql"),
+  path.join("schema", "findings.tql"),
+] as const;
 
 export interface ClaimStoreStatus {
   available: boolean;
@@ -142,15 +145,15 @@ export class TypeDBClaimStore {
           );
       }
 
-      const schema = await readFile(
-        path.join(projectRoot, SCHEMA_RELATIVE_PATH),
-        "utf8",
-      );
-      const defined = await this.#query(schema, "schema", true);
-      if (!isOkResponse(defined))
-        return this.#disable(
-          `schema define failed: ${describeError(defined)}`,
-        );
+      for (const relativePath of SCHEMA_RELATIVE_PATHS) {
+        const schema = await readFile(path.join(projectRoot, relativePath), "utf8");
+        const defined = await this.#query(schema, "schema", true);
+        if (!isOkResponse(defined)) {
+          return this.#disable(
+            `schema define failed (${relativePath}): ${describeError(defined)}`,
+          );
+        }
+      }
 
       this.#available = true;
       this.#note = undefined;

@@ -86,6 +86,19 @@ const ConfigSchema = z.object({
   TYPEDB_USERNAME: z.string().default("admin"),
   TYPEDB_PASSWORD: z.string().default("password"),
 
+  // Automatic cross-run finding memory
+  /** Raw cosine floor. Below this, recall returns nothing regardless of top-k. */
+  FINDING_RECALL_SIMILARITY_FLOOR: z.coerce.number().min(-1).max(1).default(0.4),
+  /** Hard upper bound on findings injected into one run. */
+  FINDING_RECALL_TOP_K: z.coerce.number().int().min(1).default(3),
+  /**
+   * Findings with no recalls and no citations leave the hot index after this
+   * many days. They are appended to the archive, never deleted.
+   */
+  FINDING_UNUSED_RETENTION_DAYS: z.coerce.number().int().min(1).default(180),
+  /** Absolute bound on the cosine-scanned hot index. Overflow sinks first. */
+  FINDING_MAX_ACTIVE: z.coerce.number().int().min(1).default(500),
+
   /*
    * Depth-of-search budgets for the logic layer.
    *

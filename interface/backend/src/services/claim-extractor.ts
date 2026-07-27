@@ -27,6 +27,7 @@ import { getActiveProvider } from "./llm.js";
 import { claimStore } from "./typedb-claims.js";
 import { settings } from "../config.js";
 import { isOkResponse } from "@typedb/driver-http";
+import { createHash } from "node:crypto";
 
 /** Claim shapes the schema accepts. Kept in lockstep with schema/claims.tql. */
 export type ClaimKind =
@@ -49,6 +50,10 @@ export interface ExtractedClaim {
 export interface ExtractionOutcome {
   segmentId: string;
   claim: ExtractedClaim;
+  /** Concrete graph relation occurrence used by evidences links. */
+  claimId?: string;
+  /** Stable structural identity used for exact cross-run overlap. */
+  claimKey?: string;
   accepted: boolean;
   /** Constraint violation text when the schema refused the claim. */
   rejection?: string;
@@ -136,6 +141,38 @@ function esc(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+/** Canonicalise a claim without source provenance so equivalent runs overlap. */
+export function canonicalClaim(claim: ExtractedClaim): string {
+  const roles = Object.fromEntries(
+    Object.entries(claim.roles)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([role, value]) => [
+        role,
+        Array.isArray(value) ? value.map(String).sort() : String(value),
+      ]),
+  );
+  return JSON.stringify({
+    kind: claim.kind,
+    roles,
+    modality: claim.modality ?? null,
+    polarity: claim.polarity ?? null,
+    differenceKind: claim.differenceKind ?? null,
+  });
+}
+
+export function claimIdentity(
+  claim: ExtractedClaim,
+  segmentId: string,
+): { claimId: string; claimKey: string } {
+  const canonical = canonicalClaim(claim);
+  const digest = (value: string) =>
+    createHash("sha256").update(value, "utf8").digest("hex");
+  return {
+    claimKey: `claim:${digest(canonical)}`,
+    claimId: `claim-occurrence:${digest(`${segmentId}\n${canonical}`)}`,
+  };
+}
+
 /**
  * Build the queries for one claim.
  *
@@ -149,7 +186,7 @@ function esc(s: string): string {
 export function claimToTypeQL(
   claim: ExtractedClaim,
   segmentId: string,
-): { concepts: string; claim: string } | null {
+): { concepts: string; claim: string; claimId: string; claimKey: string } | null {
   const spec = ROLE_SPEC[claim.kind];
   if (!spec) return null;
 
@@ -172,7 +209,10 @@ export function claimToTypeQL(
     .join("\n");
 
   const links = pairs.map(([r, v]) => `${r}: ${varOf.get(v)}`).join(", ");
+  const identity = claimIdentity(claim, segmentId);
   const attrs = [
+    `has claim-id "${esc(identity.claimId)}"`,
+    `has claim-key "${esc(identity.claimKey)}"`,
     claim.modality ? `has modality "${esc(claim.modality)}"` : "",
     claim.polarity ? `has polarity "${esc(claim.polarity)}"` : "",
     claim.differenceKind ? `has difference-kind "${esc(claim.differenceKind)}"` : "",
@@ -182,6 +222,7 @@ export function claimToTypeQL(
   return {
     concepts: `put\n${puts}`,
     claim: `match\n${matches}  $s isa segment, has segment-id "${esc(segmentId)}";\ninsert\n  $_ isa ${claim.kind}, links (${links}, source: $s)${attrClause};`,
+    ...identity,
   };
 }
 
@@ -368,6 +409,8 @@ export async function extractIntoStore(
       report.outcomes.push({
         segmentId: seg.id,
         claim,
+        claimId: query.claimId,
+        claimKey: query.claimKey,
         accepted,
         rejection: accepted ? undefined : describeRejection(res),
       });

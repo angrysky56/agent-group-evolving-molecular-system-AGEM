@@ -11,6 +11,7 @@
 | **MCP Services** | `mcp.json` | Server paths, args, env |
 | **Port Mapping** | `.env` | `PORT` (Default: 8000) |
 | **Embeddings** | `.env` | `EMBEDDING_MODEL`, `OLLAMA_BASE_URL` |
+| **Finding Memory** | `.env` | `FINDING_RECALL_SIMILARITY_FLOOR`, `FINDING_RECALL_TOP_K` |
 
 ## Environment Variables (`.env`)
 
@@ -27,6 +28,22 @@ If using Ollama for embeddings:
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
+
+### Automatic Finding Memory
+
+```env
+# Raw cosine floor first, then top-k. Unrelated material recalls nothing.
+FINDING_RECALL_SIMILARITY_FLOOR=0.4
+FINDING_RECALL_TOP_K=3
+
+# Never-recalled, never-cited findings sink to an append-only archive.
+FINDING_UNUSED_RETENTION_DAYS=180
+FINDING_MAX_ACTIVE=500
+```
+
+These settings affect associative recall only. Conflict candidates do not use
+embedding thresholds: they require exact overlap between schema-validated typed
+claims and opposite conclusive outcomes.
 
 ## MCP Configuration (`mcp.json`)
 

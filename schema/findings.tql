@@ -20,6 +20,8 @@ define
   attribute method, value string @values("derived-from-claims", "hand-authored");
   attribute condensed-narrative, value string;
   attribute reason, value string;
+  attribute finding-outcome, value string @values("contradiction", "no-contradiction", "inconclusive");
+  attribute created-at, value datetime-tz;
 
   entity finding,
     owns finding-id @key,
@@ -29,6 +31,8 @@ define
     owns run-log-id,
     owns produced-by-model,
     owns method,
+    owns finding-outcome,
+    owns created-at,
     owns condensed-narrative @card(0..1),
     owns corpus-id;
 

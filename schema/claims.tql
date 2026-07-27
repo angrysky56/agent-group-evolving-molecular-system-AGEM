@@ -27,6 +27,11 @@ define
   attribute text, value string;
   attribute segment-id, value string;
   attribute corpus-id, value string;
+  # Stable structural key (same shaped claim across runs) and occurrence id
+  # (the concrete claim relation produced from one source segment). Finding
+  # conflict detection uses claim-key; evidences links use claim-id.
+  attribute claim-key, value string;
+  attribute claim-id, value string;
 
   # Epistemic vs modal vs functional. Distinction #9 (explanatory gap vs zombie
   # argument) is ONLY expressible if modality is first-class — the two make the
@@ -62,6 +67,8 @@ define
   # Abstract parent: anything asserted must cite at least one segment.
   relation claim @abstract,
     relates source @card(1..),
+    owns claim-key,
+    owns claim-id,
     owns modality @card(0..1);
 
   # "A is not B" — the corpus's core move, applied ten times.

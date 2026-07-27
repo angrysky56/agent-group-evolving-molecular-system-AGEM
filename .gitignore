@@ -35,6 +35,7 @@ knowledge_base/reports/*.md
 knowledge_base/analysis/*.json
 knowledge_base/outputs/*
 knowledge_base/runs/
+knowledge_base/findings/
 !knowledge_base/**/.gitkeep
 
 # Session data
