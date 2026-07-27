@@ -40,7 +40,9 @@ The question "are these claims actually consistent?" cannot be answered by graph
 - A set that fails that test is a **frustration**: its members cannot all be true together, yet every proper subset can. Minimality is guaranteed by the search order, so each one names an irreducible contradiction rather than a superset of one.
 - The search runs to **arity 4 by default** (configurable), so it catches Bell-shaped tensions — any three assumptions compatible, all four impossible — not just frustrated triples.
 
-This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns a plain-language `verdict`, `hasContradiction`, the offending `frustrations` with their arity, and a full `checkLog` audit trail of every check run and its verdict.
+This is exposed as the `evaluate_logical_consistency` tool. The agent supplies blocks and their claims as first-order-logic propositions; the **engine** orchestrates all the satisfiability checks (so they can't be malformed) and returns a plain-language `verdict`, `hasContradiction`, the offending `frustrations` with their arity, and a `checkLogDigest` — exact counts of every check run, by kind and by verdict — alongside the individual entries that carry signal.
+
+The complete per-check audit trail goes to the run's JSONL rather than into the answer, and `get_check_log` reads it back filtered by kind, verdict, or blocks. This is a deliberate split. Exhaustive search is combinatorial, so the log is too: a 10-block corpus searched to arity 10 produced 1023 entries in which 51 unique formulas were re-serialised into 1.24 MB — 99.7% of a 1.8 MB result, ~450k tokens, which then sat in the model's history for every subsequent turn. The counts answer "did that level actually run?" exactly and cost nothing; the contradictions, undetermined results, vacuity notes, minimal cores, and per-block internal checks are still returned verbatim.
 
 > [!WARNING]
 > **Do not read H¹ as the contradiction detector.** It is still computed and still reported, but it is a topological summary of the complex and it has two false-negative modes, both verified against this implementation:
@@ -132,7 +134,7 @@ The cosine-scanned hot index is `knowledge_base/findings/index.json`; sunk recor
 
 ## Run logging & observability
 
-Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_<id>.jsonl` and a `.md` transcript alongside it: the **exact text fed into the graph each cycle**, the **full input and output of every tool call** (including the `checkLog` from `evaluate_logical_consistency`), and a run-end summary. The run-log id is also surfaced in tool output. This makes after-the-fact debugging a matter of reading one file rather than reconstructing from terminal scrollback.
+Every run writes a complete, readable trace to `knowledge_base/runs/<timestamp>_<id>.jsonl` and a `.md` transcript alongside it: the **exact text fed into the graph each cycle**, the **full input and output of every tool call**, the complete `checkLog` from every consistency check (as its own `logic_check_log` event, since it is far too large to belong in the answer — see above), and a run-end summary. The run-log id is also surfaced in tool output. This makes after-the-fact debugging a matter of reading one file rather than reconstructing from terminal scrollback.
 
 ## Scaling: linear-time graph entropy
 

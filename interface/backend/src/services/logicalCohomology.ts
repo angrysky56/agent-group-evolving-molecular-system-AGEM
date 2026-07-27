@@ -146,14 +146,20 @@ export interface LogicalCohomologyResult {
   checkFailures: string[];
   /** Per-check audit trail for explainability: every satisfiability test run,
    * what it tested, and the verdict. The mcp-logic calls happen inside the
-   * engine, so this is how they become inspectable rather than opaque. */
-  checkLog: {
-    kind: "internal" | "pair" | "triple" | "set" | "core";
-    blocks: string[];
-    formulas: string[];
-    verdict: "consistent" | "contradictory" | "undetermined";
-    note?: string;
-  }[];
+   * engine, so this is how they become inspectable rather than opaque.
+   *
+   * This is the ENGINE-side log and it is complete. It is deliberately NOT
+   * what goes into the model's context — see `summarizeCheckLog`. */
+  checkLog: CheckLogEntry[];
+}
+
+/** One satisfiability test: what was tested, and what the prover said. */
+export interface CheckLogEntry {
+  kind: "internal" | "pair" | "triple" | "set" | "core";
+  blocks: string[];
+  formulas: string[];
+  verdict: "consistent" | "contradictory" | "undetermined";
+  note?: string;
 }
 
 /**
@@ -827,5 +833,177 @@ export async function computeLogicalCohomology(
     searchedToArity, searchTruncated, checksRequiredForNextLevel, truncationNote,
     checksPerformed,
     rankD1, rankD2, checkFailures, checkLog,
+  };
+}
+
+/* -------------------------------------------------------------------------- *
+ * Model-facing projection of the check log.
+ *
+ * The engine-side `checkLog` is complete and belongs on disk. It must not be
+ * what the model reads. Measured on a real 10-block run searched exhaustively
+ * to arity 10: 1023 entries, 1.79 MB, ~450k tokens — 99.7% of the whole tool
+ * result, and 44% of a 1M-token context window consumed by one message that
+ * then sits in history for every remaining turn.
+ *
+ * The redundancy is total rather than incidental. Every entry re-serialises
+ * the full formula text of every block in its subset, so the same 51 unique
+ * formulas (2.4 KB) appeared as 1.24 MB — a factor of 512.
+ *
+ * Deduplicating the formulas is necessary but nowhere near sufficient: the
+ * block-name arrays repeat 5120 times too, so an id-table alone still leaves
+ * ~165k tokens. What actually works is answering the two different questions
+ * separately:
+ *
+ *   "did the checks run?"      → counts. `checkLogDigest`, always exact.
+ *   "what did a check say?"    → the entries that carry signal, verbatim.
+ *
+ * 848 `set` entries that all read "consistent" answer the first question and
+ * nothing else, so they are represented by their count. Anything that could
+ * change a verdict — a contradiction, an undetermined result, a vacuity note,
+ * a minimal core, a per-block internal check — is kept in full. Same run
+ * through this projection: 10.8 KB, ~2.7k tokens, 167x smaller, with every
+ * conclusion and every caveat still present.
+ *
+ * Nothing is destroyed. The complete log is written to the run's JSONL by the
+ * caller, and `get_check_log` reads it back on demand.
+ * -------------------------------------------------------------------------- */
+
+/** Exact counts over the complete log — never sampled, never truncated. */
+export interface CheckLogDigest {
+  totalChecks: number;
+  byKind: Record<string, number>;
+  byVerdict: Record<string, number>;
+  returnedEntries: number;
+  omittedEntries: number;
+  /** True when even the signal-carrying entries had to be capped. */
+  entriesCapped: boolean;
+  note: string;
+}
+
+/** A check-log entry with its formulas replaced by `formulaTable` indices. */
+export interface CompactCheckLogEntry {
+  kind: CheckLogEntry["kind"];
+  blocks: string[];
+  formulaIds: number[];
+  verdict: CheckLogEntry["verdict"];
+  note?: string;
+}
+
+export interface SummarizedCheckLog {
+  checkLogDigest: CheckLogDigest;
+  /** Formulas referenced by the returned entries, deduplicated. */
+  formulaTable: string[];
+  checkLog: CompactCheckLogEntry[];
+}
+
+/** Cap on returned entries. Only bites on a corpus riddled with contradictions,
+ * and the ranking below guarantees the contradictions are what survives. */
+const MAX_RETURNED_CHECKLOG_ENTRIES = 200;
+
+/**
+ * Could this entry change how the verdict should be read?
+ *
+ * A "consistent" verdict on a subset is what the search expects to find; it is
+ * evidence only in aggregate, which the digest already carries exactly. The
+ * four cases below are the ones the corpus docs tell the agent to actually
+ * read, so they are kept verbatim.
+ */
+function isSignalEntry(entry: CheckLogEntry): boolean {
+  return (
+    entry.verdict !== "consistent" ||
+    entry.kind === "core" ||
+    entry.kind === "internal" ||
+    (entry.note ?? "").startsWith("VACUOUS")
+  );
+}
+
+/** Lower sorts first, so a cap can never drop a contradiction to keep a
+ * routine internal check. */
+function signalRank(entry: CheckLogEntry): number {
+  if (entry.verdict === "contradictory") return 0;
+  if (entry.verdict === "undetermined") return 1;
+  if ((entry.note ?? "").startsWith("VACUOUS")) return 2;
+  if (entry.kind === "core") return 3;
+  if (entry.kind === "internal") return 4;
+  return 5;
+}
+
+/**
+ * Project the complete check log into what the model should read.
+ *
+ * Pure. `runLogId`, when supplied, is quoted in the note so the agent can pull
+ * the omitted entries with `get_check_log` instead of guessing at them.
+ */
+export function summarizeCheckLog(
+  checkLog: readonly CheckLogEntry[],
+  opts: { runLogId?: string; maxEntries?: number } = {},
+): SummarizedCheckLog {
+  const maxEntries = Math.max(
+    1,
+    opts.maxEntries ?? MAX_RETURNED_CHECKLOG_ENTRIES,
+  );
+
+  const byKind: Record<string, number> = {};
+  const byVerdict: Record<string, number> = {};
+  for (const entry of checkLog) {
+    byKind[entry.kind] = (byKind[entry.kind] ?? 0) + 1;
+    byVerdict[entry.verdict] = (byVerdict[entry.verdict] ?? 0) + 1;
+  }
+
+  const ordered = checkLog
+    .filter(isSignalEntry)
+    .sort((a, b) => signalRank(a) - signalRank(b));
+  const entriesCapped = ordered.length > maxEntries;
+  const kept = entriesCapped ? ordered.slice(0, maxEntries) : ordered;
+
+  const formulaTable: string[] = [];
+  const formulaIndex = new Map<string, number>();
+  const idOf = (formula: string): number => {
+    const existing = formulaIndex.get(formula);
+    if (existing !== undefined) return existing;
+    const id = formulaTable.length;
+    formulaTable.push(formula);
+    formulaIndex.set(formula, id);
+    return id;
+  };
+
+  const compact: CompactCheckLogEntry[] = kept.map((entry) => ({
+    kind: entry.kind,
+    blocks: entry.blocks,
+    formulaIds: entry.formulas.map(idOf),
+    verdict: entry.verdict,
+    ...(entry.note ? { note: entry.note } : {}),
+  }));
+
+  const omitted = checkLog.length - compact.length;
+  const where = opts.runLogId
+    ? `get_check_log with runLogId "${opts.runLogId}"`
+    : "get_check_log against this run's log id";
+  const note =
+    `byKind and byVerdict are EXACT counts over all ${checkLog.length} checks — ` +
+    "use them to confirm a level actually ran. " +
+    "Formulas are indexed into formulaTable. " +
+    (omitted > 0
+      ? `${omitted} entr${omitted === 1 ? "y" : "ies"} are not listed here; ` +
+        (entriesCapped
+          ? "that includes signal-carrying entries beyond the return cap, "
+          : "all of them are routine 'consistent' subset checks already counted above, ") +
+        `and every one is retrievable verbatim via ${where}. ` +
+        "An entry left out is not an unexamined one — it was checked, and its " +
+        "verdict is in byVerdict."
+      : "Every check is listed.");
+
+  return {
+    checkLogDigest: {
+      totalChecks: checkLog.length,
+      byKind,
+      byVerdict,
+      returnedEntries: compact.length,
+      omittedEntries: omitted,
+      entriesCapped,
+      note,
+    },
+    formulaTable,
+    checkLog: compact,
   };
 }

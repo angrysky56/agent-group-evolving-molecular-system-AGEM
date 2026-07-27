@@ -47,8 +47,10 @@ outcome, so you can watch for them without knowing the answer:
    the narrative follows the geometry or the logic.
 
 > [!IMPORTANT]
-> Ask for the `checkLog`, not just the H¹ number. A frustration that was never
-> actually checked is not a finding.
+> Ask for the `checkLogDigest`, not just the H¹ number. A frustration that was
+> never actually checked is not a finding — and the digest's counts cover every
+> check, so it settles that question exactly. Pull specific entries with
+> `get_check_log` when the counts are not enough.
 
 ---
 

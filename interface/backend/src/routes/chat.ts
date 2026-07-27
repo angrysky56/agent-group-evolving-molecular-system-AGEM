@@ -20,8 +20,10 @@ import { scenarioService } from "../services/scenarios.js";
 import {
   computeLogicalCohomology,
   makeMcpLogicOracle,
+  summarizeCheckLog,
   type LogicalCohomologyOptions,
 } from "../services/logicalCohomology.js";
+import { readCheckLog } from "../services/check-log-reader.js";
 import { claimStore } from "../services/typedb-claims.js";
 import {
   extractIntoStore,
@@ -328,6 +330,7 @@ Recalled findings are context, not an agenda. Cite one you actually use with its
 # Native AGEM tools (call directly)
 - run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
 - evaluate_logical_consistency (minimal unsatisfiable sets — the real contradiction detector; read "frustrations", not H¹)
+- get_check_log (drill into individual satisfiability checks; the digest in the result already gives exact counts, so call this only for a specific entry)
 - extract_and_verify_claims (preferred typed-claim path for contested corpora)
 - detect_gaps, generate_catalyst_questions, search_context
 - list_finding_conflicts, resolve_finding_conflict
@@ -493,6 +496,49 @@ ${skillContent}`,
               },
             },
             required: ["blocks"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_check_log",
+          description:
+            "Drill into the satisfiability checks behind an evaluate_logical_consistency result. That tool returns exact counts (checkLogDigest) plus every entry that carries signal — contradictions, undetermined results, vacuity notes, minimal cores, per-block internal checks — and omits the routine subset checks that came back 'consistent', because on a real 10-block run those were 99.7% of a 1.8 MB payload. Call this only when you need a specific omitted entry verbatim; the digest already answers 'did that level actually run?' exactly. Filter by kind, verdict, or blocks.",
+          parameters: {
+            type: "object",
+            properties: {
+              runLogId: {
+                type: "string",
+                description:
+                  "The runLogId from the evaluate_logical_consistency result, verbatim.",
+              },
+              kind: {
+                type: "string",
+                description:
+                  "Optional: 'internal' | 'pair' | 'triple' | 'set' | 'core'.",
+              },
+              verdict: {
+                type: "string",
+                description:
+                  "Optional: 'consistent' | 'contradictory' | 'undetermined'.",
+              },
+              blocks: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Optional: keep only checks covering ALL of these block names.",
+              },
+              limit: {
+                type: "number",
+                description: "Entries per page (default 25, max 200).",
+              },
+              offset: {
+                type: "number",
+                description: "Skip this many matching entries (for paging).",
+              },
+            },
+            required: ["runLogId"],
           },
         },
       },
@@ -1385,6 +1431,22 @@ ${skillContent}`,
                         .join("; ") +
                       `. Any verdict below is about those ${evaluated} blocks, NOT about ` +
                       `all ${submitted}. Do not report it as covering the full set.`;
+                /*
+                 * The complete check log goes to disk, not into the model's
+                 * context. Spreading `...result` used to put all of it inline:
+                 * one measured run emitted 1,799,602 chars (~450k tokens) of
+                 * which 99.7% was checkLog, re-serialising 51 unique formulas
+                 * into 1.24 MB. That does not just cost tokens — it lands in
+                 * historyMessages untruncated and is re-sent on every
+                 * subsequent turn, streams over SSE, and is persisted into the
+                 * session JSON. See summarizeCheckLog for the projection.
+                 */
+                const { checkLog, ...cohomology } = result;
+                runLog.event("logic_check_log", {
+                  runLogId: runLog.runId,
+                  totalChecks: checkLog.length,
+                  checkLog,
+                });
                 output = JSON.stringify(
                   {
                     runLogId: runLog.runId,
@@ -1392,7 +1454,10 @@ ${skillContent}`,
                     blocksSubmitted: submitted,
                     blocksEvaluated: evaluated,
                     verdict,
-                    ...result,
+                    ...cohomology,
+                    ...summarizeCheckLog(checkLog, {
+                      runLogId: runLog.runId,
+                    }),
                   },
                   null,
                   2,
@@ -1551,6 +1616,15 @@ ${skillContent}`,
                         (coverageDetails.length
                           ? `. Excluded or unresolved — ${coverageDetails.join("; ")}.`
                           : ".");
+                  // Same split as evaluate_logical_consistency: the complete
+                  // check log is written to the run's JSONL, and only the
+                  // digest plus the signal-carrying entries reach the model.
+                  const { checkLog, ...cohomology } = result;
+                  runLog.event("logic_check_log", {
+                    runLogId: runLog.runId,
+                    totalChecks: checkLog.length,
+                    checkLog,
+                  });
                   const verdict = result.resultIsVacuous
                     ? `INVALID FORMALIZATION — the derived consistency result is VACUOUS and must not be reported as a finding.`
                     : result.hasContradiction
@@ -1592,13 +1666,38 @@ ${skillContent}`,
                       // fidelity oracle for optional narrative densification.
                       supportingClaimEvidence,
                       verdict,
-                      ...result,
+                      ...cohomology,
+                      ...summarizeCheckLog(checkLog, {
+                        runLogId: runLog.runId,
+                      }),
                     },
                     null,
                     2,
                   );
                 }
               }
+            } else if (fnName === "get_check_log") {
+              const rawBlocks = Array.isArray(args.blocks)
+                ? args.blocks.map((b: unknown) => String(b)).filter(Boolean)
+                : undefined;
+              output = JSON.stringify(
+                await readCheckLog({
+                  runLogId: String(args.runLogId ?? ""),
+                  kind: args.kind ? (String(args.kind) as any) : undefined,
+                  verdict: args.verdict
+                    ? (String(args.verdict) as any)
+                    : undefined,
+                  blocks: rawBlocks?.length ? rawBlocks : undefined,
+                  limit: Number.isFinite(Number(args.limit))
+                    ? Number(args.limit)
+                    : undefined,
+                  offset: Number.isFinite(Number(args.offset))
+                    ? Number(args.offset)
+                    : undefined,
+                }),
+                null,
+                2,
+              );
             } else if (fnName === "list_finding_conflicts") {
               output = JSON.stringify(
                 await findingStore.listOpenConflicts(),

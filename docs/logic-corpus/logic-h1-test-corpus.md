@@ -6,8 +6,10 @@ distinguishable in the output. Propositions are deliberately **atomic** (single
 predicate over a constant, `-` for negation, no nested operators) so the test
 exercises the cohomology, not the Prover9 parser.
 
-Read the `checkLog` in each result to confirm the relevant checks actually ran —
-don't infer success from the H¹ number alone.
+Read the `checkLogDigest` in each result to confirm the relevant checks actually
+ran — don't infer success from the H¹ number alone. Its `byKind` and `byVerdict`
+counts cover every check, including the routine `consistent` ones returned only
+as counts; `get_check_log` retrieves any individual entry verbatim.
 
 ---
 
@@ -54,8 +56,10 @@ Three partial descriptions of one consistent object.
 
 Expected: all internal/pairwise/triple checks **consistent**, triangle filled,
 **H⁰ = 1, H¹ = 0**, `frustratedTriples` = []. This disambiguates a true zero from
-a "didn't check" zero — the `checkLog` triple entry for {Trunk, Leg, Ear} must
-read `consistent`.
+a "didn't check" zero — `checkLogDigest.byKind` must show `triple: 1` and
+`byVerdict` must show it as `consistent`. A consistent triple is summarised as a
+count rather than listed, so use `get_check_log` with `kind: "triple"` if you
+want the {Trunk, Leg, Ear} entry itself.
 
 ---
 
@@ -88,8 +92,9 @@ component split shows in H⁰.
 
 1. Each section's full result (H⁰, H¹, `frustratedTriples`,
    `internallyInconsistent`, `consistentPairs`, `checkFailures`).
-2. The `checkLog`, to confirm the triple/pair checks executed with the expected
-   verdicts.
+2. The `checkLogDigest`, to confirm the triple/pair checks executed with the
+   expected verdicts — and `get_check_log` for any individual entry the digest
+   summarises only as a count.
 3. The run-log id (emitted as `[run-log: ...]`), so graph-ingest text and tool
    I/O can be inspected from `knowledge_base/runs/`.
 

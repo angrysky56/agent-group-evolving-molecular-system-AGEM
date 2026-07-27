@@ -53,6 +53,8 @@ export const PURE_TOOLS: ReadonlySet<string> = new Set([
   "list_mcp_servers",
   "list_server_tools",
   "list_finding_conflicts",
+  // Reads one run's JSONL off disk and filters it. No engine state, no writes.
+  "get_check_log",
   // evaluate_logical_consistency used to be pure. A conclusive result now
   // automatically writes long-term finding memory, so it must be serialized.
 ]);
