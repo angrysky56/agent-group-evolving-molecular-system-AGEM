@@ -91,6 +91,17 @@ describe("FindingStore", () => {
     expect(recalled.every((match) => match.similarity >= 0.7)).toBe(true);
   });
 
+  it("embeds the verbatim verdict and never the condensed payload", async () => {
+    const embedder = new FakeEmbedder({ "verbatim verdict": [1, 0] });
+    const store = new FindingStore(embedder, { directory });
+    await store.store({
+      ...input("verbatim verdict", "contradiction", ["claim:a"]),
+      condensedNarrative: "符号⊥soup→dense",
+    });
+
+    expect(embedder.calls).toEqual(["verbatim verdict"]);
+  });
+
   it("recalls nothing for unrelated material instead of forcing a top-k match", async () => {
     const store = new FindingStore(
       new FakeEmbedder({ finding: [1, 0], unrelatedCue: [0, 1] }),

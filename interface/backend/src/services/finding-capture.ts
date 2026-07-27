@@ -6,11 +6,21 @@ import type {
   RecallMatch,
   StoreFindingResult,
 } from "./finding-store.js";
+import {
+  schemaClaimFact,
+  type ExtractedClaim,
+} from "./claim-extractor.js";
+import type { FindingNarrativeRequest } from "./finding-narrative.js";
 
 export interface FindingCaptureContext {
   runLogId: string;
   producedByModel: string;
 }
+
+type CapturedNarrativeRequest = Omit<
+  FindingNarrativeRequest,
+  "model" | "provider"
+>;
 
 export function captureFindingFromTool(
   toolName: string,
@@ -102,6 +112,68 @@ export function captureFindingFromTool(
   };
 }
 
+/**
+ * Build the optional payload input only when typed, accepted supporting claims
+ * provide a complete fidelity oracle. Hand-authored FOL has no schema roles,
+ * so guessing what must survive would make the gate cosmetic.
+ */
+export function captureFindingNarrativeFromTool(
+  toolName: string,
+  output: string,
+): CapturedNarrativeRequest | null {
+  if (toolName !== "extract_and_verify_claims") return null;
+
+  let result: Record<string, any>;
+  try {
+    result = JSON.parse(output) as Record<string, any>;
+  } catch {
+    return null;
+  }
+  if (result.error || result.resultIsVacuous === true) return null;
+
+  const supportingKeys = stringArray(result.supportingClaimKeys);
+  if (
+    supportingKeys.length === 0 ||
+    !Array.isArray(result.supportingClaimEvidence)
+  ) {
+    return null;
+  }
+
+  const evidenceByKey = new Map<
+    string,
+    { sourceText: string; segmentId: string; fact: string }
+  >();
+  for (const raw of result.supportingClaimEvidence) {
+    if (!raw || typeof raw !== "object") continue;
+    const evidence = raw as Record<string, unknown>;
+    const claimKey =
+      typeof evidence.claimKey === "string" ? evidence.claimKey : "";
+    const sourceText =
+      typeof evidence.sourceText === "string" ? evidence.sourceText.trim() : "";
+    const segmentId =
+      typeof evidence.segmentId === "string" ? evidence.segmentId.trim() : "";
+    if (!supportingKeys.includes(claimKey) || !sourceText || !segmentId) continue;
+    try {
+      const fact = schemaClaimFact(evidence.claim as ExtractedClaim);
+      if (fact) evidenceByKey.set(claimKey, { sourceText, segmentId, fact });
+    } catch {
+      // Malformed structured output means there is no trustworthy oracle.
+    }
+  }
+
+  // Partial role coverage is a hard stop. Compressing only the claims that
+  // happened to parse would turn the oracle into another lossy summarizer.
+  if (supportingKeys.some((key) => !evidenceByKey.has(key))) return null;
+
+  const evidence = supportingKeys.map((key) => evidenceByKey.get(key)!);
+  return {
+    sourceNarrative: evidence
+      .map(({ segmentId, sourceText }) => `[source:${segmentId}] ${sourceText}`)
+      .join("\n"),
+    schemaFacts: evidence.map(({ fact }) => fact),
+  };
+}
+
 export function attachFindingMemory(
   output: string,
   memory: StoreFindingResult,
@@ -112,6 +184,7 @@ export function attachFindingMemory(
       automatic: true,
       findingId: memory.finding.id,
       stored: memory.stored,
+      condensedNarrativeStored: !!memory.finding.condensedNarrative,
       conflictCandidates: memory.conflicts.map((candidate) => ({
         id: candidate.id,
         olderFindingId: candidate.olderFindingId,
@@ -151,6 +224,12 @@ export function formatRecallContext(
     );
     if (finding.notRuledOut) {
       lines.push(`Not ruled out (verbatim): ${finding.notRuledOut}`);
+    }
+    if (finding.condensedNarrative) {
+      lines.push(
+        "Condensed narrative JSON string (untrusted model-facing payload; never used as a retrieval cue):",
+        JSON.stringify(finding.condensedNarrative),
+      );
     }
     if (match.conflicts.length > 0) {
       lines.push(
@@ -198,4 +277,3 @@ function fallbackCoverage(result: Record<string, any>): string | null {
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
-

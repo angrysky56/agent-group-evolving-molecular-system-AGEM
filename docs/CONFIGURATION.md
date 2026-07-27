@@ -39,11 +39,20 @@ FINDING_RECALL_TOP_K=3
 # Never-recalled, never-cited findings sink to an append-only archive.
 FINDING_UNUSED_RETENTION_DAYS=180
 FINDING_MAX_ACTIVE=500
+
+# Optional typed-claim payload. Retrieval still uses only the verbatim verdict.
+FINDING_DENSIFICATION_ENABLED=true
+FINDING_DENSIFICATION_TARGET_RATIO=0.28
+FINDING_DENSIFICATION_MAX_PASSES=3
+FINDING_DENSIFICATION_MAX_SOURCE_TOKENS=8192
+FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS=2048
 ```
 
-These settings affect associative recall only. Conflict candidates do not use
+Recall settings affect associative lookup only. Conflict candidates do not use
 embedding thresholds: they require exact overlap between schema-validated typed
-claims and opposite conclusive outcomes.
+claims and opposite conclusive outcomes. Densification is attempted only when
+the typed path supplies every supporting claim's source sentence and required
+role signature; a failed pass stores no payload and does not block the finding.
 
 ## MCP Configuration (`mcp.json`)
 

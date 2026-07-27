@@ -29,10 +29,14 @@ import {
 } from "../services/claim-extractor.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
-import { findingStore } from "../services/run-memory.js";
+import {
+  findingNarrativeDensifier,
+  findingStore,
+} from "../services/run-memory.js";
 import {
   attachFindingMemory,
   captureFindingFromTool,
+  captureFindingNarrativeFromTool,
   formatRecallContext,
 } from "../services/finding-capture.js";
 import { RecoveryProtocol } from "../services/recovery-protocol.js";
@@ -1502,6 +1506,31 @@ ${skillContent}`,
                   const supporting = selected.filter((block) =>
                     evaluatedNames.has(block.name),
                   );
+                  const segmentTextById = new Map(
+                    segs.map((segment) => [segment.id, segment.text]),
+                  );
+                  const supportingClaimEvidence = supporting.flatMap((block) => {
+                    const accepted = extraction.outcomes.find(
+                      (outcome) =>
+                        outcome.accepted &&
+                        outcome.claimKey === block.claimKey &&
+                        outcome.claimId === block.claimRef,
+                    );
+                    const sourceText = accepted
+                      ? segmentTextById.get(accepted.segmentId)
+                      : undefined;
+                    return accepted && sourceText
+                      ? [
+                          {
+                            claimKey: block.claimKey,
+                            claimRef: block.claimRef,
+                            segmentId: accepted.segmentId,
+                            sourceText,
+                            claim: accepted.claim,
+                          },
+                        ]
+                      : [];
+                  });
                   const evaluated = supporting.length;
                   const coverageDetails = [
                     capped
@@ -1558,6 +1587,9 @@ ${skillContent}`,
                       supportingClaimRefs: supporting.map(
                         (block) => block.claimRef,
                       ),
+                      // Accepted source sentences plus typed roles form the
+                      // fidelity oracle for optional narrative densification.
+                      supportingClaimEvidence,
                       verdict,
                       ...result,
                     },
@@ -2001,6 +2033,47 @@ ${skillContent}`,
                   },
                 );
                 if (finding) {
+                  const narrativeRequest = captureFindingNarrativeFromTool(
+                    fnName,
+                    outcome.output,
+                  );
+                  if (narrativeRequest) {
+                    try {
+                      const densification =
+                        await findingNarrativeDensifier.densify(
+                          {
+                            ...narrativeRequest,
+                            model: effectiveModel,
+                            provider: resolvedProvider,
+                          },
+                          abortController.signal,
+                        );
+                      if (densification.condensedNarrative) {
+                        finding.condensedNarrative =
+                          densification.condensedNarrative;
+                      }
+                      runLog.event("finding_densification", {
+                        status: densification.status,
+                        passes: densification.passes,
+                        sourceTokens: densification.sourceTokens,
+                        targetTokens: densification.targetTokens,
+                        outputTokens: densification.outputTokens,
+                        missingFactCount:
+                          densification.missingFacts?.length ?? 0,
+                        note: densification.note,
+                      });
+                    } catch (error) {
+                      // Optional compression must never make a verified
+                      // finding disappear. The verbatim fields still store.
+                      runLog.event("finding_densification", {
+                        status: "error",
+                        message:
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                      });
+                    }
+                  }
                   const memory = await findingStore.store(
                     finding,
                     abortController.signal,
@@ -2012,10 +2085,14 @@ ${skillContent}`,
                     conflictCandidates: memory.conflicts.map((c) => c.id),
                     method: memory.finding.method,
                     outcome: memory.finding.outcome,
+                    condensedNarrativeStored:
+                      !!memory.finding.condensedNarrative,
                   });
                   sendEvent("finding_memory", {
                     finding_id: memory.finding.id,
                     conflict_candidates: memory.conflicts,
+                    condensed_narrative_stored:
+                      !!memory.finding.condensedNarrative,
                   });
                 }
               } catch (error) {

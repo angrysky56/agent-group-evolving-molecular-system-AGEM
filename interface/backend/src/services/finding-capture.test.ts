@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attachFindingMemory,
   captureFindingFromTool,
+  captureFindingNarrativeFromTool,
   formatRecallContext,
 } from "./finding-capture.js";
 
@@ -58,18 +59,39 @@ describe("automatic finding capture", () => {
   });
 
   it("captures derived claim keys and concrete evidence references", () => {
+    const output = JSON.stringify({
+      verdict: "No contradiction among 2 blocks.",
+      coverage: "Coverage: all 2 distinct extracted claim blocks were evaluated.",
+      hasContradiction: false,
+      searchTruncated: false,
+      checkFailures: [],
+      supportingClaimKeys: ["claim:a", "claim:b"],
+      supportingClaimRefs: ["claim-occurrence:1", "claim-occurrence:2"],
+      supportingClaimEvidence: [
+        {
+          claimKey: "claim:a",
+          segmentId: "typed-corpus-0",
+          sourceText: "Phi can occur without global broadcast.",
+          claim: {
+            kind: "exclusion",
+            roles: { excluder: "phi", excluded: "global-broadcast" },
+          },
+        },
+        {
+          claimKey: "claim:b",
+          segmentId: "typed-corpus-1",
+          sourceText: "Consciousness is phi.",
+          claim: {
+            kind: "identity-claim",
+            roles: { identified: "consciousness", "identified-with": "phi" },
+          },
+        },
+      ],
+    });
     const captured = captureFindingFromTool(
       "extract_and_verify_claims",
       { corpusId: "typed-corpus" },
-      JSON.stringify({
-        verdict: "No contradiction among 2 blocks.",
-        coverage: "Coverage: all 2 distinct extracted claim blocks were evaluated.",
-        hasContradiction: false,
-        searchTruncated: false,
-        checkFailures: [],
-        supportingClaimKeys: ["claim:a", "claim:b"],
-        supportingClaimRefs: ["claim-occurrence:1", "claim-occurrence:2"],
-      }),
+      output,
       context,
     );
     expect(captured).toMatchObject({
@@ -81,6 +103,46 @@ describe("automatic finding capture", () => {
         "claim-occurrence:2",
       ],
     });
+
+    const narrative = captureFindingNarrativeFromTool(
+      "extract_and_verify_claims",
+      output,
+    );
+    expect(narrative?.sourceNarrative).toContain(
+      "[source:typed-corpus-0] Phi can occur without global broadcast.",
+    );
+    expect(narrative?.schemaFacts).toEqual([
+      'exclusion(excluder="phi",excluded="global-broadcast")',
+      'identity-claim(identified="consciousness",identified-with="phi")',
+    ]);
+  });
+
+  it("does not densify hand-authored or partially evidenced findings", () => {
+    expect(
+      captureFindingNarrativeFromTool(
+        "evaluate_logical_consistency",
+        JSON.stringify({ supportingClaimKeys: ["claim:a"] }),
+      ),
+    ).toBeNull();
+    expect(
+      captureFindingNarrativeFromTool(
+        "extract_and_verify_claims",
+        JSON.stringify({
+          supportingClaimKeys: ["claim:a", "claim:missing"],
+          supportingClaimEvidence: [
+            {
+              claimKey: "claim:a",
+              segmentId: "s1",
+              sourceText: "A excludes B.",
+              claim: {
+                kind: "exclusion",
+                roles: { excluder: "a", excluded: "b" },
+              },
+            },
+          ],
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("stores nothing for vacuous, malformed, or non-verdict output", () => {
@@ -117,6 +179,8 @@ describe("automatic finding capture", () => {
       recallCount: 1,
       citationCount: 0,
       status: "active" as const,
+      condensedNarrative:
+        'exclusion(excluder="phi",excluded="broadcast") phi⊥broadcast',
     };
     const conflict = {
       id: "conflict-1",
@@ -129,6 +193,7 @@ describe("automatic finding capture", () => {
     const memory = { finding, stored: true, conflicts: [conflict] };
     const attached = JSON.parse(attachFindingMemory("{}", memory));
     expect(attached.findingMemory.conflictCandidates[0].id).toBe("conflict-1");
+    expect(attached.findingMemory.condensedNarrativeStored).toBe(true);
 
     const formatted = formatRecallContext(
       [{ finding, similarity: 0.91, rankScore: 0.91, conflicts: [conflict] }],
@@ -136,7 +201,8 @@ describe("automatic finding capture", () => {
     );
     expect(formatted).toContain("[finding:finding-1]");
     expect(formatted).toContain("Verdict (verbatim): VERDICT");
+    expect(formatted).toContain("never used as a retrieval cue");
+    expect(formatted).toContain("phi⊥broadcast");
     expect(formatted).toContain("Do not silently choose a winner");
   });
 });
-

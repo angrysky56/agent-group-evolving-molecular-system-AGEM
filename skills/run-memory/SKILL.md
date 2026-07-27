@@ -80,12 +80,20 @@ A finding from `hand-authored` is weaker evidence than one from
 
 Only `condensed-narrative` may be compressed, and only the reasoning: branches
 tried and dropped, tool sequencing, restated corpus prose. Target ~25–30% of
-original length.
+original length. It is payload, never a retrieval cue: recall embeds the
+verbatim verdict even when a dense narrative exists.
 
-Before storing, decode it back without looking at the original. If **negation
-scope**, quantifier strength, relation direction, or any denominator is lost,
-compress less. Negation loss turns a contradiction into an agreement and reads
-as a confident finding — it is the failure that matters.
+Automatic densification is available only for `derived-from-claims`, because
+accepted typed claims enumerate what must survive. Each bounded CoD-style pass
+may use a BabelTele surface, but it must retain every self-describing schema
+fact byte-for-byte and fit the token budget. Do not invent aliases, legends,
+separators, or token meanings that require an external codebook. If any role,
+polarity, modality, or direction is missing after the final pass, store no
+condensed narrative; the verbatim finding still stands.
+
+This is a checked heuristic, not lossless compression. Cross-model readers must
+re-check before relying on the dense reasoning. Coverage, denominators,
+truncation notes, and the verdict remain verbatim outside the payload.
 
 ## Reporting
 

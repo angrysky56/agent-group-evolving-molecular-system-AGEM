@@ -98,6 +98,36 @@ const ConfigSchema = z.object({
   FINDING_UNUSED_RETENTION_DAYS: z.coerce.number().int().min(1).default(180),
   /** Absolute bound on the cosine-scanned hot index. Overflow sinks first. */
   FINDING_MAX_ACTIVE: z.coerce.number().int().min(1).default(500),
+  /** Optional payload compression. Recall always embeds the verbatim verdict. */
+  FINDING_DENSIFICATION_ENABLED: z
+    .union([z.boolean(), z.string()])
+    .default("true")
+    .transform((v) => (typeof v === "boolean" ? v : v !== "false" && v !== "0")),
+  /** BabelTele payload target, relative to evidence plus schema facts. */
+  FINDING_DENSIFICATION_TARGET_RATIO: z.coerce
+    .number()
+    .min(0.05)
+    .max(0.95)
+    .default(0.28),
+  /** Bounded CoD revisions. Each pass is one provider call. */
+  FINDING_DENSIFICATION_MAX_PASSES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(8)
+    .default(3),
+  /** Refuse rather than silently truncate an oversized evidence narrative. */
+  FINDING_DENSIFICATION_MAX_SOURCE_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(128)
+    .default(8192),
+  /** Absolute ceiling for the optional stored payload. */
+  FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(64)
+    .default(2048),
 
   /*
    * Depth-of-search budgets for the logic layer.

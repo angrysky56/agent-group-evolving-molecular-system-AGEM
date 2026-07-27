@@ -41,7 +41,7 @@ export type ClaimKind =
 export interface ExtractedClaim {
   kind: ClaimKind;
   /** Role name -> concept label. Role names must match the schema exactly. */
-  roles: Record<string, string>;
+  roles: Record<string, string | string[]>;
   modality?: "epistemic" | "modal" | "functional" | "metaphysical";
   polarity?: "asserts" | "denies";
   differenceKind?: "in-kind" | "in-degree";
@@ -158,6 +158,56 @@ export function canonicalClaim(claim: ExtractedClaim): string {
     polarity: claim.polarity ?? null,
     differenceKind: claim.differenceKind ?? null,
   });
+}
+
+/**
+ * Return the self-describing, canonical schema fact used as a narrative
+ * fidelity oracle, or null when the claim does not fill its required roles.
+ *
+ * The fact uses compact, schema-native function notation. It is not a
+ * run-specific cipher or separator scheme, so a later model can recover it
+ * without an external codebook. Narrative densification must retain every
+ * returned fact byte-for-byte.
+ */
+export function schemaClaimFact(claim: ExtractedClaim): string | null {
+  const spec = ROLE_SPEC[claim?.kind];
+  if (!spec || !claim.roles || typeof claim.roles !== "object") return null;
+
+  const requiredCounts = new Map<string, number>();
+  for (const role of spec.roles) {
+    requiredCounts.set(role, (requiredCounts.get(role) ?? 0) + 1);
+  }
+
+  const roleParts: string[] = [];
+  for (const [role, minimumCount] of requiredCounts) {
+    const raw = claim.roles[role];
+    const values = (Array.isArray(raw) ? raw : [raw])
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (new Set(values).size < minimumCount) return null;
+    const canonicalValues = minimumCount > 1 ? [...values].sort() : values;
+    roleParts.push(
+      `${role}=${
+        canonicalValues.length === 1
+          ? JSON.stringify(canonicalValues[0])
+          : JSON.stringify(canonicalValues)
+      }`,
+    );
+  }
+
+  // Polarity is a mandatory part of the causal-claim schema, not an optional
+  // narrative detail. A missing sign changes the proposition being preserved.
+  if (claim.kind === "causal-claim" && !claim.polarity) return null;
+
+  const extras = [
+    claim.modality ? `modality=${JSON.stringify(claim.modality)}` : "",
+    claim.polarity ? `polarity=${JSON.stringify(claim.polarity)}` : "",
+    claim.differenceKind
+      ? `differenceKind=${JSON.stringify(claim.differenceKind)}`
+      : "",
+  ].filter(Boolean);
+  return `${claim.kind}(${[...roleParts, ...extras].join(",")})`;
 }
 
 export function claimIdentity(

@@ -122,10 +122,11 @@ cd interface/backend && npx tsx scripts/verify-claim-store.ts
 
 Long-term memory is part of the run lifecycle, not a model-elected tool call:
 
-1. Before the first model turn, AGEM embeds the incoming material once, compares it with stored verdict embeddings, applies `FINDING_RECALL_SIMILARITY_FLOOR`, and then caps the survivors with `FINDING_RECALL_TOP_K`. Unrelated runs therefore recall nothing.
+1. Before the first model turn, AGEM embeds the incoming material once, compares it with stored **verbatim verdict** embeddings, applies `FINDING_RECALL_SIMILARITY_FLOOR`, and then caps the survivors with `FINDING_RECALL_TOP_K`. Unrelated runs therefore recall nothing. Compressed payloads are never retrieval cues.
 2. After a successful logical verification tool call, the engine copies the verdict, coverage, truncation/cap caveats, run-log id, model, method, and supporting claims from the structured tool result. Exploratory prose is not stored.
-3. Opposite conclusive findings become a conflict candidate only when their schema-validated typed claims have an exact structural overlap. Embedding resemblance never creates a conflict, and neither finding is silently retired.
-4. A conflict is retired only through `resolve_finding_conflict`, with an explicit winner and reason. Superseded and unused findings are archived, never deleted.
+3. On the typed-claim path only, AGEM may build an optional `condensed-narrative`: a bounded CoD-style loop targets a BabelTele surface, while every accepted supporting claim's schema-native role signature must survive byte-for-byte. A failed fidelity or token-budget check stores the ordinary finding with no condensed payload.
+4. Opposite conclusive findings become a conflict candidate only when their schema-validated typed claims have an exact structural overlap. Embedding resemblance never creates a conflict, and neither finding is silently retired.
+5. A conflict is retired only through `resolve_finding_conflict`, with an explicit winner and reason. Superseded and unused findings are archived, never deleted.
 
 The cosine-scanned hot index is `knowledge_base/findings/index.json`; sunk records are append-only in `archive.jsonl`. TypeDB mirrors findings, n-ary `evidences`, and resolved `supersedes` relations when available, but semantic recall continues without TypeDB. Recalled findings count as cited only when the final response uses the exact `[finding:<id>]` marker.
 
@@ -356,6 +357,11 @@ Finding-memory settings:
 | `FINDING_RECALL_TOP_K`                | `3`     | Maximum findings injected before the first model turn.                       |
 | `FINDING_UNUSED_RETENTION_DAYS`       | `180`   | Grace period before never-recalled, never-cited findings leave the hot index. |
 | `FINDING_MAX_ACTIVE`                  | `500`   | Absolute cap on findings scanned per run; overflow is archived, not deleted. |
+| `FINDING_DENSIFICATION_ENABLED`       | `true`  | Attempt an optional schema-gated payload on typed findings.                  |
+| `FINDING_DENSIFICATION_TARGET_RATIO`  | `0.28`  | Target payload/source token ratio; required schema facts take precedence.    |
+| `FINDING_DENSIFICATION_MAX_PASSES`    | `3`     | Maximum CoD revisions/provider calls per finding.                            |
+| `FINDING_DENSIFICATION_MAX_SOURCE_TOKENS` | `8192` | Oversized evidence is skipped rather than silently truncated.            |
+| `FINDING_DENSIFICATION_MAX_OUTPUT_TOKENS` | `2048` | Absolute payload ceiling.                                                |
 
 Engine setting (`SOCConfig`, not env): `exactEntropyMaxNodes` (default `250`) — node count above which VNE switches from the exact solver to FINGER.
 
@@ -372,8 +378,8 @@ User Prompt → Orchestrator.runReasoning()
     │
     ├─→ evaluate_logical_consistency: blocks → mcp-logic satisfiability checks
     │   → consistency complex → logic-based H⁰/H¹ + checkLog
-    ├─→ Finding memory: cue embedding → floor + top-k recall
-    │   → verified verdict write → exact-claim conflict candidate
+    ├─→ Finding memory: verbatim-verdict cue → floor + top-k recall
+    │   → schema-gated dense payload → exact-claim conflict candidate
     │
     ├─→ Dashboard SSE: /api/v1/system/events → vitals + sparklines + event log
     └─→ Run logger: knowledge_base/runs/<id>.{jsonl,md}
@@ -414,6 +420,11 @@ Feng Hu, Kuo Tian, Zi-Ke Zhang. *Identifying Vital Nodes in Hypergraphs Based on
 Hu Wei. *From Agent Loops to Structured Graphs: A Scheduler-Theoretic Framework for LLM Agent Execution.* 2026. [arXiv:2604.11378](https://arxiv.org/abs/2604.11378)
 
 > Provided the vocabulary and the design discipline for the tool-execution layer: bounded three-level recovery with a mechanically enforced escalation invariant, execution/diagnostic context partition, output-contract validation, and side-effect classification. **Deliberately not adopted:** the paper's central prescription, the static pre-planned DAG. Its own §9.7 and §10.2 disqualify that architecture for open-ended exploration and dynamic goal evolution — which is exactly what AGEM does — so only the controllability primitives, which are orthogonal to static planning, were taken. Note also that the paper is a position paper: it states plainly that its performance predictions are untested, and nothing here treats them as evidence.
+
+**Chain of Density and BabelTele — optional finding payloads**
+Griffin Adams et al. *From Sparse to Dense: GPT-4 Summarization with Chain of Density Prompting.* 2023. [arXiv:2309.04269](https://arxiv.org/abs/2309.04269). Jiayi Zhu et al. *Large Language Models Do Not Always Need Readable Language.* 2026 preprint. [arXiv:2606.19857](https://arxiv.org/abs/2606.19857).
+
+> CoD contributes only the bounded revision pattern; it is a prompting heuristic, not a guarantee. BabelTele contributes the readability-relaxed surface and recoverability-without-an-external-codebook constraint. **AGEM adaptation:** accepted claim roles provide an exact fidelity gate that neither paper supplies. The dense result is optional payload only: it never replaces the verbatim verdict, coverage, or caveats and never enters the retrieval embedding. BabelTele's reported transfer depends on the compressor-reader pair, so recalled cross-model payloads remain explicitly marked for re-checking.
 
 **Formal logic**
 Prover9/Mace4 (LADR), William McCune — the theorem prover and model finder underneath every satisfiability check in the consistency complex, via [`mcp-logic`](https://github.com/angrysky56/mcp-logic).
