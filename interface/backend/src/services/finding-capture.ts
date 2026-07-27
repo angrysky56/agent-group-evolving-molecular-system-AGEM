@@ -96,6 +96,7 @@ export function captureFindingFromTool(
 
   return {
     verdict: result.verdict,
+    topicKey: buildTopicKey(args, corpusId, result),
     coverage,
     notRuledOut:
       caveats.length > 0 ? [...new Set(caveats)].join(" ") : undefined,
@@ -272,6 +273,66 @@ export function formatRecallContext(
     }
   }
   return lines.join("\n");
+}
+
+/** Longest slice of corpus text worth carrying. The embedding model truncates
+ * anyway, and past a couple of paragraphs the topic is already established. */
+const MAX_TOPIC_KEY_CHARS = 2000;
+
+/**
+ * Build the retrieval key: what this finding is ABOUT, in the subject matter's
+ * own words. See `FindingInput.topicKey` for the measurements that motivated
+ * splitting this from the verdict.
+ *
+ * Sources, best first:
+ *   - the corpus text itself (typed path) — the strongest possible cue, since
+ *     it is the same language a person would use to reopen the topic;
+ *   - the block names (hand-authored path) — "Frozen Accident",
+ *     "Stereochemical Affinity", not `-affinity_determined(code)`;
+ *   - the corpus id, de-slugged so "origin-of-genetic-code" reads as words.
+ *
+ * Deliberately excludes formulas, arities, and verdict phrasing: those are what
+ * made the old key unable to tell a relevant cue from an irrelevant one.
+ */
+export function buildTopicKey(
+  args: Record<string, unknown>,
+  corpusId: string,
+  result: Record<string, any>,
+): string {
+  const parts: string[] = [deslug(corpusId)];
+
+  const blockNames = Array.isArray(args.blocks)
+    ? args.blocks
+        .map((b) =>
+          b && typeof b === "object"
+            ? String((b as Record<string, unknown>).name ?? "").trim()
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+  // The typed path names its blocks in the result rather than the arguments.
+  const derived = Array.isArray(result.derivedBlocks)
+    ? result.derivedBlocks
+        .map((b: unknown) =>
+          b && typeof b === "object"
+            ? String((b as Record<string, unknown>).name ?? "").trim()
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+  const names = [...new Set([...blockNames, ...derived])];
+  if (names.length > 0) parts.push(names.join(", "));
+
+  if (typeof args.text === "string" && args.text.trim()) {
+    parts.push(args.text.trim());
+  }
+
+  return parts.join("\n").slice(0, MAX_TOPIC_KEY_CHARS);
+}
+
+/** "origin-of-genetic-code" → "origin of genetic code". */
+function deslug(value: string): string {
+  return value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function formulaKeys(rawBlocks: unknown): string[] {

@@ -30,6 +30,28 @@ export type FindingOutcome =
 
 export interface FindingInput {
   verdict: string;
+  /**
+   * What this finding is ABOUT — the retrieval key, distinct from the content.
+   *
+   * Recall used to embed `verdict`, and `verdict` is written in the prover's
+   * register: "CONTRADICTION FOUND — 5 minimal unsatisfiable set(s): {Frozen
+   * Accident, Stereochemical Affinity} (arity 2) — the clash is exactly:
+   * -affinity_determined(code) ...". That string says what was concluded but
+   * barely says what the subject matter was, so a person opening a session with
+   * "let's continue the genetic code work" scored 0.199 against it — well under
+   * the 0.4 floor — while "let's talk about sourdough baking" scored 0.208.
+   * Relevant and irrelevant cues were not separable, so lowering the floor
+   * would have bought noise rather than memory. Recall only worked at all when
+   * the cue happened to be an entire corpus.
+   *
+   * Keying on topic instead fixes both ends: "origin of the genetic code" goes
+   * 0.217 → 0.473 and clears the floor, while sourdough stays out at 0.183 and
+   * an unrelated philosophy-of-mind opener stays out at 0.106.
+   *
+   * The verdict remains stored and returned verbatim. Only the index key
+   * changes — this is not a compressed payload standing in as evidence.
+   */
+  topicKey?: string;
   coverage: string;
   notRuledOut?: string;
   runLogId: string;
@@ -181,7 +203,13 @@ export class FindingStore {
         };
       }
 
-      const vector = await this.#embedder.embed(input.verdict, signal);
+      // Index on topic, not on the prover's phrasing. Falls back to the
+      // verdict so a caller that supplies no topic still gets stored and
+      // recalled exactly as before.
+      const vector = await this.#embedder.embed(
+        input.topicKey?.trim() || input.verdict,
+        signal,
+      );
       const now = this.#now().toISOString();
       const finding: StoredFinding = {
         ...normalizedInput,
@@ -247,7 +275,7 @@ export class FindingStore {
   /** One cue embedding, raw cosine floor, then a bounded ranked result. */
   async recall(cue: string, signal?: AbortSignal): Promise<RecallMatch[]> {
     if (!cue.trim()) return [];
-    const cueVector = await this.#embedder.embed(cue, signal);
+    const cueVector = await this.#embedder.embed(boundCue(cue), signal);
 
     return this.#serial(async () => {
       const index = await this.#readIndex();
@@ -579,6 +607,36 @@ function publicFinding(
       ? [...rest.supportingClaimRefs]
       : undefined,
   };
+}
+
+/**
+ * Longest cue worth embedding.
+ *
+ * The embedding model has a fixed context and the provider does not truncate —
+ * it returns HTTP 500. `ProviderEmbedder` then falls back to a hash-based mock
+ * vector, which is semantically unrelated to everything, so recall silently
+ * returns nothing and the run proceeds as if there were no memory at all. No
+ * error surfaces anywhere.
+ *
+ * Measured with embeddinggemma: a 10,256-char corpus embedded fine and scored
+ * 0.641 against its own stored finding; the same corpus behind a 1,981-char
+ * instruction prefix — 12,237 chars total — returned 500, and that run recalled
+ * nothing despite being about the exact topic it had already analysed.
+ *
+ * The head of a cue carries the topic, so truncating is safe where silently
+ * hashing is not.
+ *
+ * Sized for the configured embedding model with margin, NOT to its limit:
+ * nvidia/nemotron-3-embed-1b accepted 31,987 chars (~5.5k tokens) in testing
+ * against a 33k-token context, but one 32k call had already failed once as a
+ * free-tier flake. Since any failure degrades silently, the bound is set where
+ * throughput is reliable rather than where the model stops. Re-measure with
+ * scripts/probe-embedding-model.py before raising it or changing model.
+ */
+const MAX_CUE_CHARS = 24_000;
+
+function boundCue(cue: string): string {
+  return cue.length > MAX_CUE_CHARS ? cue.slice(0, MAX_CUE_CHARS) : cue;
 }
 
 function findingFingerprint(input: FindingInput): string {

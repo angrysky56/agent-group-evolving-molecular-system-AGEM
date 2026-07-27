@@ -64,6 +64,16 @@ export interface WorkflowContractOptions {
    */
   isContested: () => boolean;
   /**
+   * Reports whether the typed-claim path can run at all. The `derive`
+   * requirement is suppressed when it cannot, so a claim store that is down
+   * never produces a demand the model is unable to satisfy.
+   *
+   * Defaults to "unavailable", matching the rule the rest of this file follows:
+   * when the system cannot confirm a requirement is satisfiable, it does not
+   * manufacture it.
+   */
+  isClaimStoreAvailable?: () => boolean;
+  /**
    * Size of the material the user supplied this run. A pasted corpus activates
    * the contract even before the model has touched the engine; a one-line
    * command does not. See `#isAnalysisRun`.
@@ -93,6 +103,7 @@ const ANALYSIS_SURFACE = new Set([
   "generate_catalyst_questions",
   "search_context",
   "evaluate_logical_consistency",
+  "extract_and_verify_claims",
   "mcp-logic/prove",
   "mcp-logic/find_counterexample",
 ]);
@@ -100,9 +111,28 @@ const ANALYSIS_SURFACE = new Set([
 /** Tool names that satisfy the "verify logical consistency" requirement. */
 const LOGIC_TOOLS = new Set([
   "evaluate_logical_consistency",
+  "extract_and_verify_claims",
   "mcp-logic/prove",
   "mcp-logic/find_counterexample",
 ]);
+
+/**
+ * The one tool that derives the logic from typed, provenance-bearing claims
+ * instead of from model-authored propositions.
+ *
+ * Why this earns its own requirement: `evaluate_logical_consistency` accepts
+ * whatever formulas the model writes, and on a contested corpus the model
+ * tends to skip the corpus's own entities entirely. Observed on the
+ * origin-of-the-genetic-code run: five positions were each encoded as ground
+ * atoms over a single constant — `arbitrary(code)`, `-arbitrary(code)` — so the
+ * prover was asked to confirm that labels the model had already chosen in prose
+ * negate each other. It did, soundly, and the result was near-tautological. The
+ * corpus's codons, amino acids and assignments never entered the logic.
+ *
+ * That is the same failure the typed-claim path exists to remove: freehand
+ * encodings of one corpus have produced different verdicts across runs.
+ */
+const TYPED_CLAIM_TOOL = "extract_and_verify_claims";
 
 export class WorkflowContract {
   readonly #counts = new Map<string, number>();
@@ -116,6 +146,7 @@ export class WorkflowContract {
       enabled: true,
       materialChars: 0,
       materialThreshold: 600,
+      isClaimStoreAvailable: () => false,
       ...options,
     };
   }
@@ -175,6 +206,7 @@ export class WorkflowContract {
       (sum, name) => sum + this.count(name),
       0,
     );
+    const typedClaimsPossible = this.#safeClaimStoreAvailable();
 
     const items: ContractItem[] = [
       {
@@ -195,9 +227,25 @@ export class WorkflowContract {
         id: "verify",
         requirement:
           "Logical consistency verified for a multi-position corpus",
-        hint: "The graph resolved into two or more concept communities, so this corpus is multi-position. Verify the relations between those blocks with evaluate_logical_consistency before making any claim about consistency or contradiction.",
+        hint: "The graph resolved into two or more concept communities, so this corpus is multi-position. Verify the relations between those blocks formally — extract_and_verify_claims is the preferred path — before making any claim about consistency or contradiction.",
         satisfied: logicRuns > 0,
         applicable: contested,
+      },
+      {
+        /*
+         * Separate from `verify` on purpose. Making the typed path the ONLY
+         * way to satisfy verification would make the run unsatisfiable
+         * whenever the claim store is down, burning both nudges on something
+         * the model cannot do. So a hand-authored check still counts as
+         * verification, and this item raises the encoding question on its own.
+         */
+        id: "derive",
+        requirement:
+          "Logic derived from typed claims, not authored freehand",
+        hint:
+          "You verified with hand-authored propositions. On a multi-position corpus those are the model's paraphrase, not the corpus's claims — a contradiction between them can be an artifact of your own encoding. Run extract_and_verify_claims on the corpus TEXT so the formulas are derived from typed claims with provenance, and reconcile the two results. If the claim store is unavailable, say so explicitly and label the hand-authored verdict as encoding-dependent.",
+        satisfied: this.count(TYPED_CLAIM_TOOL) > 0,
+        applicable: contested && typedClaimsPossible,
       },
     ];
 
@@ -210,6 +258,15 @@ export class WorkflowContract {
       return this.#options.isContested();
     } catch {
       // If the engine cannot answer, do not manufacture a requirement.
+      return false;
+    }
+  }
+
+  /** Never demand the typed path when the claim store cannot serve it. */
+  #safeClaimStoreAvailable(): boolean {
+    try {
+      return this.#options.isClaimStoreAvailable();
+    } catch {
       return false;
     }
   }

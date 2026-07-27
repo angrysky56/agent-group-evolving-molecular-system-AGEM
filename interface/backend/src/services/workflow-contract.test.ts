@@ -208,6 +208,13 @@ describe("WorkflowContract — accounting", () => {
     const s = c.summary() as any;
     expect(s.satisfied).toBe(false);
     expect(s.toolCounts.run_agem_cycle).toBe(1);
-    expect(s.items).toHaveLength(3);
+    // ingest, inspect, verify, derive — every item is reported with its own
+    // applicability, so the run log shows which were even in scope.
+    expect(s.items.map((i: any) => i.id)).toEqual([
+      "ingest",
+      "inspect",
+      "verify",
+      "derive",
+    ]);
   });
 });

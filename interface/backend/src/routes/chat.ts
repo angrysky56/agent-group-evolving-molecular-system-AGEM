@@ -1080,6 +1080,7 @@ ${skillContent}`,
     const workflowContract = createWorkflowContract({
       enabled: settings.all.CHAT_ENFORCE_WORKFLOW_CONTRACT,
       isContested: () => (agemBridge.getState().communities ?? 0) >= 2,
+      isClaimStoreAvailable: () => claimStore.available,
       materialChars: typeof message === "string" ? message.length : 0,
       materialThreshold: settings.all.CHAT_CONTRACT_MATERIAL_CHARS,
     });

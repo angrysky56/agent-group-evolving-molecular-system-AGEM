@@ -16,8 +16,23 @@ import type { LLMProviderType, SystemConfig } from "../../shared/types.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..", "..");
 
-// Load .env from project root
-dotenvConfig({ path: resolve(PROJECT_ROOT, ".env") });
+/*
+ * Load .env from project root, and let it WIN over an inherited environment.
+ *
+ * `override: true` matters because the settings UI writes .env — that file is
+ * the source of truth for this app, not the shell. Without the override, a
+ * variable exported once in the terminal that launched start.sh outranks every
+ * later edit, and nothing surfaces the conflict: the UI saves happily, the file
+ * on disk is correct, a fresh script reads the new value, and only the running
+ * server disagrees. Observed exactly that with EMBEDDING_PROVIDER — a stale
+ * `ollama` from a launch shell survived a model switch in the UI, repeated
+ * .env edits, and several tsx-watch reloads, because `tsx watch` restarts only
+ * the child and the child inherits the parent's frozen environment.
+ *
+ * To point the app at a different .env, pass a different path; to override a
+ * single value for one run, edit .env rather than exporting.
+ */
+dotenvConfig({ path: resolve(PROJECT_ROOT, ".env"), override: true });
 
 /** Zod schema for validated configuration. */
 const ConfigSchema = z.object({
@@ -42,7 +57,9 @@ const ConfigSchema = z.object({
   OPENROUTER_API_KEY: z.string().default(""),
   OPENROUTER_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
   OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash-preview"),
-  OPENROUTER_EMBEDDING_MODEL: z.string().default("google/gemini-embedding-001"),
+  OPENROUTER_EMBEDDING_MODEL: z
+    .string()
+    .default("nvidia/nemotron-3-embed-1b:free"),
   OPENROUTER_MAX_TOKENS: z.coerce.number().default(16384),
 
   // Anthropic
