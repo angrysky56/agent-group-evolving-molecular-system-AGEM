@@ -1348,9 +1348,26 @@ export class Orchestrator {
             ids.push({ id: entry.id, text: entry.content });
         }
       }
-      for (const { id, text } of ids) {
-        const vec = await this.#embedder.embed(text);
-        sub.cache.seed(id, vec);
+      /*
+       * Batch. This loop was sequential, one round-trip per store entry, which
+       * was fine against a local model (~0.02s each) and became the dominant
+       * cost of a run once embedding moved to a remote provider (~0.34s each):
+       * a single measured cycle spent 183s here. `embedBatch` collapses it to
+       * one request per chunk, falling back to sequential when the embedder
+       * does not implement it.
+       */
+      const texts = ids.map(({ text }) => text);
+      if (this.#embedder.embedBatch && texts.length > 1) {
+        const vectors = await this.#embedder.embedBatch(texts);
+        ids.forEach(({ id }, i) => {
+          const vec = vectors[i];
+          if (vec) sub.cache.seed(id, vec);
+        });
+      } else {
+        for (const { id, text } of ids) {
+          const vec = await this.#embedder.embed(text);
+          sub.cache.seed(id, vec);
+        }
       }
     }
 

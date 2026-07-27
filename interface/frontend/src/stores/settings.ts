@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { LLMProviderType, ModelInfo } from "@shared/types";
-import { listModels } from "../api";
+import { getConfig, listModels } from "../api";
 
 export interface SettingsState {
   provider: LLMProviderType;
@@ -28,6 +28,21 @@ export interface SettingsState {
   setAvailableModels: (models: ModelInfo[]) => void;
   /** Fetch available models for the given (or current) provider. */
   fetchModels: (provider?: LLMProviderType, apiKey?: string) => Promise<void>;
+  /**
+   * Adopt the BACKEND's view of provider/model configuration.
+   *
+   * The server owns these — it reads and writes .env — but this store used to
+   * persist its own defaults to localStorage and never ask. The panel could
+   * therefore show "Ollama" as the active embedding provider while the server
+   * was actually running OpenRouter, with nothing indicating a disagreement,
+   * and the next click would write the stale local view back over .env.
+   *
+   * That is not cosmetic. Embedding models have different dimensions
+   * (embeddinggemma 768, nemotron 2048), and cosine() returns -1 on a
+   * dimension mismatch — so a stray revert does not degrade finding recall, it
+   * silently switches it off completely.
+   */
+  hydrateFromServer: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -63,18 +78,37 @@ export const useSettingsStore = create<SettingsState>()(
           set({ modelsLoading: false });
         }
       },
+
+      hydrateFromServer: async () => {
+        try {
+          const config = await getConfig();
+          set({
+            provider: config.provider,
+            embeddingProvider: config.embedding_provider ?? config.provider,
+            chatModel: config.model,
+            embeddingModel: config.embedding_model,
+          });
+        } catch (err) {
+          console.error("[settings] hydrateFromServer failed:", err);
+        }
+      },
     }),
     {
       name: "agem-settings",
-      // Don't persist transient loading state
+      /*
+       * Persist ONLY what the browser owns.
+       *
+       * provider, embeddingProvider, chatModel and embeddingModel are the
+       * server's — it holds them in .env — so caching them here just created a
+       * second source of truth that drifted and then overwrote the first.
+       * They are hydrated from GET /system/config on mount instead.
+       *
+       * apiKey and ollamaUrl stay: the key is never returned by the server
+       * (only `has_api_key`), so dropping it would lose it on reload.
+       */
       partialize: (s) => ({
-        provider: s.provider,
-        embeddingProvider: s.embeddingProvider,
-        chatModel: s.chatModel,
-        embeddingModel: s.embeddingModel,
         apiKey: s.apiKey,
         ollamaUrl: s.ollamaUrl,
-        availableModels: s.availableModels,
       }),
     },
   ),

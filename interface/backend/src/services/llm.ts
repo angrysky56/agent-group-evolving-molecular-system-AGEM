@@ -720,6 +720,64 @@ class OpenRouterProvider implements LLMProvider {
       return [];
     }
   }
+
+  /**
+   * Embed many texts in ONE request.
+   *
+   * The /embeddings endpoint takes an array for `input` and returns one vector
+   * per element, so N texts cost one round-trip instead of N. That matters
+   * because a graph cycle embeds every store entry: with a local model the
+   * per-call overhead was ~0.02s and a sequential loop was tolerable, but a
+   * remote provider costs ~0.34s per call and the same loop turned a 3-minute
+   * cycle into the dominant cost of a run.
+   *
+   * Order is not guaranteed by the API, so results are placed by their `index`
+   * rather than by arrival. A short vector array is padded with empties so the
+   * caller's positional contract always holds.
+   */
+  async getEmbeddings(
+    texts: string[],
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    let embModel =
+      model ??
+      settings.all.OPENROUTER_EMBEDDING_MODEL ??
+      "nvidia/nemotron-3-embed-1b:free";
+    if (embModel.startsWith("openrouter:")) embModel = embModel.substring(11);
+    const key = this.#getApiKey();
+    try {
+      const response = await fetch(`${this.#baseUrl}/embeddings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          "HTTP-Referer": "https://agem.local",
+        },
+        body: JSON.stringify({ model: embModel, input: texts }),
+        signal,
+      });
+      if (!response.ok) {
+        console.error(
+          `[LLM] OpenRouter batch embedding failed: ${response.status}`,
+        );
+        return [];
+      }
+      const data = (await response.json()) as {
+        data?: Array<{ embedding?: number[]; index?: number }>;
+      };
+      const out: number[][] = new Array(texts.length).fill(null).map(() => []);
+      (data.data ?? []).forEach((item, position) => {
+        const at = typeof item.index === "number" ? item.index : position;
+        if (at >= 0 && at < out.length) out[at] = item.embedding ?? [];
+      });
+      return out;
+    } catch (error) {
+      console.error("[LLM] OpenRouter batch embedding error:", error);
+      return [];
+    }
+  }
 }
 
 /* ─── Anthropic Provider ─── */

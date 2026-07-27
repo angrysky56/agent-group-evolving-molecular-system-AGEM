@@ -130,6 +130,15 @@ export interface SummaryNode {
  */
 export interface IEmbedder {
   embed(text: string, signal?: AbortSignal): Promise<Float64Array>;
+  /**
+   * Embed many texts at once, returning one vector per input IN ORDER.
+   *
+   * Optional so existing embedders stay valid; callers must fall back to
+   * sequential `embed` when it is absent. Implementations that talk to a remote
+   * provider should use its batch endpoint — a cycle embeds every store entry,
+   * and at ~0.34s per remote round-trip a sequential loop dominates the run.
+   */
+  embedBatch?(texts: string[], signal?: AbortSignal): Promise<Float64Array[]>;
 }
 
 /**

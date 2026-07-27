@@ -369,6 +369,26 @@ class ConfigService {
 
   /** Write updated keys to the .env file. */
   #persistToEnv(updates: Partial<Config>): void {
+    /*
+     * Never write the developer's real .env from a test run.
+     *
+     * config.test.ts exercises update() with `{ EMBEDDING_PROVIDER: "ollama" }`,
+     * and update() persists — so every `npm test` silently rewrote the live
+     * configuration file. That reverted a deliberate switch to OpenRouter ten
+     * times over one session, and looked from the outside like the settings UI
+     * fighting the user: the file kept changing back moments after being fixed,
+     * with the test suite reporting all green each time.
+     *
+     * It matters beyond the annoyance. Embedding models differ in dimension
+     * (embeddinggemma 768, nemotron 2048) and cosine() returns -1 on a
+     * mismatch, so an unnoticed revert does not degrade finding recall — it
+     * switches it off in silence.
+     *
+     * The in-memory update still happens; only the write is suppressed, so the
+     * tests keep asserting exactly what they meant to assert.
+     */
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return;
+
     const envPath = resolve(PROJECT_ROOT, ".env");
     let lines: string[] = [];
 

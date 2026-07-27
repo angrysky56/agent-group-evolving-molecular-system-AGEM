@@ -199,8 +199,37 @@ chatRouter.post("/completions", async (req, res) => {
 
   /** Helper to send an SSE event. */
   const sendEvent = (event: string, data: unknown): void => {
+    lastWriteAt = Date.now();
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
+
+  /*
+   * Keep the response body alive during long tool calls.
+   *
+   * A tool can legitimately run for many minutes — extract_and_verify_claims
+   * on a real corpus took 478s in one measured run — and nothing is written to
+   * the stream while it does. HTTP clients treat that as a dead body: undici
+   * (Node's fetch) aborts at a 300s body timeout by default, so the CLI died
+   * with UND_ERR_BODY_TIMEOUT mid-analysis. The server carried on and wrote the
+   * finding, but the client was gone before the write-up, and the report file
+   * ended after two lines with no error in it.
+   *
+   * An SSE comment line (`: ...`) is ignored by every conformant parser, so
+   * this costs nothing semantically and resets the read timer.
+   */
+  let lastWriteAt = Date.now();
+  const HEARTBEAT_MS = 15_000;
+  const heartbeat = setInterval(() => {
+    if (Date.now() - lastWriteAt < HEARTBEAT_MS) return;
+    lastWriteAt = Date.now();
+    try {
+      res.write(`: keepalive ${new Date().toISOString()}\n\n`);
+    } catch {
+      // The client is gone; the finally block clears this interval.
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
+  res.on("close", () => clearInterval(heartbeat));
 
   try {
     // Resolve or create session
@@ -2443,6 +2472,7 @@ ${skillContent}`,
     }
     sendEvent("error", { message: errorMessage });
   } finally {
+    clearInterval(heartbeat);
     res.end();
   }
 });

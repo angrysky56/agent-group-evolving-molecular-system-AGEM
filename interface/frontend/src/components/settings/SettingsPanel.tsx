@@ -53,6 +53,11 @@ export function SettingsPanel({ onClose }: Props) {
 
   // Fetch on panel open
   useEffect(() => {
+    // Adopt the server's actual configuration BEFORE rendering any toggle as
+    // active. Without this the panel showed whatever was last cached in
+    // localStorage, so it could display "Ollama" while the server ran
+    // OpenRouter — and the next click wrote that stale view back to .env.
+    void settings.hydrateFromServer();
     doFetch(settings.provider);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -545,11 +550,33 @@ export function SettingsPanel({ onClose }: Props) {
               <input
                 className="settings-field__input settings-field__input--mono"
                 value={settings.embeddingModel}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  settings.setEmbeddingModel(val);
-                  // Optionally sync embedding model to backend too
-                  // fetch("/api/v1/system/config", { ... })
+                onChange={(e) => settings.setEmbeddingModel(e.target.value)}
+                onBlur={(e) => {
+                  /*
+                   * Persist to the key belonging to the SELECTED embedding
+                   * provider. This previously did nothing at all — the POST was
+                   * commented out — so typing a model here changed the label
+                   * and left the backend on whatever .env already said, which
+                   * is a silent no-op the UI gives no hint about.
+                   *
+                   * Written on blur rather than on every keystroke so a
+                   * half-typed model name is never persisted.
+                   */
+                  const val = e.target.value.trim();
+                  if (!val) return;
+                  const key =
+                    settings.embeddingProvider === "openrouter"
+                      ? "OPENROUTER_EMBEDDING_MODEL"
+                      : settings.embeddingProvider === "minimax"
+                        ? "MINIMAX_EMBEDDING_MODEL"
+                        : settings.embeddingProvider === "anthropic"
+                          ? "ANTHROPIC_EMBEDDING_MODEL"
+                          : "OLLAMA_EMBEDDING_MODEL";
+                  fetch("/api/v1/system/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ [key]: val }),
+                  }).catch(() => {});
                 }}
                 placeholder="nomic-embed-text"
               />
