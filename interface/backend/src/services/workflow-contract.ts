@@ -87,6 +87,30 @@ export interface WorkflowContractOptions {
   enabled?: boolean;
 }
 
+export interface WorkflowToolOutcome {
+  /** True only when the tool produced a usable logical verdict. */
+  semanticsValidated?: boolean;
+}
+
+/** Derive contract evidence from a tool's machine-readable payload. */
+export function workflowToolOutcomeFromOutput(
+  fnName: string,
+  output: string,
+): WorkflowToolOutcome {
+  if (fnName !== TYPED_CLAIM_TOOL) return {};
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    return {
+      semanticsValidated:
+        parsed.error === undefined &&
+        parsed.semanticsValidated === true &&
+        parsed.verdictKind !== "inconclusive",
+    };
+  } catch {
+    return { semanticsValidated: false };
+  }
+}
+
 /**
  * Tools whose use means "this run is doing analysis".
  *
@@ -142,6 +166,8 @@ export class WorkflowContract {
   readonly #nudgedSignatures = new Set<string>();
   readonly #options: Required<WorkflowContractOptions>;
   #nudgeCount = 0;
+  #validatedLogicRuns = 0;
+  #validatedTypedClaimRuns = 0;
 
   constructor(options: WorkflowContractOptions) {
     this.#options = {
@@ -187,9 +213,23 @@ export class WorkflowContract {
    * Failed calls must NOT be recorded — a contract satisfied by a tool that
    * errored is not satisfied.
    */
-  record(fnName: string, label?: string): void {
+  record(
+    fnName: string,
+    label?: string,
+    outcome: WorkflowToolOutcome = {},
+  ): void {
     this.#bump(fnName);
     if (label && label !== fnName) this.#bump(label);
+
+    const resolved = label && label !== fnName ? label : fnName;
+    if (!LOGIC_TOOLS.has(resolved)) return;
+    const semanticsValidated =
+      resolved === TYPED_CLAIM_TOOL
+        ? outcome.semanticsValidated === true
+        : outcome.semanticsValidated !== false;
+    if (!semanticsValidated) return;
+    this.#validatedLogicRuns++;
+    if (resolved === TYPED_CLAIM_TOOL) this.#validatedTypedClaimRuns++;
   }
 
   #bump(key: string): void {
@@ -205,10 +245,6 @@ export class WorkflowContract {
     const analysisRun = this.#isAnalysisRun();
     const ranCycle = INGEST_TOOLS.some((tool) => this.count(tool) > 0);
     const contested = analysisRun && ranCycle && this.#safeIsContested();
-    const logicRuns = [...LOGIC_TOOLS].reduce(
-      (sum, name) => sum + this.count(name),
-      0,
-    );
     const typedClaimsPossible = this.#safeClaimStoreAvailable();
 
     const items: ContractItem[] = [
@@ -231,7 +267,7 @@ export class WorkflowContract {
         requirement:
           "Logical consistency verified for a multi-position corpus",
         hint: "The graph resolved into two or more concept communities, so this corpus is multi-position. Verify the relations between those blocks formally — extract_and_verify_claims is the preferred path — before making any claim about consistency or contradiction.",
-        satisfied: logicRuns > 0,
+        satisfied: this.#validatedLogicRuns > 0,
         applicable: contested,
       },
       {
@@ -247,7 +283,7 @@ export class WorkflowContract {
           "Logic derived from typed claims, not authored freehand",
         hint:
           "You verified with hand-authored propositions. On a multi-position corpus those are the model's paraphrase, not the corpus's claims — a contradiction between them can be an artifact of your own encoding. Run extract_and_verify_claims on the corpus TEXT so the formulas are derived from typed claims with provenance, and reconcile the two results. If the claim store is unavailable, say so explicitly and label the hand-authored verdict as encoding-dependent.",
-        satisfied: this.count(TYPED_CLAIM_TOOL) > 0,
+        satisfied: this.#validatedTypedClaimRuns > 0,
         applicable: contested && typedClaimsPossible,
       },
     ];
@@ -323,6 +359,8 @@ export class WorkflowContract {
         satisfied: i.satisfied,
       })),
       toolCounts: Object.fromEntries(this.#counts),
+      validatedLogicRuns: this.#validatedLogicRuns,
+      validatedTypedClaimRuns: this.#validatedTypedClaimRuns,
     };
   }
 }

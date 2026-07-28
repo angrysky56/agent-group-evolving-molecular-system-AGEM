@@ -52,4 +52,19 @@ describe("ConfigService — update and Zod schema re-validation", () => {
       }),
     ).toBe(true);
   });
+
+  it("provides a configurable positive request deadline", () => {
+    const original = settings.all.CHAT_REQUEST_TIMEOUT_MS;
+    expect(original).toBe(20 * 60 * 1000);
+
+    expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 90_000 } as any)).toBe(
+      true,
+    );
+    expect(settings.all.CHAT_REQUEST_TIMEOUT_MS).toBe(90_000);
+    expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 0 } as any)).toBe(false);
+
+    expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: original } as any)).toBe(
+      true,
+    );
+  });
 });

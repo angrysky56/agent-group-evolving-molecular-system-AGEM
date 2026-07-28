@@ -53,7 +53,15 @@ import {
   isRetrySafe,
   sideEffectClass,
 } from "../services/tool-dispatch.js";
-import { createWorkflowContract } from "../services/workflow-contract.js";
+import {
+  createWorkflowContract,
+  workflowToolOutcomeFromOutput,
+} from "../services/workflow-contract.js";
+import { createRequestDeadline } from "../services/request-deadline.js";
+import {
+  finalizeRunOutcome,
+  type RunTerminalStatus,
+} from "../services/run-termination.js";
 import {
   RUN_AGEM_CYCLE_DESCRIPTION,
   RUN_SECTIONED_CYCLES_DESCRIPTION,
@@ -202,6 +210,12 @@ chatRouter.post("/completions", async (req, res) => {
   res.flushHeaders();
 
   const abortController = new AbortController();
+  const requestStartTime = Date.now();
+  const requestDeadline = createRequestDeadline(
+    settings.all.CHAT_REQUEST_TIMEOUT_MS,
+    abortController.signal,
+  );
+  let terminalStatus: RunTerminalStatus = "completed";
   res.on("close", () => {
     if (!res.writableEnded) {
       console.log("[Chat] Client disconnected, aborting request...");
@@ -213,6 +227,20 @@ chatRouter.post("/completions", async (req, res) => {
   const sendEvent = (event: string, data: unknown): void => {
     lastWriteAt = Date.now();
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  let timeoutEventSent = false;
+  const markRequestTimedOut = (turnCount: number): void => {
+    terminalStatus = "timed-out";
+    if (timeoutEventSent) return;
+    timeoutEventSent = true;
+    const elapsedSeconds = Math.round((Date.now() - requestStartTime) / 1000);
+    console.warn(
+      `[Chat] Request timeout after ${turnCount} turns (${elapsedSeconds}s)`,
+    );
+    sendEvent("error", {
+      message: `Request timed out after ${Math.round(settings.all.CHAT_REQUEST_TIMEOUT_MS / 1000)} seconds.`,
+      status: terminalStatus,
+    });
   };
 
   /*
@@ -309,7 +337,7 @@ chatRouter.post("/completions", async (req, res) => {
         message,
         {
           memoryNamespace,
-          signal: abortController.signal,
+          signal: requestDeadline.signal,
         },
       );
       recalledFindingIds = recalled.map((match) => match.finding.id);
@@ -1150,9 +1178,7 @@ ${skillContent}`,
     let turnCount = 0;
     const maxTurns = settings.all.CHAT_MAX_TURNS;
     let lastResult: any = null;
-    const requestStartTime = Date.now();
     const allTurnToolResults: any[] = [];
-    const REQUEST_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout
 
     // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
     // every tool call in this run, so the retry budget is per-run, not per-call.
@@ -1177,15 +1203,8 @@ ${skillContent}`,
     });
 
     while (!isDone && turnCount < maxTurns) {
-      // Check overall request timeout
-      if (Date.now() - requestStartTime > REQUEST_TIMEOUT_MS) {
-        console.warn(
-          `[Chat] Request timeout after ${turnCount} turns (${Math.round((Date.now() - requestStartTime) / 1000)}s)`,
-        );
-        sendEvent("error", {
-          message:
-            "Request timed out after 20 minutes. Try a simpler query or fewer tool calls.",
-        });
+      if (requestDeadline.timedOut) {
+        markRequestTimedOut(turnCount);
         break;
       }
 
@@ -1194,29 +1213,43 @@ ${skillContent}`,
         `[Chat] Turn ${turnCount}/${maxTurns} — sending to ${sanitizeLog(resolvedProvider)}/${sanitizeLog(model)}`,
       );
 
-      const compressResult = await compress(historyMessages as any[], { model: String(model) });
+      let result: any;
+      try {
+        requestDeadline.signal.throwIfAborted();
+        const compressResult = await compress(historyMessages as any[], {
+          model: String(model),
+          timeout: Math.min(30_000, Math.max(1, requestDeadline.remainingMs())),
+        });
+        requestDeadline.signal.throwIfAborted();
 
-      const result = await llmProvider.chat({
-        messages: compressResult.messages as any[],
-        model,
-        tools,
-        apiKey,
-        onToken: (t) => {
-          res.write(
-            `event: token\ndata: ${JSON.stringify({ content: t })}\n\n`,
-          );
-        },
-        onThinking: (t) => {
-          if (t)
+        result = await llmProvider.chat({
+          messages: compressResult.messages as any[],
+          model,
+          tools,
+          apiKey,
+          onToken: (t) => {
             res.write(
-              `event: thinking\ndata: ${JSON.stringify({ content: t })}\n\n`,
+              `event: token\ndata: ${JSON.stringify({ content: t })}\n\n`,
             );
-        },
-        onUsage: (u) => {
-          res.write(`event: usage\ndata: ${JSON.stringify(u)}\n\n`);
-        },
-        signal: abortController.signal,
-      });
+          },
+          onThinking: (t) => {
+            if (t)
+              res.write(
+                `event: thinking\ndata: ${JSON.stringify({ content: t })}\n\n`,
+              );
+          },
+          onUsage: (u) => {
+            res.write(`event: usage\ndata: ${JSON.stringify(u)}\n\n`);
+          },
+          signal: requestDeadline.signal,
+        });
+      } catch (error) {
+        if (requestDeadline.timedOut) {
+          markRequestTimedOut(turnCount);
+          break;
+        }
+        throw error;
+      }
       lastResult = result;
 
       // If the model returned tool calls, check if the streamed text was just raw JSON
@@ -1336,6 +1369,7 @@ ${skillContent}`,
           fnName: string,
           args: any,
         ): Promise<{ output: string; label: string }> => {
+          requestDeadline.signal.throwIfAborted();
           let output = "";
           let toolLabel = fnName; // Descriptive label for tool_result event
 
@@ -1381,7 +1415,7 @@ ${skillContent}`,
               const runResult = await agemBridge.runCycle(
                 prompt,
                 sendEvent,
-                abortController.signal,
+                requestDeadline.signal,
                 {
                   subgraph:
                     typeof args.subgraph === "string"
@@ -1450,8 +1484,9 @@ ${skillContent}`,
                   }
                   sendEvent(event, data);
                 },
-                abortController.signal,
+                requestDeadline.signal,
               );
+              runLog.event("sectioned_run_telemetry", runResult.telemetry);
               const state = runResult.analysis.state;
               output = `Sectioned corpus run completed.\n${JSON.stringify(
                 {
@@ -1473,6 +1508,7 @@ ${skillContent}`,
                       history_length: runResult.analysis.soc.history_length,
                     },
                   },
+                  telemetry: runResult.telemetry,
                 },
                 null,
                 2,
@@ -1510,7 +1546,12 @@ ${skillContent}`,
                 });
               } else {
                 const oracle = makeMcpLogicOracle((server, tool, a) =>
-                  mcpManager.executeTool(server, tool, a),
+                  mcpManager.executeTool(
+                    server,
+                    tool,
+                    a,
+                    requestDeadline.signal,
+                  ),
                 );
                 // Let a caller raise the caps deliberately. Undefined must not
                 // be spread over the defaults, so only set what was supplied.
@@ -1655,7 +1696,14 @@ ${skillContent}`,
                   id: `${corpusId}-${i}`,
                   text: t,
                 }));
-                const extraction = await extractIntoStore(segs, corpusId);
+                const extraction = await extractIntoStore(segs, corpusId, {
+                  signal: requestDeadline.signal,
+                });
+                runLog.event("claim_extraction_telemetry", {
+                  corpusId,
+                  segments: segs.length,
+                  ...extraction.telemetry,
+                });
 
                 const graphCommunities =
                   agemBridge.getGraphSummary().concept_graph?.communities.map(
@@ -1694,6 +1742,7 @@ ${skillContent}`,
                   ontology,
                   embedder: claimBlockEmbedder,
                   sharedExistencePredicates,
+                  signal: requestDeadline.signal,
                 });
                 const distinct = derivation.blocks;
 
@@ -1755,7 +1804,12 @@ ${skillContent}`,
                   });
                 } else {
                   const oracle = makeMcpLogicOracle((server, tool, a) =>
-                    mcpManager.executeTool(server, tool, a),
+                    mcpManager.executeTool(
+                      server,
+                      tool,
+                      a,
+                      requestDeadline.signal,
+                    ),
                   );
                   const predicateAliases = Object.fromEntries(
                     derivation.predicateMapping
@@ -2043,7 +2097,7 @@ ${skillContent}`,
               const results = await agemBridge.searchContext(
                 query,
                 args.max_results,
-                abortController.signal,
+                requestDeadline.signal,
               );
               output = JSON.stringify(results, null, 2);
             } else if (fnName === "spawn_agem_agent") {
@@ -2289,7 +2343,12 @@ ${skillContent}`,
               // from the recovery ladder (transient transport faults retry,
               // schema faults get patched). Swallowing them here would hide
               // both from the protocol.
-              output = await mcpManager.executeTool(sName, tName, tArgs);
+              output = await mcpManager.executeTool(
+                sName,
+                tName,
+                tArgs,
+                requestDeadline.signal,
+              );
             } else if (fnName.startsWith("mcp__")) {
               const parts = fnName.split("__");
               const serverName = parts[1];
@@ -2307,12 +2366,14 @@ ${skillContent}`,
                 serverName,
                 toolName,
                 directArgs,
+                requestDeadline.signal,
               );
             } else {
               throw new Error(`Unknown tool ${fnName}`);
             }
           }
 
+          requestDeadline.signal.throwIfAborted();
           return { output, label: toolLabel };
         };
 
@@ -2353,6 +2414,7 @@ ${skillContent}`,
 
             const outcome = await recovery.execute(fnName, args, {
               run: (a) => runToolOnce(fnName, a),
+              signal: requestDeadline.signal,
               // Non-idempotent calls are never blind-retried. run_agem_cycle
               // ingests into a persistent accumulating graph: a silent retry
               // would double-count the same co-occurrences.
@@ -2431,7 +2493,7 @@ ${skillContent}`,
                             model: effectiveModel,
                             provider: resolvedProvider,
                           },
-                          abortController.signal,
+                          requestDeadline.signal,
                         );
                       if (densificationResult.condensedNarrative) {
                         finding.condensedNarrative =
@@ -2471,7 +2533,7 @@ ${skillContent}`,
                   }
                   const memory = await findingStore.store(
                     finding,
-                    abortController.signal,
+                    requestDeadline.signal,
                   );
                   effectiveOutput = attachFindingMemory(
                     outcome.output,
@@ -2538,7 +2600,13 @@ ${skillContent}`,
             }
 
             // Only successful calls count toward the output contract.
-            if (outcome.ok) workflowContract.record(fnName, outcome.label);
+            if (outcome.ok) {
+              workflowContract.record(
+                fnName,
+                outcome.label,
+                workflowToolOutcomeFromOutput(fnName, effectiveOutput),
+              );
+            }
 
             return {
               tc,
@@ -2670,7 +2738,11 @@ ${skillContent}`,
     // Recalled findings only earn a citation when the final answer contains the
     // exact injected marker. This is the second half of retention accounting.
     let citedFindingIds: string[] = [];
-    if (finalAssistantMessage?.content && recalledFindingIds.length > 0) {
+    if (
+      terminalStatus === "completed" &&
+      finalAssistantMessage?.content &&
+      recalledFindingIds.length > 0
+    ) {
       try {
         citedFindingIds = await findingStore.recordCitations(
           String(finalAssistantMessage.content),
@@ -2686,21 +2758,31 @@ ${skillContent}`,
       }
     }
 
+    if (requestDeadline.timedOut) markRequestTimedOut(turnCount);
+    // No asynchronous work remains after this boundary. Stop the timer so a
+    // request that met its deadline cannot flip status between logging and SSE.
+    requestDeadline.dispose();
+    const termination = finalizeRunOutcome(
+      terminalStatus,
+      workflowContract.summary(),
+    );
+
     const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
     console.log(
-      `[Chat] Request complete: ${turnCount} turns, ${elapsed}s elapsed`,
+      `[Chat] Request ${terminalStatus}: ${turnCount} turns, ${elapsed}s elapsed`,
     );
     runLog.end({
       turns: turnCount,
       elapsedSeconds: elapsed,
       recalledFindingIds,
       citedFindingIds,
-      contract: workflowContract.summary(),
+      status: terminalStatus,
+      contract: termination.contract,
       recoveryLedger: recovery.snapshot(),
     });
 
     // Send usage
-    if (lastResult?.usage) {
+    if (termination.emitDone && lastResult?.usage) {
       sendEvent("usage", lastResult.usage);
     }
 
@@ -2710,11 +2792,13 @@ ${skillContent}`,
     );
     sessionStore.update(sessionId, { messages: sessionMessagesToSave });
 
-    // Signal completion
-    sendEvent("done", {
-      session_id: sessionId,
-      message: finalAssistantMessage,
-    });
+    if (termination.emitDone) {
+      sendEvent("done", {
+        session_id: sessionId,
+        message: finalAssistantMessage,
+        status: terminalStatus,
+      });
+    }
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -2726,6 +2810,7 @@ ${skillContent}`,
     }
     sendEvent("error", { message: errorMessage });
   } finally {
+    requestDeadline.dispose();
     clearInterval(heartbeat);
     res.end();
   }

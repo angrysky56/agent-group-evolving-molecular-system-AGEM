@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { MetaOrchestrator } from "./MetaOrchestrator.js";
 import { Orchestrator } from "../ComposeRootModule.js";
-import type { LLMProvider } from "../interfaces.js";
+import type { LLMProvider, TopologicalManifest } from "../interfaces.js";
 
 describe("MetaOrchestrator", () => {
   it("executes the routing pipeline and hands off to Orchestrator", async () => {
@@ -64,6 +64,36 @@ describe("MetaOrchestrator", () => {
       .rejects.toThrow("Aborted");
   });
 
+  it("passes the caller abort signal into the routing provider call", async () => {
+    const mockLLM = {
+      chat: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          topologyType: "react",
+          requiredTools: [],
+          reflectionEnabled: false,
+          maxIterations: 10,
+          constraints: { maxTokens: 4000, timeoutMs: 30_000 },
+          rationale: "Test routing logic",
+        }),
+      }),
+    } as unknown as LLMProvider;
+    const mockOrch = {
+      runReasoning: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Orchestrator;
+    const controller = new AbortController();
+
+    const meta = new MetaOrchestrator(mockLLM, mockOrch);
+    await meta.execute(
+      "Test",
+      { accuracyRequirement: "standard" },
+      controller.signal,
+    );
+
+    expect(mockLLM.chat).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("allows planning without execution", async () => {
     const mockLLM = {
       chat: vi.fn().mockResolvedValue({
@@ -88,5 +118,29 @@ describe("MetaOrchestrator", () => {
 
     expect(manifest.topologyType).toBe("planning_react");
     expect(mockOrch.runReasoning).not.toHaveBeenCalled();
+  });
+
+  it("executes an already-routed workflow without another LLM routing call", async () => {
+    const mockLLM = {
+      chat: vi.fn(),
+    } as unknown as LLMProvider;
+    const mockOrch = {
+      runReasoning: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Orchestrator;
+    const manifest: TopologicalManifest = {
+      topologyType: "sequential_workflow",
+      requiredTools: [],
+      reflectionEnabled: false,
+      maxIterations: 1,
+      constraints: { maxTokens: 4000, timeoutMs: 30_000 },
+      rationale: "Authored section boundaries already define the workflow.",
+    };
+
+    const meta = new MetaOrchestrator(mockLLM, mockOrch);
+    const result = await meta.executePlanned("Section body", manifest);
+
+    expect(mockLLM.chat).not.toHaveBeenCalled();
+    expect(mockOrch.runReasoning).toHaveBeenCalledWith("Section body", undefined);
+    expect(result.manifest).toBe(manifest);
   });
 });

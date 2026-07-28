@@ -73,10 +73,27 @@ export interface ExtractionReport {
   outcomes: ExtractionOutcome[];
   /** Segments the model returned unparseable output for. */
   parseFailures: string[];
+  telemetry: ExtractionTelemetry;
+}
+
+export interface ExtractionTelemetry {
+  proposalMs: number;
+  persistenceMs: number;
+  totalMs: number;
+  batchCalls: number;
+  fallbackBatches: number;
+  fallbackSegmentCalls: number;
+}
+
+export interface ExtractionOptions {
+  signal?: AbortSignal;
 }
 
 const ATTRIBUTED_ASSERTION_CUE =
   /\b(?:theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
+/** A corpus-level rule about arbitrary positions is not attribution to one holder. */
+const GENERIC_POSITION_RULE_CUE =
+  /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\s+(?:that|which|who)\b/i;
 
 /**
  * Deterministic guard against model-elected attribution flattening. The model
@@ -101,7 +118,8 @@ export function claimAttributionIssue(
     claim.scope === "corpus" &&
     claim.kind !== "distinction" &&
     claim.kind !== "dissociation" &&
-    ATTRIBUTED_ASSERTION_CUE.test(sourceText)
+    ATTRIBUTED_ASSERTION_CUE.test(sourceText) &&
+    !GENERIC_POSITION_RULE_CUE.test(sourceText)
   ) {
     return (
       "attribution flattening detected: the source reports what a named holder " +
@@ -392,7 +410,9 @@ export async function storeSegment(
 export async function proposeClaims(
   segment: string,
   glossary: readonly string[] = [],
+  signal?: AbortSignal,
 ): Promise<ExtractedClaim[] | null> {
+  signal?.throwIfAborted();
   const provider = getActiveProvider();
   const res = await provider.chat({
     messages: [
@@ -402,6 +422,7 @@ export async function proposeClaims(
       },
     ],
     maxTokens: 1024,
+    signal,
   });
   const match = res.content.match(/\[[\s\S]*\]/);
   if (!match) return null;
@@ -457,6 +478,8 @@ ${numbered}`;
 async function proposeClaimsBatch(
   segments: Array<{ id: string; text: string }>,
   glossary: readonly string[],
+  telemetry: ExtractionTelemetry,
+  signal?: AbortSignal,
 ): Promise<Map<number, ExtractedClaim[] | null>> {
   const out = new Map<number, ExtractedClaim[] | null>();
   const provider = getActiveProvider();
@@ -467,8 +490,15 @@ async function proposeClaimsBatch(
    * which are slower but cannot take their neighbours down with them.
    */
   const fallbackPerSegment = async () => {
+    telemetry.fallbackBatches++;
+    telemetry.fallbackSegmentCalls += segments.length;
     const results = await Promise.all(
-      segments.map((s) => proposeClaims(s.text, glossary).catch(() => null)),
+      segments.map((s) =>
+        proposeClaims(s.text, glossary, signal).catch((error) => {
+          signal?.throwIfAborted();
+          return null;
+        }),
+      ),
     );
     results.forEach((r, i) => out.set(i, r));
     return out;
@@ -476,14 +506,18 @@ async function proposeClaimsBatch(
 
   let content = "";
   try {
+    signal?.throwIfAborted();
+    telemetry.batchCalls++;
     const res = await provider.chat({
       messages: [
         { role: "user", content: buildBatchPrompt(segments, glossary) },
       ],
       maxTokens: BATCH_MAX_TOKENS,
+      signal,
     });
     content = res.content;
-  } catch {
+  } catch (error) {
+    signal?.throwIfAborted();
     return fallbackPerSegment();
   }
 
@@ -512,7 +546,10 @@ async function proposeClaimsBatch(
 export async function extractIntoStore(
   segments: Array<{ id: string; text: string }>,
   corpusId: string,
+  options: ExtractionOptions = {},
 ): Promise<ExtractionReport> {
+  options.signal?.throwIfAborted();
+  const startedAt = performance.now();
   const report: ExtractionReport = {
     segmentsProcessed: 0,
     claimsProposed: 0,
@@ -520,9 +557,20 @@ export async function extractIntoStore(
     claimsRejected: 0,
     outcomes: [],
     parseFailures: [],
+    telemetry: {
+      proposalMs: 0,
+      persistenceMs: 0,
+      totalMs: 0,
+      batchCalls: 0,
+      fallbackBatches: 0,
+      fallbackSegmentCalls: 0,
+    },
   };
 
-  if (!claimStore.available) return report;
+  if (!claimStore.available) {
+    report.telemetry.totalMs = performance.now() - startedAt;
+    return report;
+  }
 
   // Split into batches, then run a bounded number of batches concurrently.
   const batches: Array<Array<{ id: string; text: string }>> = [];
@@ -531,11 +579,20 @@ export async function extractIntoStore(
 
   const proposals: Array<{ seg: { id: string; text: string }; claims: ExtractedClaim[] | null }> = [];
   const runningGlossary = new Set<string>();
+  const proposalStartedAt = performance.now();
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
+    options.signal?.throwIfAborted();
     const wave = batches.slice(i, i + BATCH_CONCURRENCY);
     const glossary = [...runningGlossary];
     const results = await Promise.all(
-      wave.map((batch) => proposeClaimsBatch(batch, glossary)),
+      wave.map((batch) =>
+        proposeClaimsBatch(
+          batch,
+          glossary,
+          report.telemetry,
+          options.signal,
+        ),
+      ),
     );
     wave.forEach((batch, w) => {
       batch.forEach((seg, idx) => {
@@ -551,8 +608,11 @@ export async function extractIntoStore(
       });
     });
   }
+  report.telemetry.proposalMs = performance.now() - proposalStartedAt;
 
+  const persistenceStartedAt = performance.now();
   for (const { seg, claims } of proposals) {
+    options.signal?.throwIfAborted();
     report.segmentsProcessed++;
     await storeSegment(seg.id, seg.text, corpusId);
 
@@ -589,14 +649,18 @@ export async function extractIntoStore(
       report.claimsProposed++;
       // Concepts first (upsert), then the claim. Separate writes — see
       // claimToTypeQL for why they cannot be one pipeline.
+      options.signal?.throwIfAborted();
       await claimStore.write(query.concepts);
+      options.signal?.throwIfAborted();
       const positionRes = query.position
         ? await claimStore.write(query.position)
         : undefined;
       const positionAccepted =
         !query.position || (!!positionRes && isOkResponse(positionRes));
+      options.signal?.throwIfAborted();
       const res = positionAccepted ? await claimStore.write(query.claim) : null;
       const claimAccepted = !!res && isOkResponse(res);
+      options.signal?.throwIfAborted();
       const attributionRes =
         claimAccepted && query.attribution
           ? await claimStore.write(query.attribution)
@@ -624,6 +688,8 @@ export async function extractIntoStore(
     }
   }
 
+  report.telemetry.persistenceMs = performance.now() - persistenceStartedAt;
+  report.telemetry.totalMs = performance.now() - startedAt;
   return report;
 }
 

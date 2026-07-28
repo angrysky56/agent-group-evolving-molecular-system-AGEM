@@ -58,6 +58,7 @@ export interface DeriveClaimBlocksOptions {
   sharedExistencePredicates?: readonly string[];
   embedder?: IEmbedder;
   similarityThreshold?: number;
+  signal?: AbortSignal;
 }
 
 /** Heading hints for display/provenance only. Logical derivation ignores them. */
@@ -231,9 +232,13 @@ async function resolvePredicates(
   }
 
   const texts = unique.map((label) => label.replace(/[-_]+/g, " "));
+  options.signal?.throwIfAborted();
   const vectors = options.embedder.embedBatch
-    ? await options.embedder.embedBatch(texts)
-    : await Promise.all(texts.map((text) => options.embedder!.embed(text)));
+    ? await options.embedder.embedBatch(texts, options.signal)
+    : await Promise.all(
+        texts.map((text) => options.embedder!.embed(text, options.signal)),
+      );
+  options.signal?.throwIfAborted();
   const threshold = options.similarityThreshold ?? 0.86;
   const vectorByLabel = new Map(unique.map((label, i) => [label, vectors[i]]));
   const anchors = unique.filter(
@@ -356,6 +361,7 @@ export async function deriveClaimBlocks(
   outcomes: readonly ExtractionOutcome[],
   options: DeriveClaimBlocksOptions = {},
 ): Promise<ClaimBlockDerivation> {
+  options.signal?.throwIfAborted();
   const corpusId = options.corpusId?.trim() || "corpus";
   const attributionIssues = outcomes.flatMap((outcome) => {
     const reason = attributionIssue(outcome.claim);

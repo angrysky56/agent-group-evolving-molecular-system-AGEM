@@ -41,8 +41,12 @@ export class MetaOrchestrator {
    * @param constraints - System constraints for routing.
    * @returns The generated TopologicalManifest.
    */
-  async plan(prompt: string, constraints: PickerConstraints): Promise<TopologicalManifest> {
-    return await this.#picker.evaluate(prompt, constraints);
+  async plan(
+    prompt: string,
+    constraints: PickerConstraints,
+    signal?: AbortSignal,
+  ): Promise<TopologicalManifest> {
+    return await this.#picker.evaluate(prompt, constraints, signal);
   }
 
   /**
@@ -66,7 +70,7 @@ export class MetaOrchestrator {
   ): Promise<{ manifest: TopologicalManifest }> {
     // Phase 1: Topological Routing (The Picker)
     // This step consumes minimal tokens to determine the most efficient path.
-    const manifest = await this.#picker.evaluate(prompt, constraints);
+    const manifest = await this.#picker.evaluate(prompt, constraints, signal);
     
     console.log(`[META] Routing task to topology: ${manifest.topologyType}`);
     console.log(`[META] Rationale: ${manifest.rationale}`);
@@ -77,13 +81,30 @@ export class MetaOrchestrator {
     // Phase 2: Execution Handoff
     // Future expansion: In Phase 8, we will dispatch to different execution
     // strategies (Sequential, ReAct, Planning, Multi-Agent) based on manifest.topologyType.
-    // For now, we utilize the standard iterative AGEM pipeline.
+    // For now, both routed and pre-routed paths share the same handoff.
+    return this.executePlanned(prompt, manifest, signal, cycleOptions);
+  }
+
+  /**
+   * Execute a workflow whose topology is already known.
+   *
+   * Authored sectioned ingestion is sequential by construction. Routing every
+   * section independently adds an LLM round-trip and can select inconsistent
+   * topologies for pieces of the same corpus. Callers that already possess a
+   * manifest use this path to preserve one routing decision across the run.
+   */
+  async executePlanned(
+    prompt: string,
+    manifest: TopologicalManifest,
+    signal?: AbortSignal,
+    cycleOptions?: ReasoningCycleOptions,
+  ): Promise<{ manifest: TopologicalManifest }> {
+    signal?.throwIfAborted();
     if (cycleOptions) {
       await this.#orchestrator.runReasoning(prompt, signal, cycleOptions);
     } else {
       await this.#orchestrator.runReasoning(prompt, signal);
     }
-
     return { manifest };
   }
 

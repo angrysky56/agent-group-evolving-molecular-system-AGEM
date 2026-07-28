@@ -134,6 +134,8 @@ export interface RecoveryDeps {
    * says so, leaving the decision to the model.
    */
   retryBudget?: number;
+  /** Enclosing request cancellation stops the ladder immediately. */
+  signal?: AbortSignal;
 }
 
 export interface RecoveryConfig {
@@ -440,7 +442,8 @@ export class RecoveryProtocol {
         lastClass = classifyError(err);
         const detail = errorText(err);
         const isLast = i === retryBudget;
-        const willRetry = lastClass === "transient" && !isLast;
+        const willRetry =
+          lastClass === "transient" && !isLast && !deps.signal?.aborted;
         const delayMs = willRetry
           ? this.#config.baseDelayMs * Math.pow(2, i)
           : undefined;

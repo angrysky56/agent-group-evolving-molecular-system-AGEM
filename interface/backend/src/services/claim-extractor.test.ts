@@ -5,6 +5,7 @@ import {
   claimIdentity,
   claimAttributionIssue,
   claimToTypeQL,
+  extractIntoStore,
   schemaClaimFact,
   type ExtractedClaim,
 } from "./claim-extractor.js";
@@ -150,5 +151,45 @@ describe("claim identity for finding evidence", () => {
     expect(claimAttributionIssue(flattened, source)).toMatch(/flatten/i);
     expect(claimAttributionIssue(attributed, source)).toBeNull();
     expect(claimAttributionIssue(directDistinction, source)).toBeNull();
+  });
+
+  it("keeps a corpus-authored generic rule at corpus scope", () => {
+    const source =
+      "Combining: any theory that holds dominance is not Newcomb-adequate.";
+    const rule: ExtractedClaim = {
+      kind: "exclusion",
+      roles: {
+        excluder: "holds-dominance",
+        excluded: "newcomb-adequate",
+      },
+      scope: "corpus",
+    };
+
+    expect(claimAttributionIssue(rule, source)).toBeNull();
+  });
+});
+
+describe("claim extraction lifecycle", () => {
+  it("refuses to begin when the request deadline is already aborted", async () => {
+    const controller = new AbortController();
+    const reason = new Error("request deadline exceeded");
+    controller.abort(reason);
+
+    await expect(
+      extractIntoStore([], "corpus", { signal: controller.signal }),
+    ).rejects.toBe(reason);
+  });
+
+  it("reports proposal, persistence, and fallback telemetry", async () => {
+    const report = await extractIntoStore([], "corpus");
+
+    expect(report.telemetry).toMatchObject({
+      proposalMs: 0,
+      persistenceMs: 0,
+      batchCalls: 0,
+      fallbackBatches: 0,
+      fallbackSegmentCalls: 0,
+    });
+    expect(report.telemetry.totalMs).toBeGreaterThanOrEqual(0);
   });
 });

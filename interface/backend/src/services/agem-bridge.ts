@@ -24,7 +24,11 @@ import type {
   SystemEventType,
 } from "../../../shared/types.js";
 
-import { Orchestrator, MetaOrchestrator } from "#agem/orchestrator/index.js";
+import {
+  Orchestrator,
+  MetaOrchestrator,
+  type TopologicalManifest,
+} from "#agem/orchestrator/index.js";
 import { createProvider } from "./llm.js";
 import {
   GptTokenCounter,
@@ -49,6 +53,8 @@ export interface RunCycleOptions {
   buildSheaf?: boolean;
   analyzeSheaf?: boolean;
   autoSave?: boolean;
+  /** Reuse a topology chosen by the caller instead of paying another routing call. */
+  routingManifest?: TopologicalManifest;
 }
 
 export interface SectionedCycleSummary {
@@ -57,6 +63,7 @@ export interface SectionedCycleSummary {
   tokenCount: number;
   iteration: number;
   soc: SOCSnapshot["latest"];
+  elapsedMs: number;
 }
 
 export interface SectionedRunResult {
@@ -67,6 +74,11 @@ export interface SectionedRunResult {
     soc: SOCSnapshot;
   };
   artifacts: Artifact[];
+  telemetry: {
+    totalMs: number;
+    routingMode: "fixed-sequential";
+    routingCalls: 0;
+  };
 }
 
 /* ─── AGEM Engine Bridge ─── */
@@ -463,29 +475,40 @@ class AgemBridge {
 
     /*
      * The orchestrator reports its own per-phase timings, but runReasoning is
-     * only part of what a cycle costs: the MetaOrchestrator makes a routing LLM
-     * call first, and the topology it selects may make more. Measured once at
+     * only part of what a cycle costs: ordinary cycles make a routing LLM call
+     * first, while pre-routed section cycles reuse a fixed manifest. Measured once at
      * 174.3s of tool time against 53.1s of reported cycle — 121s unaccounted
      * for, entirely in this layer. Time it here so the whole cost is visible
      * rather than just the part that happened to be instrumented.
      */
     const cycleStart = Date.now();
-    const metaResult = await this.#metaOrchestrator.execute(
-      userMessage,
-      { accuracyRequirement: "standard" },
-      signal,
-      {
-        lcmEntries: options.lcmEntries,
-        buildSheaf: options.buildSheaf,
-        analyzeSheaf: options.analyzeSheaf,
-      },
-    );
+    const cycleOptions = {
+      lcmEntries: options.lcmEntries,
+      buildSheaf: options.buildSheaf,
+      analyzeSheaf: options.analyzeSheaf,
+    };
+    const metaResult = options.routingManifest
+      ? await this.#metaOrchestrator.executePlanned(
+          userMessage,
+          options.routingManifest,
+          signal,
+          cycleOptions,
+        )
+      : await this.#metaOrchestrator.execute(
+          userMessage,
+          { accuracyRequirement: "standard" },
+          signal,
+          cycleOptions,
+        );
     const totalMs = Date.now() - cycleStart;
     const reasoningMs = this.#orchestrator.getLastPhaseTimings().total ?? 0;
+    const outerPhase = options.routingManifest
+      ? "preplanned_overhead"
+      : "meta_routing+topology";
     console.log(
       `[AgemBridge] run_agem_cycle ${(totalMs / 1000).toFixed(1)}s — ` +
         `reasoning=${(reasoningMs / 1000).toFixed(1)}s ` +
-        `meta_routing+topology=${((totalMs - reasoningMs) / 1000).toFixed(1)}s`,
+        `${outerPhase}=${((totalMs - reasoningMs) / 1000).toFixed(1)}s`,
     );
 
     const state = this.getState();
@@ -623,10 +646,20 @@ class AgemBridge {
       );
     }
 
+    const sectionedStartedAt = Date.now();
     const summaries: SectionedCycleSummary[] = [];
     const artifacts: Artifact[] = [];
+    const routingManifest: TopologicalManifest = {
+      topologyType: "sequential_workflow",
+      requiredTools: [],
+      reflectionEnabled: false,
+      maxIterations: sections.length,
+      constraints: {},
+      rationale:
+        "Authored section boundaries already define one deterministic sequential workflow.",
+    };
     for (let index = 0; index < sections.length; index++) {
-      if (signal?.aborted) throw new Error("Aborted");
+      signal?.throwIfAborted();
       const section = sections[index]!;
       onProgress?.("section_progress", {
         index: index + 1,
@@ -634,6 +667,7 @@ class AgemBridge {
         heading: section.heading,
         subgraph: section.subgraph,
       });
+      const sectionStartedAt = Date.now();
       const result = await this.runCycle(
         section.text,
         onProgress,
@@ -644,6 +678,7 @@ class AgemBridge {
           buildSheaf: false,
           analyzeSheaf: false,
           autoSave: false,
+          routingManifest,
         },
       );
       artifacts.push(...result.artifacts);
@@ -653,10 +688,13 @@ class AgemBridge {
         tokenCount: section.tokenCount,
         iteration: result.state.iteration,
         soc: result.state.soc?.latest ?? null,
+        elapsedMs: Date.now() - sectionStartedAt,
       });
     }
 
+    signal?.throwIfAborted();
     await this.#orchestrator.rebuildAndAnalyzeRegistrySheaf();
+    signal?.throwIfAborted();
     const state = this.getState();
     await this.saveState();
     return {
@@ -667,6 +705,11 @@ class AgemBridge {
         soc: this.getSOCMetrics(),
       },
       artifacts,
+      telemetry: {
+        totalMs: Date.now() - sectionedStartedAt,
+        routingMode: "fixed-sequential",
+        routingCalls: 0,
+      },
     };
   }
 

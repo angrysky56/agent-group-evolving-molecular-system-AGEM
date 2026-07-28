@@ -198,6 +198,12 @@ const ConfigSchema = z.object({
   VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
   /** Maximum tool execution turns in a chat session before forcing completion. Default: 30 */
   CHAT_MAX_TURNS: z.coerce.number().default(30),
+  /** Hard wall-clock deadline for one chat request, including in-flight tools. */
+  CHAT_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(20 * 60 * 1000),
 
   // Tool execution: bounded recovery + side-effect-aware dispatch
   /**

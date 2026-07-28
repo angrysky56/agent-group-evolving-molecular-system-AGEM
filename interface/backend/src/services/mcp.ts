@@ -129,17 +129,26 @@ export class MCPManager {
     });
   }
 
-  async executeTool(serverName: string, toolName: string, args: any) {
+  async executeTool(
+    serverName: string,
+    toolName: string,
+    args: any,
+    signal?: AbortSignal,
+  ) {
     const client = this.clients.get(serverName);
     if (!client) {
       throw new Error(`MCP Server '${serverName}' not connected.`);
     }
 
     try {
-      const response: any = await client.callTool({
-        name: toolName,
-        arguments: args,
-      });
+      const response: any = await client.callTool(
+        {
+          name: toolName,
+          arguments: args,
+        },
+        undefined,
+        { signal },
+      );
 
       if (response && response.content) {
         // Concatenate text content

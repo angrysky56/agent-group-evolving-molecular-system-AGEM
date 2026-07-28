@@ -36,6 +36,16 @@ const hotHopOracle: SatOracle = async (formulas) => ({
 });
 
 describe("deriveClaimBlocks", () => {
+  it("stops before derivation when the request is aborted", async () => {
+    const controller = new AbortController();
+    const reason = new Error("deadline exceeded");
+    controller.abort(reason);
+
+    await expect(
+      deriveClaimBlocks([], { signal: controller.signal }),
+    ).rejects.toBe(reason);
+  });
+
   it("retains markdown position hints as provenance only", () => {
     expect(
       mapSegmentsToPositions([

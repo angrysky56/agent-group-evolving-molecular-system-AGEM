@@ -13,7 +13,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createWorkflowContract } from "./workflow-contract.js";
+import {
+  createWorkflowContract,
+  workflowToolOutcomeFromOutput,
+} from "./workflow-contract.js";
 
 const contested = () => true;
 const uncontested = () => false;
@@ -36,6 +39,24 @@ const itemById = (c: ReturnType<typeof analysed>, id: string) =>
   c.evaluate().items.find((i) => i.id === id)!;
 
 describe("WorkflowContract — derive", () => {
+  it("reads semantic success from the typed tool payload", () => {
+    expect(
+      workflowToolOutcomeFromOutput(
+        "extract_and_verify_claims",
+        JSON.stringify({ semanticsValidated: false, verdictKind: "inconclusive" }),
+      ),
+    ).toEqual({ semanticsValidated: false });
+    expect(
+      workflowToolOutcomeFromOutput(
+        "extract_and_verify_claims",
+        JSON.stringify({
+          semanticsValidated: true,
+          verdictKind: "corpus-contradiction",
+        }),
+      ),
+    ).toEqual({ semanticsValidated: true });
+  });
+
   it("is unsatisfied when only hand-authored logic ran", () => {
     const c = analysed(storeUp);
     c.record("evaluate_logical_consistency");
@@ -49,12 +70,25 @@ describe("WorkflowContract — derive", () => {
 
   it("is satisfied by the typed-claim path alone", () => {
     const c = analysed(storeUp);
-    c.record("extract_and_verify_claims");
+    c.record("extract_and_verify_claims", undefined, {
+      semanticsValidated: true,
+    });
 
     expect(itemById(c, "verify").satisfied).toBe(true);
     expect(itemById(c, "derive").satisfied).toBe(true);
     expect(c.evaluate().satisfied).toBe(true);
     expect(c.nudge()).toBeNull();
+  });
+
+  it("does not count an inconclusive typed extraction as verification", () => {
+    const c = analysed(storeUp);
+    c.record("extract_and_verify_claims", undefined, {
+      semanticsValidated: false,
+    });
+
+    expect(itemById(c, "verify").satisfied).toBe(false);
+    expect(itemById(c, "derive").satisfied).toBe(false);
+    expect(c.evaluate().satisfied).toBe(false);
   });
 
   it("does not demand the typed path when the claim store is down", () => {
@@ -116,7 +150,9 @@ describe("WorkflowContract — derive", () => {
     // It runs the same consistency engine internally, so a run that used only
     // the typed path must not be told it never verified anything.
     const c = analysed(storeUp);
-    c.record("extract_and_verify_claims");
+    c.record("extract_and_verify_claims", undefined, {
+      semanticsValidated: true,
+    });
     expect(itemById(c, "verify").satisfied).toBe(true);
   });
 

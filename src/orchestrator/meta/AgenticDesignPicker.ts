@@ -45,7 +45,11 @@ export class AgenticDesignPicker {
    * @param constraints - System-level constraints (latency, accuracy).
    * @returns A validated TopologicalManifest.
    */
-  async evaluate(prompt: string, constraints: PickerConstraints): Promise<TopologicalManifest> {
+  async evaluate(
+    prompt: string,
+    constraints: PickerConstraints,
+    signal?: AbortSignal,
+  ): Promise<TopologicalManifest> {
     const systemPrompt = `You are the AGEM Meta-Orchestrator Gatekeeper. 
 Your task is to analyze a user request and determine the optimal agentic topology based on the "Agentic Design Pattern Decision Tree".
 
@@ -83,12 +87,19 @@ Return ONLY a JSON object matching this schema:
   "rationale": string
 }`;
 
+    const timeoutSignal = constraints.timeoutMs
+      ? AbortSignal.timeout(constraints.timeoutMs)
+      : undefined;
+    const routingSignal =
+      signal && timeoutSignal
+        ? AbortSignal.any([signal, timeoutSignal])
+        : signal ?? timeoutSignal;
     const completion = await this.#llm.chat({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `Task: ${prompt}\nConstraints: ${JSON.stringify(constraints)}` }
       ],
-      signal: constraints.timeoutMs ? AbortSignal.timeout(constraints.timeoutMs) : undefined
+      signal: routingSignal,
     });
 
     try {

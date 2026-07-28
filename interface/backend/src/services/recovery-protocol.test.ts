@@ -134,6 +134,24 @@ describe("RecoveryProtocol — level 1 (bounded retry)", () => {
     expect(out.ok).toBe(false);
     expect(out.output).toMatch(/Not retried automatically/);
   });
+
+  it("does not retry after the enclosing request has been aborted", async () => {
+    const p = new RecoveryProtocol({ retryBudget: 3, baseDelayMs: 0 });
+    const controller = new AbortController();
+    const run = vi.fn(async () => {
+      controller.abort(new Error("request timed out"));
+      throw controller.signal.reason;
+    });
+
+    const out = await p.execute("pure-tool", {}, {
+      run,
+      sleep: noSleep,
+      signal: controller.signal,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("RecoveryProtocol — level 2 (deterministic patch)", () => {
