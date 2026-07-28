@@ -4,6 +4,7 @@ import {
   type ExtractedClaim,
   type ExtractionOutcome,
 } from "./claim-extractor.js";
+import type { PredicateAliasSuggestion } from "./predicate-aliases.js";
 
 export interface ClaimCommunity {
   id: number;
@@ -14,8 +15,7 @@ export interface ClaimCommunity {
 export interface PredicateMapping {
   source: string;
   canonical: string;
-  method: "ontology" | "embedding" | "repair" | "unchanged";
-  similarity?: number;
+  method: "ontology" | "repair" | "unchanged";
 }
 
 export interface DerivedClaimBlock {
@@ -33,7 +33,11 @@ export interface DerivedClaimBlock {
 export interface ClaimBlockDerivation {
   blocks: DerivedClaimBlock[];
   predicateMapping: PredicateMapping[];
+  /** Embedding candidates requiring human/ontology approval before use. */
+  predicateAliasSuggestions: PredicateAliasSuggestion[];
   sharedExistencePredicates: string[];
+  /** Automatically generated non-vacuity axioms, keyed by derived block. */
+  injectedAxioms: Record<string, string[]>;
   rejected: Array<{ segmentId: string; reason: string }>;
 }
 
@@ -156,6 +160,7 @@ async function resolvePredicates(
 ): Promise<{
   canonicalByLabel: Map<string, string>;
   mappings: Map<string, PredicateMapping>;
+  suggestions: Array<Omit<PredicateAliasSuggestion, "severity">>;
 }> {
   const ontology = new Map(
     Object.entries(options.ontology ?? {}).map(([alias, canonical]) => [
@@ -188,18 +193,19 @@ async function resolvePredicates(
     }
   }
 
+  for (const label of unique) {
+    if (canonicalByLabel.has(label)) continue;
+    const canonical = symbol(label);
+    canonicalByLabel.set(label, canonical);
+    mappings.set(label, {
+      source: label,
+      canonical,
+      method: "unchanged",
+    });
+  }
+
   if (!options.embedder || unique.length < 2) {
-    for (const label of unique) {
-      if (canonicalByLabel.has(label)) continue;
-      const canonical = symbol(label);
-      canonicalByLabel.set(label, canonical);
-      mappings.set(label, {
-        source: label,
-        canonical,
-        method: "unchanged",
-      });
-    }
-    return { canonicalByLabel, mappings };
+    return { canonicalByLabel, mappings, suggestions: [] };
   }
 
   const texts = unique.map((label) => label.replace(/[-_]+/g, " "));
@@ -211,12 +217,18 @@ async function resolvePredicates(
   const anchors = unique.filter(
     (label) => mappings.get(label)?.method === "ontology",
   );
-  const unmatched = unique.filter((label) => !canonicalByLabel.has(label));
+  const unmatched = unique.filter(
+    (label) => mappings.get(label)?.method === "unchanged",
+  );
+  const suggestions = new Map<
+    string,
+    Omit<PredicateAliasSuggestion, "severity">
+  >();
+  const suggestedToAnchor = new Set<string>();
 
-  // Explicit caller aliases are authoritative cluster anchors. Embeddings may
-  // attach an unmatched label to one, but may never merge two caller-supplied
-  // canonical symbols with each other.
-  for (const label of [...unmatched]) {
+  // Explicit caller aliases are useful comparison anchors, but similarity is
+  // evidence for review, not authority to rewrite the extracted formalization.
+  for (const label of unmatched) {
     const sourceVector = vectorByLabel.get(label)!;
     const best = anchors
       .map((anchor) => ({
@@ -229,68 +241,45 @@ async function resolvePredicates(
           b.similarity - a.similarity || a.anchor.localeCompare(b.anchor),
       )[0];
     if (!best) continue;
-    const canonical = canonicalByLabel.get(best.anchor)!;
-    canonicalByLabel.set(label, canonical);
-    mappings.set(label, {
+    const proposedCanonical = canonicalByLabel.get(best.anchor)!;
+    if (canonicalByLabel.get(label) === proposedCanonical) continue;
+    suggestedToAnchor.add(label);
+    suggestions.set(`${label}\0${best.anchor}`, {
       source: label,
-      canonical,
-      method: "embedding",
+      target: best.anchor,
+      proposedCanonical,
       similarity: best.similarity,
     });
   }
 
-  const free = unmatched.filter((label) => !canonicalByLabel.has(label));
-  const parent = new Map(free.map((label) => [label, label]));
-  const find = (label: string): string => {
-    const p = parent.get(label)!;
-    if (p === label) return label;
-    const root = find(p);
-    parent.set(label, root);
-    return root;
-  };
-  const union = (a: string, b: string): void => {
-    const left = find(a);
-    const right = find(b);
-    if (left !== right) parent.set(right, left);
-  };
+  const free = unmatched.filter((label) => !suggestedToAnchor.has(label));
   for (let i = 0; i < free.length; i++) {
     for (let j = i + 1; j < free.length; j++) {
-      if (
-        cosine(vectorByLabel.get(free[i])!, vectorByLabel.get(free[j])!) >=
-        threshold
-      ) {
-        union(free[i], free[j]);
-      }
-    }
-  }
-  const components = new Map<string, string[]>();
-  for (const label of free) {
-    const root = find(label);
-    components.set(root, [...(components.get(root) ?? []), label]);
-  }
-  for (const component of components.values()) {
-    const representative = [...component].sort(
-      (a, b) => symbol(a).length - symbol(b).length || a.localeCompare(b),
-    )[0];
-    const canonical = symbol(representative);
-    for (const label of component) {
-      canonicalByLabel.set(label, canonical);
-      mappings.set(label, {
-        source: label,
-        canonical,
-        method: label === representative ? "unchanged" : "embedding",
-        ...(label === representative
-          ? {}
-          : {
-              similarity: cosine(
-                vectorByLabel.get(label)!,
-                vectorByLabel.get(representative)!,
-              ),
-            }),
+      const similarity = cosine(
+        vectorByLabel.get(free[i])!,
+        vectorByLabel.get(free[j])!,
+      );
+      if (similarity < threshold) continue;
+      const [target, source] = [free[i], free[j]].sort(
+        (a, b) => symbol(a).length - symbol(b).length || a.localeCompare(b),
+      );
+      if (canonicalByLabel.get(source) === canonicalByLabel.get(target)) continue;
+      suggestions.set(`${source}\0${target}`, {
+        source,
+        target,
+        proposedCanonical: canonicalByLabel.get(target)!,
+        similarity,
       });
     }
   }
-  return { canonicalByLabel, mappings };
+  return {
+    canonicalByLabel,
+    mappings,
+    suggestions: [...suggestions.values()].sort(
+      (a, b) =>
+        a.source.localeCompare(b.source) || a.target.localeCompare(b.target),
+    ),
+  };
 }
 
 function communityFor(
@@ -355,7 +344,11 @@ export async function deriveClaimBlocks(
     rejected.push({ segmentId: outcome.segmentId, reason });
     return false;
   });
-  const { canonicalByLabel, mappings: predicateMapping } =
+  const {
+    canonicalByLabel,
+    mappings: predicateMapping,
+    suggestions: rawPredicateAliasSuggestions,
+  } =
     await resolvePredicates(
       eligible.flatMap((outcome) => roleLabels(outcome.claim)),
       options,
@@ -475,13 +468,34 @@ export async function deriveClaimBlocks(
       if (b.communityId === undefined) return -1;
       return a.communityId - b.communityId;
     });
+  const injectedAxioms = Object.fromEntries(
+    blocks.map((block) => [
+      block.name,
+      block.propositions.filter((formula) => /^exists\b/.test(formula)),
+    ]),
+  );
+  const predicateAliasSuggestions = rawPredicateAliasSuggestions.map(
+    (suggestion): PredicateAliasSuggestion => {
+      const sourceSymbol = canonicalByLabel.get(suggestion.source)!;
+      const targetSymbol = canonicalByLabel.get(suggestion.target)!;
+      const cooccurs = [...canonicalLabelsByGroup.values()].some(
+        (labels) => labels.has(sourceSymbol) && labels.has(targetSymbol),
+      );
+      return {
+        ...suggestion,
+        severity: cooccurs ? "warning" : "critical",
+      };
+    },
+  );
 
   return {
     blocks,
     predicateMapping: [...predicateMapping.values()].sort((a, b) =>
       a.source.localeCompare(b.source),
     ),
+    predicateAliasSuggestions,
     sharedExistencePredicates,
+    injectedAxioms,
     rejected,
   };
 }

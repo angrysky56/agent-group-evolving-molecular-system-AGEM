@@ -19,6 +19,7 @@ import { mcpManager } from "../services/mcp.js";
 import { scenarioService } from "../services/scenarios.js";
 import {
   computeLogicalCohomology,
+  configuredCohomologyOptions,
   makeMcpLogicOracle,
   summarizeCheckLog,
   type LogicalCohomologyOptions,
@@ -381,11 +382,11 @@ Required procedure for contested topics:
    Blocks must also SHARE predicate symbols. If block A says "travels(capability)" and block B says "distribution_bound(policy)", nothing connects them. Use the same predicate for the same idea across blocks, and negate it where a block denies it.
    A contradiction is normally expressed by one block asserting P and another asserting -P, or by a conditional in one block whose antecedent the others satisfy — so if the text contains a conditional ("X only if Y", "if X then not Y"), ENCODE IT AS A CONDITIONAL. Dropping it usually destroys the tension.
    **EVERY BLOCK OF UNIVERSALS NEEDS AN EXISTENTIAL WITNESS.** "all x (capability(x) -> travels(x))" is TRUE when nothing is a capability, so a set of pure "all x (...)" formulas is satisfied by the empty world and can never contradict. Whenever you write "all x (P(x) -> ...)" and P is supposed to be non-empty, also assert "exists x (P(x))". This has produced a real false "no contradiction" on a corpus that contained two.
-3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed), searching all subsets up to arity 4 for **minimal unsatisfiable sets** — sets of blocks that cannot all be true together, but every proper subset of which can.
+3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed). A model of the full set certifies every subset at once; an unsatisfiable full set triggers complete, monotone MUS enumeration unless a caller cap, budget, or undetermined oracle result prevents completion. A **minimal unsatisfiable set** is a set of blocks that cannot all be true together, but every proper subset of which can.
 4. **Read "verdict" and "frustrations". Do NOT read H¹.** "hasContradiction" is the answer; "frustrations" names the offending sets and their arity. H¹ is a topological summary that is mathematically pinned to 0 whenever there are 4 or more blocks, and cannot see frustrations above arity 3 at all — so "H¹ = 0" is NOT evidence of consistency and must never be reported as such. If "h1Note" is present it explains the discrepancy.
 5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing. **Read "truncationNote"** — it says WHICH cap stopped the search. If it names a budget limit, "checksRequiredForNextLevel" is the exact 'maxChecks' that settles the question: call the tool again passing that value. Truncation is a setting, not a capability ceiling — never report it as "the tool cannot search further".
-6. Report the frustrated sets whenever "hasContradiction" is true, and check "checkFailures".
-7. **If "resultIsVacuous" is true, you have NOT tested anything.** The encoding made "consistent" a foregone conclusion. Read "formalizationWarnings", fix the formulas, and call the tool again. Reporting "no contradiction" from a vacuous result is a false finding — say the formalization failed instead.
+6. Report the frustrated sets whenever "hasContradiction" is true, and check "frustrationsComplete" plus "checkFailures". A found MUS remains evidence when enumeration is incomplete, but it is not proof that no additional MUS exists.
+7. **If "resultIsVacuous" is true, the overall verdict is invalid.** With no contradiction, the encoding made "consistent" a foregone conclusion. If contradictions were found, the listed clashes remain evidence, but critical alias/arity defects can hide additional ones. Read "formalizationWarnings", fix the formulas, and call the tool again. Never report a clean consistency or complete contradiction inventory from a vacuous result.
 
 You may also call mcp-logic directly for one-off proofs/counterexamples:
 
@@ -551,7 +552,7 @@ ${skillContent}`,
               kind: {
                 type: "string",
                 description:
-                  "Optional: 'internal' | 'pair' | 'triple' | 'set' | 'core'.",
+                  "Optional: 'internal' | 'pair' | 'triple' | 'set' | 'core-probe' | 'core'.",
               },
               verdict: {
                 type: "string",
@@ -599,7 +600,7 @@ ${skillContent}`,
                 type: "object",
                 additionalProperties: { type: "string" },
                 description:
-                  "Optional audited alias-to-canonical predicate map, e.g. {\"arbitrariness\":\"arbitrary\",\"assignments\":\"assignment\"}. Exact aliases override embedding clustering. Every applied merge is returned in predicateMapping.",
+                  "Optional audited alias-to-canonical predicate map, e.g. {\"arbitrariness\":\"arbitrary\",\"assignments\":\"assignment\"}. Only this audited map and deterministic clause-label repairs rewrite formulas. Embedding similarities are returned separately as predicateAliasSuggestions and are never applied silently.",
               },
               sharedExistencePredicates: {
                 type: "array",
@@ -1420,7 +1421,9 @@ ${skillContent}`,
                 // H¹ is pinned at 0 for most realistic block counts, so
                 // putting it first invited exactly the wrong reading.
                 const verdict = result.resultIsVacuous
-                  ? `INVALID FORMALIZATION — the consistency result is VACUOUS and must not be reported as a finding. ` +
+                  ? (result.hasContradiction
+                      ? `CONTRADICTION(S) FOUND, BUT FORMALIZATION INCOMPLETE — the listed clashes are valid evidence, but critical symbol defects can hide additional contradictions. `
+                      : `INVALID FORMALIZATION — the consistency result is VACUOUS and must not be reported as a finding. `) +
                     result.formalizationWarnings
                       .filter((w) => w.severity === "critical")
                       .map((w) => w.message)
@@ -1442,7 +1445,11 @@ ${skillContent}`,
                             (f.coreTruncated ? " [core not fully minimised]" : "")
                           );
                         })
-                        .join("; ")
+                        .join("; ") +
+                      (result.frustrationsComplete
+                        ? ""
+                        : ` WARNING: MUS enumeration is incomplete; more minimal ` +
+                          `contradictions may exist. ${result.frustrationSearchNote ?? result.truncationNote ?? ""}`)
                     : result.searchTruncated
                       ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, ` +
                         `so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""} ` +
@@ -1473,6 +1480,9 @@ ${skillContent}`,
                           : "",
                         result.checkFailures.length
                           ? `${result.checkFailures.length} check failure(s)`
+                          : "",
+                        result.uncheckedBlocks.length
+                          ? `${result.uncheckedBlocks.length} unchecked after the call budget ended`
                           : "",
                       ]
                         .filter(Boolean)
@@ -1618,10 +1628,28 @@ ${skillContent}`,
                   const oracle = makeMcpLogicOracle((server, tool, a) =>
                     mcpManager.executeTool(server, tool, a),
                   );
-                  const result = await computeLogicalCohomology(blocks, oracle, {
-                    maxChecks: settings.all.LOGIC_MAX_CHECKS,
-                    maxArity: settings.all.LOGIC_MAX_ARITY,
-                  });
+                  const predicateAliases = Object.fromEntries(
+                    derivation.predicateMapping
+                      .filter((mapping) => {
+                        const source = mapping.source
+                          .trim()
+                          .replace(/[^a-zA-Z0-9]+/g, "_")
+                          .replace(/^_+|_+$/g, "")
+                          .toLowerCase();
+                        return source !== mapping.canonical;
+                      })
+                      .map((mapping) => [mapping.source, mapping.canonical]),
+                  );
+                  const result = await computeLogicalCohomology(
+                    blocks,
+                    oracle,
+                    {
+                      ...configuredCohomologyOptions(settings.all),
+                      predicateAliases,
+                      predicateAliasSuggestions:
+                        derivation.predicateAliasSuggestions,
+                    },
+                  );
                   const evaluatedNames = new Set(result.vertices);
                   const supporting = selected.filter((block) =>
                     evaluatedNames.has(block.name),
@@ -1673,6 +1701,9 @@ ${skillContent}`,
                     result.checkFailures.length
                       ? `${result.checkFailures.length} check failure(s)`
                       : "",
+                    result.uncheckedBlocks.length
+                      ? `${result.uncheckedBlocks.length} unchecked after the call budget ended`
+                      : "",
                   ].filter(Boolean);
                   const coverage =
                     evaluated === distinct.length
@@ -1691,13 +1722,19 @@ ${skillContent}`,
                     checkLog,
                   });
                   const verdict = result.resultIsVacuous
-                    ? `INVALID FORMALIZATION — the derived consistency result is VACUOUS and must not be reported as a finding.`
+                    ? (result.hasContradiction
+                        ? `CONTRADICTION(S) FOUND, BUT FORMALIZATION INCOMPLETE — the listed clashes are valid evidence, but critical predicate-alias defects can hide additional contradictions. Review predicateAliasSuggestions, supply an audited ontology map, and re-run.`
+                        : `INVALID FORMALIZATION — the derived consistency result is VACUOUS and must not be reported as a finding. Review formalizationWarnings and predicateAliasSuggestions, then re-run.`)
                     : result.hasContradiction
                       ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal ` +
                         `unsatisfiable set(s): ` +
                         result.frustrations
                           .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
-                          .join("; ")
+                          .join("; ") +
+                        (result.frustrationsComplete
+                          ? ""
+                          : ` WARNING: MUS enumeration is incomplete; more minimal ` +
+                            `contradictions may exist. ${result.frustrationSearchNote ?? result.truncationNote ?? ""}`)
                       : result.searchTruncated
                         ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""}`
                         : `No contradiction among ${evaluated} evaluated extracted claim blocks up to arity ${result.searchedToArity}.`;
@@ -1731,6 +1768,7 @@ ${skillContent}`,
                       predicateMapping: derivation.predicateMapping,
                       sharedExistencePredicates:
                         derivation.sharedExistencePredicates,
+                      injectedAxioms: derivation.injectedAxioms,
                       blockAssignments: selected.map((block) => ({
                         block: block.name,
                         communityId: block.communityId,

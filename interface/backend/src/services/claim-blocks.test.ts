@@ -101,7 +101,7 @@ describe("deriveClaimBlocks", () => {
     );
   });
 
-  it("clusters semantically equivalent labels and exposes the similarity used", async () => {
+  it("suggests semantic aliases without silently merging predicates", async () => {
     class FakeEmbedder implements IEmbedder {
       async embed(text: string): Promise<Float64Array> {
         return new Float64Array(
@@ -132,21 +132,65 @@ describe("deriveClaimBlocks", () => {
           polarity: "denies",
         }),
       ],
-      { embedder: new FakeEmbedder(), similarityThreshold: 0.9 },
+      {
+        embedder: new FakeEmbedder(),
+        similarityThreshold: 0.9,
+        positionBySegment: { s1: "Affinity", s2: "Stereochemical" },
+      },
     );
 
-    expect(result.blocks[0].propositions).toEqual(
+    expect(result.blocks.flatMap((block) => block.propositions)).toEqual(
       expect.arrayContaining([
         "all x (affinity(x) -> causes_assignment(x))",
-        "all x (affinity(x) -> -causes_assignment(x))",
+        "all x (stereochemical_interaction(x) -> -causes_assignment(x))",
       ]),
     );
     expect(result.predicateMapping).toContainEqual({
       source: "stereochemical-interaction",
-      canonical: "affinity",
-      method: "embedding",
-      similarity: 1,
+      canonical: "stereochemical_interaction",
+      method: "unchanged",
     });
+    expect(result.predicateAliasSuggestions).toContainEqual({
+      source: "stereochemical-interaction",
+      target: "affinity",
+      proposedCanonical: "affinity",
+      similarity: 1,
+      severity: "critical",
+    });
+  });
+
+  it("does not suggest labels already unified by an audited ontology", async () => {
+    class CanonicalEmbedder implements IEmbedder {
+      async embed(text: string): Promise<Float64Array> {
+        const vectors: Record<string, number[]> = {
+          assignment: [1, 0, 0],
+          assignments: [1, 0, 0],
+          first: [0, 1, 0],
+          second: [0, 0, 1],
+        };
+        return new Float64Array(vectors[text] ?? [0, 0, 0]);
+      }
+    }
+
+    const result = await deriveClaimBlocks(
+      [
+        accepted("a", "claim:a", {
+          kind: "exclusion",
+          roles: { excluder: "assignments", excluded: "first" },
+        }),
+        accepted("b", "claim:b", {
+          kind: "exclusion",
+          roles: { excluder: "assignment", excluded: "second" },
+        }),
+      ],
+      {
+        ontology: { assignments: "assignment" },
+        embedder: new CanonicalEmbedder(),
+        similarityThreshold: 0.9,
+      },
+    );
+
+    expect(result.predicateAliasSuggestions).toEqual([]);
   });
 
   it("rejects pronoun subjects and repairs clause-shaped predicate labels", async () => {
@@ -278,5 +322,30 @@ describe("deriveClaimBlocks", () => {
         block.propositions.includes("exists x (assignment(x))"),
       ),
     ).toBe(true);
+    expect(result.injectedAxioms["position:Stereochemical"]).toEqual(
+      expect.arrayContaining([
+        "exists x (affinity(x))",
+        "exists x (assignment(x))",
+      ]),
+    );
+    expect(result.injectedAxioms["position:Frozen accident"]).toEqual(
+      expect.arrayContaining([
+        "exists x (historical_accident(x))",
+        "exists x (assignment(x))",
+      ]),
+    );
+  });
+
+  it("audits compound existence witnesses generated for distinctions", async () => {
+    const result = await deriveClaimBlocks([
+      accepted("d", "claim:d", {
+        kind: "distinction",
+        roles: { distinguished: ["phenomenal", "access"] },
+      }),
+    ]);
+
+    expect(result.injectedAxioms["community:unassigned"]).toContain(
+      "exists x (phenomenal(x) & -access(x))",
+    );
   });
 });

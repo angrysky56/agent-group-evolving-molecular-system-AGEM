@@ -12,6 +12,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeLogicalCohomology,
+  configuredCohomologyOptions,
   analyzeFormalization,
   type SatOracle,
   type LogicalBlock,
@@ -135,6 +136,9 @@ describe("regression: frustrations above arity 3", () => {
     expect(r.frustrations).toHaveLength(1);
     expect(r.frustrations[0].arity).toBe(4);
     expect(r.frustrations[0].blocks.sort()).toEqual(["A", "B", "C", "D"]);
+    expect(r.frustrationsComplete).toBe(true);
+    // Four internal checks + one full probe + four deletion probes.
+    expect(r.checksPerformed).toBeLessThanOrEqual(9);
   });
 
   it("confirms every triple really was satisfiable — so H¹ sees nothing", async () => {
@@ -187,6 +191,22 @@ describe("minimality", () => {
     expect(r.h0).toBe(1);
   });
 
+  it("enumerates every independent MUS without walking the powerset", async () => {
+    const r = await computeLogicalCohomology(
+      [
+        { name: "P", propositions: ["p(x)"] },
+        { name: "NP", propositions: ["-p(x)"] },
+        { name: "Q", propositions: ["q(x)"] },
+        { name: "NQ", propositions: ["-q(x)"] },
+      ],
+      sat,
+    );
+    expect(
+      r.frustrations.map((f) => [...f.blocks].sort().join("|")).sort(),
+    ).toEqual(["NP|P", "NQ|Q"]);
+    expect(r.frustrationsComplete).toBe(true);
+  });
+
   it("excludes internally inconsistent blocks before searching", async () => {
     const r = await computeLogicalCohomology(
       [
@@ -198,7 +218,9 @@ describe("minimality", () => {
     expect(r.internallyInconsistent).toEqual(["SELF"]);
     expect(r.vertices).not.toContain("SELF");
     expect(r.hasContradiction).toBe(true);
-    expect(r.frustrations[0].blocks.sort()).toEqual(["NQ", "P", "PQ"]);
+    expect(r.frustrations.map((f) => f.blocks.sort())).toEqual(
+      expect.arrayContaining([["SELF"], ["NQ", "P", "PQ"]]),
+    );
   });
 });
 
@@ -210,6 +232,52 @@ describe("consistent corpora stay clean", () => {
     expect(r.h0).toBe(1);
     expect(r.h1).toBe(0);
     expect(r.h1Note).toBeUndefined();
+  });
+
+  it("certifies the full set once and derives the complete complex", async () => {
+    const calls: string[][] = [];
+    const modelOracle: SatOracle = async (formulas) => {
+      calls.push(formulas);
+      return { consistent: true, domainSize: 2 };
+    };
+    const r = await computeLogicalCohomology(filler(10), modelOracle);
+
+    expect(calls).toHaveLength(11); // 10 internal checks + one full-set model.
+    expect(r.checksPerformed).toBe(11);
+    expect(r.fullSetCertificate).toEqual({ modelFound: true, domainSize: 2 });
+    expect(r.homologyDerivedAnalytically).toBe(true);
+    expect(r.consistentPairs).toHaveLength(45);
+    expect(r.h0).toBe(1);
+    expect(r.h1).toBe(0);
+    expect(r.searchedToArity).toBe(10);
+    expect(r.searchTruncated).toBe(false);
+  });
+
+  it("keeps certified homology bounded at the 120-block extraction cap", async () => {
+    const r = await computeLogicalCohomology(
+      filler(120),
+      async () => ({ consistent: true, domainSize: 2 }),
+    );
+
+    expect(r.checksPerformed).toBe(121);
+    expect(r.consistentPairs).toHaveLength(7_140);
+    expect(r.homologyDerivedAnalytically).toBe(true);
+    expect(r.rankD1).toBe(119);
+    expect(r.rankD2).toBe(7_021);
+    expect(r.h1).toBe(0);
+  });
+
+  it("reports full-signature components without using them as a search prune", async () => {
+    const r = await computeLogicalCohomology(
+      [
+        { name: "A", propositions: ["p(x)"] },
+        { name: "B", propositions: ["p(x) -> q(x)"] },
+        { name: "C", propositions: ["z(x)"] },
+      ],
+      async () => ({ consistent: true }),
+    );
+    expect(r.signatureComponents).toEqual([["A", "B"], ["C"]]);
+    expect(r.fullSetCertificate?.modelFound).toBe(true);
   });
 });
 
@@ -262,7 +330,10 @@ describe("formalization defects — vacuous consistency", () => {
   });
 
   it("marks the whole result vacuous rather than reporting a clean bill", async () => {
-    const r = await computeLogicalCohomology(REAL_RUN, sat);
+    const r = await computeLogicalCohomology(
+      REAL_RUN,
+      async () => ({ consistent: true }),
+    );
     expect(r.hasContradiction).toBe(false);
     expect(r.resultIsVacuous).toBe(true);
   });
@@ -277,6 +348,39 @@ describe("formalization defects — vacuous consistency", () => {
     const r = await computeLogicalCohomology(TRIPLE, sat);
     expect(r.hasContradiction).toBe(true);
     expect(r.resultIsVacuous).toBe(false);
+  });
+
+  it("keeps critical alias drift fatal when another contradiction is found", async () => {
+    const r = await computeLogicalCohomology(
+      [
+        {
+          name: "Epiphenomenalism",
+          propositions: [
+            "all x (mental_states(x) -> -causes_physical(x))",
+            "exists x (mental_states(x))",
+          ],
+        },
+        {
+          name: "Interactionism",
+          propositions: [
+            "all x (mental(x) -> causes_physical(x))",
+            "exists x (mental(x))",
+          ],
+        },
+        { name: "P", propositions: ["p(x)"] },
+        { name: "NP", propositions: ["-p(x)"] },
+      ],
+      sat,
+    );
+
+    expect(r.hasContradiction).toBe(true);
+    expect(r.formalizationWarnings).toContainEqual(
+      expect.objectContaining({
+        code: "predicate_aliasing_suspected",
+        severity: "critical",
+      }),
+    );
+    expect(r.resultIsVacuous).toBe(true);
   });
 
   /*
@@ -361,6 +465,67 @@ describe("formalization defects — vacuous consistency", () => {
       { name: "B", propositions: ["-travels(cap)"] },
     ]);
     expect(w.map((x) => x.code)).not.toContain("isolated_predicates");
+  });
+
+  it("flags predicate drift that can hide a cross-block contradiction", () => {
+    const warnings = analyzeFormalization([
+      {
+        name: "Epiphenomenalism",
+        propositions: [
+          "all x (mental_states(x) -> -causes_physical(x))",
+          "exists x (mental_states(x))",
+        ],
+      },
+      {
+        name: "Interactionism",
+        propositions: [
+          "all x (mental(x) -> causes_physical(x))",
+          "exists x (mental(x))",
+        ],
+      },
+    ]);
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        code: "predicate_aliasing_suspected",
+        severity: "critical",
+        detail: expect.arrayContaining([
+          expect.stringMatching(/mental.*mental_states|mental_states.*mental/),
+        ]),
+      }),
+    );
+  });
+
+  it("surfaces embedding alias suggestions without treating them as applied", async () => {
+    const suggestion = {
+      source: "stereochemical-interaction",
+      target: "affinity",
+      proposedCanonical: "affinity",
+      similarity: 0.97,
+      severity: "critical" as const,
+    };
+    const r = await computeLogicalCohomology(
+      [
+        { name: "Stereochemical", propositions: ["affinity(x)"] },
+        {
+          name: "Alternative",
+          propositions: ["stereochemical_interaction(x)"],
+        },
+      ],
+      async () => ({ consistent: true }),
+      { predicateAliasSuggestions: [suggestion] },
+    );
+
+    expect(r.predicateAliases).toEqual({});
+    expect(r.predicateAliasSuggestions).toEqual([suggestion]);
+    expect(r.formalizationWarnings).toContainEqual(
+      expect.objectContaining({
+        code: "predicate_aliasing_suspected",
+        severity: "critical",
+        detail: expect.arrayContaining([
+          expect.stringMatching(/stereochemical-interaction.*affinity/),
+        ]),
+      }),
+    );
   });
 });
 
@@ -466,8 +631,28 @@ describe("search accounting is honest", () => {
   });
 
   it("flags truncation when the check budget runs out", async () => {
-    const r = await computeLogicalCohomology(filler(8), sat, { maxChecks: 5 });
+    const r = await computeLogicalCohomology(filler(8), sat, {
+      maxChecks: 5,
+      forceExhaustive: true,
+    });
     expect(r.searchTruncated).toBe(true);
+  });
+
+  it("treats maxChecks as a hard cap including internal probes", async () => {
+    let calls = 0;
+    const r = await computeLogicalCohomology(
+      filler(8),
+      async () => {
+        calls++;
+        return { consistent: true };
+      },
+      { maxChecks: 3 },
+    );
+    expect(calls).toBe(3);
+    expect(r.checksPerformed).toBe(3);
+    expect(r.uncheckedBlocks).toHaveLength(5);
+    expect(r.searchTruncated).toBe(true);
+    expect(r.truncationNote).toMatch(/internal/i);
   });
 
   /*
@@ -477,12 +662,16 @@ describe("search accounting is honest", () => {
    * and name the budget that settles it.
    */
   it("says the budget stopped it, and names the budget that would not", async () => {
-    const r = await computeLogicalCohomology(filler(8), sat, { maxChecks: 5 });
+    const r = await computeLogicalCohomology(filler(8), sat, {
+      maxChecks: 5,
+      forceExhaustive: true,
+    });
     expect(r.truncationNote).toMatch(/BUDGET limit, not a capability limit/);
     expect(r.checksRequiredForNextLevel).toBeGreaterThan(5);
     // The number must be actionable: re-running at it completes that level.
     const rerun = await computeLogicalCohomology(filler(8), sat, {
       maxChecks: r.checksRequiredForNextLevel!,
+      forceExhaustive: true,
     });
     expect(rerun.searchedToArity).toBeGreaterThan(r.searchedToArity);
   });
@@ -500,9 +689,29 @@ describe("search accounting is honest", () => {
     expect(r.truncationNote).toBeUndefined();
   });
 
+  it("auto-exhausts ten extracted blocks when arity comes from config defaults", async () => {
+    const options = configuredCohomologyOptions({
+      LOGIC_MAX_ARITY: 6,
+      LOGIC_MAX_CHECKS: 50_000,
+    });
+    expect(options).toEqual({ defaultMaxArity: 6, maxChecks: 50_000 });
+    const r = await computeLogicalCohomology(
+      filler(10),
+      async () => ({ consistent: true }),
+      options,
+    );
+    expect(r.searchedToArity).toBe(10);
+    expect(r.searchTruncated).toBe(false);
+    expect(r.truncationNote).toBeUndefined();
+  });
+
   it("still honours the arity cap when the lattice does NOT fit the budget", async () => {
     // 2^20 subsets is far past any sane budget, so the guard must still apply.
-    const r = await computeLogicalCohomology(filler(20), sat, { maxChecks: 500 });
+    const r = await computeLogicalCohomology(
+      filler(20),
+      async () => ({ consistent: true }),
+      { maxChecks: 500, forceExhaustive: true },
+    );
     expect(r.searchedToArity).toBeLessThan(20);
     expect(r.searchTruncated).toBe(true);
   });
@@ -555,5 +764,123 @@ describe("search accounting is honest", () => {
     const r = await computeLogicalCohomology(TRIPLE, flaky);
     expect(r.checkFailures.length).toBeGreaterThan(0);
     expect(r.hasContradiction).toBe(false);
+  });
+
+  it("falls back after an undetermined full probe and marks the search incomplete", async () => {
+    const fallback = makeOracle();
+    const flaky: SatOracle = async (formulas) =>
+      formulas.length === 4
+        ? { consistent: null, note: "full-set timeout" }
+        : fallback(formulas);
+    const r = await computeLogicalCohomology(
+      [...TRIPLE, ...filler(1)],
+      flaky,
+    );
+    expect(r.frustrations[0]?.blocks.sort()).toEqual(["NQ", "P", "PQ"]);
+    expect(r.frustrationsComplete).toBe(false);
+    expect(r.searchTruncated).toBe(true);
+    expect(r.truncationNote).toMatch(/undetermined/i);
+  });
+});
+
+describe("high-arity regression", () => {
+  it("finds an 8-wise MUS that the old arity-6 ladder misses", async () => {
+    const blocks = Array.from({ length: 8 }, (_, i) => ({
+      name: `B${i + 1}`,
+      propositions: [`marker_${i + 1}(x)`],
+    }));
+    const allMarkers = new Set(blocks.flatMap((block) => block.propositions));
+    const oracle: SatOracle = async (formulas) => ({
+      consistent: ![...allMarkers].every((marker) => formulas.includes(marker)),
+    });
+
+    const oldPath = await computeLogicalCohomology(blocks, oracle, {
+      maxArity: 6,
+      forceExhaustive: true,
+    });
+    expect(oldPath.hasContradiction).toBe(false);
+    expect(oldPath.searchTruncated).toBe(true);
+
+    const optimized = await computeLogicalCohomology(blocks, oracle);
+    expect(optimized.frustrations).toHaveLength(1);
+    expect(optimized.frustrations[0].arity).toBe(8);
+    expect(optimized.frustrationsComplete).toBe(true);
+    expect(optimized.checksPerformed).toBe(17);
+  });
+
+  it("derives a complete 2-skeleton analytically around a high-arity MUS", async () => {
+    const blocks = Array.from({ length: 15 }, (_, i) => ({
+      name: `H${i + 1}`,
+      propositions: [`high_marker_${i + 1}(x)`],
+    }));
+    const allMarkers = new Set(blocks.flatMap((block) => block.propositions));
+    const oracle: SatOracle = async (formulas) => ({
+      consistent: ![...allMarkers].every((marker) => formulas.includes(marker)),
+    });
+
+    const r = await computeLogicalCohomology(blocks, oracle);
+
+    expect(r.frustrations).toEqual([
+      expect.objectContaining({ arity: 15, blocks: blocks.map((b) => b.name) }),
+    ]);
+    expect(r.checksPerformed).toBe(31);
+    expect(r.homologyDerivedAnalytically).toBe(true);
+    expect(r.rankD2).toBe(91);
+    expect(r.h1).toBe(0);
+  });
+
+  it("keeps sparse homology bounded for a pair MUS at the 120-block cap", async () => {
+    const blocks: LogicalBlock[] = [
+      { name: "P", propositions: ["p(x)"] },
+      { name: "NP", propositions: ["-p(x)"] },
+      ...Array.from({ length: 118 }, (_, index) => ({
+        name: `S${index + 1}`,
+        propositions: [`sparse_marker_${index + 1}(x)`],
+      })),
+    ];
+    const oracle: SatOracle = async (formulas) => ({
+      consistent: !(formulas.includes("p(x)") && formulas.includes("-p(x)")),
+    });
+
+    const r = await computeLogicalCohomology(blocks, oracle);
+
+    expect(r.frustrations).toEqual([
+      expect.objectContaining({ arity: 2, blocks: ["P", "NP"] }),
+    ]);
+    expect(r.checksPerformed).toBe(241);
+    expect(r.consistentPairs).toHaveLength(7_139);
+    expect(r.homologyDerivedAnalytically).toBe(false);
+    expect(r.h1).toBe(0);
+  });
+});
+
+describe("optimized/exhaustive equivalence", () => {
+  it("agrees on the contradiction verdict and complete MUS set", async () => {
+    const corpora: LogicalBlock[][] = [
+      TRIPLE,
+      QUAD_FOR_DEFAULTS,
+      filler(5),
+      [
+        { name: "P", propositions: ["p(x)"] },
+        { name: "NP", propositions: ["-p(x)"] },
+        { name: "Q", propositions: ["q(x)"] },
+        { name: "NQ", propositions: ["-q(x)"] },
+      ],
+    ];
+    const musKeys = (result: Awaited<ReturnType<typeof computeLogicalCohomology>>) =>
+      result.frustrations
+        .map((frustration) => [...frustration.blocks].sort().join("|"))
+        .sort();
+
+    for (const corpus of corpora) {
+      const optimized = await computeLogicalCohomology(corpus, sat);
+      const exhaustive = await computeLogicalCohomology(corpus, sat, {
+        forceExhaustive: true,
+      });
+      expect(optimized.hasContradiction).toBe(exhaustive.hasContradiction);
+      expect(musKeys(optimized)).toEqual(musKeys(exhaustive));
+      expect(optimized.frustrationsComplete).toBe(true);
+      expect(exhaustive.frustrationsComplete).toBe(true);
+    }
   });
 });

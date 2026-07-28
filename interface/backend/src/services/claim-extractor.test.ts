@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalClaim,
+  buildClaimExtractionPrompt,
   claimIdentity,
   claimToTypeQL,
   schemaClaimFact,
@@ -65,5 +66,15 @@ describe("claim identity for finding evidence", () => {
       "schema/claims.tql",
       "schema/findings.tql",
     ]);
+  });
+
+  it("includes the running predicate glossary in later extraction prompts", () => {
+    const prompt = buildClaimExtractionPrompt("Minds cause physical events.", [
+      "mental-state",
+      "causes-physical",
+    ]);
+    expect(prompt).toContain("RUNNING PREDICATE GLOSSARY");
+    expect(prompt).toContain("mental-state");
+    expect(prompt).toContain("Reuse a glossary label");
   });
 });

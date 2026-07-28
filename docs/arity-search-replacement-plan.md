@@ -1,8 +1,39 @@
 # Plan: replace the arity ladder in the consistency search
 
-**Target file:** `interface/backend/src/services/logicalCohomology.ts`
-**Callers:** `interface/backend/src/routes/chat.ts` (~L1409), `services/claim-blocks.ts`
+**Target files:** `interface/backend/src/services/logicalCohomology.ts`,
+`services/claim-blocks.ts`, `services/claim-extractor.ts`
+**Caller:** `interface/backend/src/routes/chat.ts`
 **Config:** `interface/backend/src/config.ts` (`LOGIC_MAX_ARITY`, `LOGIC_MAX_CHECKS`)
+
+## Implementation outcome (2026-07-27)
+
+This plan is implemented with two scientific corrections to the original
+design: UNSAT localisation now enumerates every MUS with monotone
+branch-and-bound instead of returning one QuickXplain core, and signature
+components are reported but are not used as a search prune. The latter is not
+sound from predicate overlap alone because equality/domain-cardinality
+constraints can couple otherwise disjoint signatures.
+
+| Concern | Implemented behavior |
+|---|---|
+| Configured arity | `defaultMaxArity` is distinct from caller-supplied `maxArity`; extraction defaults no longer disable auto-exhaust. |
+| Full set is SAT | One positive model certifies every subset. Pairs and homology are derived analytically; triangles and dense boundary matrices are not materialized. |
+| Full set is UNSAT | Deletion minimization plus monotone branch-and-bound enumerates all MUSes when the oracle and budget are conclusive. |
+| Homology memory | Complete 2-skeletons use closed-form ranks; other complexes use sparse incremental triangle-boundary elimination. No path allocates the former `edges × triangles` dense matrix. |
+| Oracle/budget uncertainty | `frustrationsComplete`, `uncheckedBlocks`, `searchTruncated`, and explicit notes prevent partial work from being reported as success. `maxChecks` caps every oracle call, including internal and formula-core probes. |
+| Predicate similarity | Embeddings produce `predicateAliasSuggestions`; they never rewrite formulas. Only an audited ontology map and deterministic clause-label repair are applied. |
+| Non-vacuity | Typed extraction injects existence commitments and returns them in `injectedAxioms`. Empty-model-only results remain critical failures. |
+
+The original recorded run
+`knowledge_base/runs/2026-07-28T00-10-03-376Z_mwcz1i.jsonl` confirmed P0 case
+2: `extract_and_verify_claims` passed `LOGIC_MAX_ARITY=6` as an explicit cap.
+Its audit log contained 847 oracle calls (10 internal plus 837 subset calls),
+searched only through arity 6, and reported truncation. Replaying the exact 10
+derived blocks through the local Mace4 oracle after this implementation took
+11 calls (10 internal plus one full-set model), searched through arity 10, and
+reported `searchTruncated: false` in 0.1 seconds. The verdict remained
+`hasContradiction: false`; suspected predicate aliasing was explicitly reported
+instead of silently merged.
 
 ## Context
 
@@ -25,12 +56,13 @@ next one's result meaningful.
   testing a subset of constraints. It does not apply.
 - **Do not just raise `LOGIC_MAX_ARITY` to 10.** That buys a more expensive
   confirmation of a verdict that is currently vacuous for other reasons (P3, P4).
-- **Do not delete the lattice search.** It is the only thing that enumerates
-  *all* MUSes. It becomes the fallback path, not the default path.
+- **Do not delete the lattice search.** It remains the explicit-arity and
+  verification fallback even though the default branch-and-bound path also
+  enumerates all MUSes.
 
 ---
 
-## P0 — Diagnose why auto-exhaust did not fire (no code change yet)
+## P0 — Diagnose why auto-exhaust did not fire — complete
 
 There is already an auto-exhaust rule in `computeLogicalCohomology`:
 
@@ -58,18 +90,18 @@ With `vertices.length = 10` this is `1013 <= 50000` → `effectiveMaxArity = 10`
 3. `vertices.length < 10` — some blocks were dropped as internally inconsistent
    or by `LOGIC_MAX_BLOCKS`, changing the bound.
 
-**Task:** read the run's `logic_check_log` event from the run JSONL plus the
-recorded tool args, and determine which. Report the answer before writing code.
-If it is (2), fix it: config defaults must reach `DEFAULT_COHOMOLOGY_OPTIONS`,
-never `options.maxArity`. Add a regression test asserting that a 10-block
-extraction run with default config reports `searchTruncated: false`.
+The run proved case 2. The extraction caller converted the configured default
+into `options.maxArity`, making it indistinguishable from a deliberate caller
+cap. `configuredCohomologyOptions()` now supplies `defaultMaxArity` instead,
+while the hand-authored tool still sets `maxArity` only when its argument is
+present. A 10-block regression covers this distinction.
 
-**Acceptance:** the consciousness-corpus run reproduces with
-`searchedToArity: 10`, or the reason it cannot is documented.
+**Acceptance result:** real-Mace4 replay produced `searchedToArity: 10` and
+`searchTruncated: false`.
 
 ---
 
-## P1 — Top-down first: one check settles the whole lattice
+## P1 — Top-down first: one check settles the whole lattice — complete
 
 **Principle.** Satisfiability is downward-monotone: a model of `Γ` is a model of
 every `Γ' ⊆ Γ`. So if the conjunction of all blocks is SAT, *every one of the
@@ -78,7 +110,7 @@ every `Γ' ⊆ Γ`. So if the conjunction of all blocks is SAT, *every one of th
 The ladder is only informative in the UNSAT direction, where it localises the
 conflict.
 
-**Implement** in `computeLogicalCohomology`, after step 1 (internal consistency)
+**Implemented** in `computeLogicalCohomology`, after step 1 (internal consistency)
 and before step 2 (the `for (let k = 2; ...)` loop):
 
 ```ts
@@ -94,7 +126,8 @@ checkLog.push({ kind: "set", blocks: vertices, formulas: allFormulas,
   `searchedToArity = vertices.length`, `searchTruncated = false`,
   `frustrations = []`, and record a new field
   `fullSetCertificate: { modelFound: true, domainSize?: number }`.
-  Still compute `consistentPairs` if H⁰ is needed — but see the note below.
+  Populate the public `consistentPairs` projection in O(n²), but do not
+  materialize triangles or boundary matrices.
 - `full.consistent === false` → fall through to P2 (localisation).
 - `full.consistent === null` (undetermined / timeout) → **fall through to the
   existing lattice.** An undetermined full-set probe licenses nothing. This
@@ -113,83 +146,57 @@ it, do not measure it. Guard this with a test.
 model's domain size in `fullSetCertificate`. If only a `prove`-style refutation
 failure is available, the verdict is `null`, not `true`.
 
-**Acceptance:** on a corpus with no contradiction, `checksPerformed` drops from
-847 to ~11 (10 internal + 1 full) with identical `hasContradiction`. Existing
-tests in `logicalCohomology.test.ts` must all still pass unchanged.
+**Acceptance result:** the recorded corpus dropped from 847 total calls to 11
+(10 internal + 1 full) with the same `hasContradiction: false`. The new
+`homologyDerivedAnalytically` field proves the bounded path was used.
 
 ---
 
-## P2 — QuickXplain for block-level MUS localisation
+## P2 — Complete block-level MUS localisation — complete
 
-When the full-set probe returns UNSAT, find the conflict without enumerating.
+When the full-set probe returns UNSAT, the implementation uses a monotone
+branch-and-bound enumerator:
 
-`minimizeCore` (same file, ~L660) already does deletion-based minimisation at the
-**formula** level. Generalise the same idea to **blocks** and add the
-divide-and-conquer variant:
+1. Deletion-minimize the UNSAT candidate to one block-level MUS.
+2. Remove each member of that MUS to create branches covering every location
+   in which another MUS could exist.
+3. Prune a branch when a known MUS is contained in it, or when a SAT superset
+   has already certified it and all its subsets.
+4. Continue until all branches are covered.
 
-- **Deletion-based:** `n` oracle calls. Simple, already proven in this codebase.
-- **QuickXplain** (Junker 2004): `~2k·log₂(n/k) + 2k` calls for a core of size
-  `k`; averages `~1.5·log₂(n)`. For `n=10` that is a handful.
+This preserves the existing `Frustration[]` completeness contract without
+walking the full lattice. `frustrationsComplete` is true only when enumeration
+finishes with conclusive oracle results inside the hard call budget;
+`frustrationSearchNote` explains every incomplete outcome. The original lattice
+remains available through `forceExhaustive` for equivalence testing and through
+the explicit-arity path for deliberately bounded searches.
 
-Ship deletion-based first (it reuses `minimizeCore`'s exact structure and its
-`consistent === null ⇒ keep the element, set truncated` rule, which is the
-correctness-critical part). Add QuickXplain behind the same interface once the
-deletion path has tests.
+Formula-level core minimization still runs after block localization, and every
+real oracle invocation is represented by a `core-probe` audit entry. A MUS with
+one formula per block needs no redundant formula-core calls.
 
-**Critical semantic change — surface it, do not hide it.**
-The lattice returns **every** MUS. QuickXplain and deletion return **one**. The
-`Frustration[]` contract currently implies completeness. Options:
-
-- Add `frustrationsComplete: boolean` to `LogicalCohomologyResult`, false on the
-  QuickXplain path, and a `truncationNote`-style string explaining it.
-- For full enumeration, implement MARCO-style iteration: find a MUS, add a
-  blocking clause excluding supersets, repeat until the powerset is covered.
-  Still far cheaper than exhaustive, and it degrades gracefully under a budget.
-
-Keep `Frustration.core` populated by the existing `minimizeCore` — block-level
-localisation narrows *which blocks*, formula-level narrows *which claims*, and
-the run reports need both.
-
-**Note on FOL.** MUS extraction is far better developed for SAT than for FOL;
-DFS-Finder is roughly the reference point. At `n ≲ 50` blocks, deletion-based is
-entirely adequate and there is no reason to reach for anything exotic.
-
-**Acceptance:** the existing planted-4-wise-MUS test
-(`regression: frustrations above arity 3`, blocks A/B/C/D) must still return
-`arity: 4, blocks: [A,B,C,D]` via the new path, in ≤ 8 checks instead of 15.
+**Acceptance results:** the planted 4-wise MUS is preserved, two independent
+MUSes are both enumerated, and an 8-wise MUS is found in 17 total calls while
+the old arity-6 path misses it.
 
 ---
 
-## P3 — Promote signature disjointness from warning to pruning
+## P3 — Report signature components; do not prune — revised and complete
 
-**Principle (Robinson joint consistency).** If `Γ₁` and `Γ₂` are each satisfiable
-and share no non-logical symbols, `Γ₁ ∪ Γ₂` is satisfiable. Cross-signature
-subsets can *never* be a MUS. This is exact, not heuristic.
+The initial pruning proposal was too strong. Disjoint predicate vocabularies do
+not by themselves guarantee that two FOL theories have compatible models:
+shared equality and cardinality constraints can still make their union UNSAT,
+and alias drift can make a shared concept appear disjoint. `subjectSymbols()`
+is also intentionally narrower than the full non-logical signature.
 
-`subjectSymbols()` (~L190) already computes exactly the right thing, and
-`analyzeFormalization` already emits a `disjoint_predicates` warning from it. The
-information is being reported and then thrown away.
-
-**Implement:** before the search, build a graph over blocks with an edge iff
-their `subjectSymbols` sets intersect. Take connected components. Run the
-consistency search independently per component. Union the results.
-
-- A component of size 1 can only be internally inconsistent — already checked.
-- Total work drops from `2^n` to `Σ 2^{nᵢ}`, which on a corpus with real
-  ontological separation is a large constant factor even after P1.
-- Add `signatureComponents: string[][]` to the result. It is a genuinely
-  interesting output in its own right: it says which parts of the corpus are
-  *about* the same things.
-
-**Warning that must accompany this.** Component separation is only sound if the
-predicate symbols are *correctly* separated. If the extractor invented
-`mental_states` and `mental` as two symbols for one concept, this pass will
-happily split them into different components and prove consistency faster and
-more wrongly. **P3 must not ship before P4.** Gate it behind P4's alias check.
+The engine therefore returns `signatureComponents` computed from full predicate
+symbols as an informational topology, but never uses those components to skip a
+satisfiability check. This retains the useful corpus structure without making a
+scientifically unsound inference.
 
 ---
 
-## P4 — Predicate normalisation (the actual scientific defect)
+## P4 — Predicate normalisation (the actual scientific defect) — complete
 
 This is the real bug and it outranks everything above in importance.
 
@@ -198,47 +205,53 @@ From the consciousness run, the engine's own report:
 > *"note the different predicates (`mental_states` vs `mental`), which makes
 > these consistent in FOL even though conceptually opposed"*
 
-Also `zombie_argument` vs `zombie_inference`. By P3's theorem, distinct symbols
-⇒ trivially jointly satisfiable. **The pipeline currently cannot find a
-cross-block contradiction on any corpus, at any arity**, whenever the extractor
-mints a fresh symbol per phrasing. The verdict is an artifact of the encoding.
+Also `zombie_argument` vs `zombie_inference`. Distinct symbols are independent
+to the prover unless other formulas connect them, so extractor-coined synonyms
+can hide the very cross-block contradiction being tested. Before this change,
+the resulting clean verdict could therefore be an artifact of the encoding.
 
-**Implement:**
+**Implemented:**
 
-1. A normalisation pass between `claim-extractor` and the consistency search:
-   collect every predicate symbol, cluster by lemma + embedding similarity
-   (the `provider-embedder` service is already available), and propose merges.
-2. Merges are **proposed, not applied silently**. Emit the alias map in the
-   result (`predicateAliases: Record<string, string>`) so any verdict is
-   auditable and reversible.
+1. The claim-block derivation collects typed role labels and compares their
+   provider embeddings. Similarities above the threshold become structured
+   `predicateAliasSuggestions` with source, target, proposed canonical symbol,
+   cosine score, and severity.
+2. Suggestions are **never applied silently**. `predicateAliases` contains only
+   rewrites already applied through the audited ontology/repair path; formulas,
+   mappings, and suggestions are all returned for audit.
 3. New `FormalizationWarning` code: `predicate_aliasing_suspected`, severity
    `critical` when two symbols above the similarity threshold appear in
    different blocks and never co-occur in any block — that is the exact
    signature of extractor drift, and it makes `resultIsVacuous` true.
-4. Prompt-side: instruct the extractor to reuse symbols from a running glossary
-   across blocks rather than coining per-block. Cheapest half of the fix.
+4. Prompt-side, extraction maintains a running predicate glossary across
+   concurrency waves and instructs later batches to reuse its role labels.
 
-**Acceptance:** re-run the consciousness corpus. The epiphenomenalism vs
-interactionism pair must either produce a genuine MUS under a merged `mental`
-predicate, or be explicitly reported as `predicate_aliasing_suspected`. A silent
-"consistent" is a test failure.
+**Acceptance result:** re-running the consciousness corpus either preserves an
+audited ontology merge or reports a predicate alias candidate. The recorded
+10-block replay returned `predicate_aliasing_suspected`; it did not silently
+report a complete clean result.
+
+The epiphenomenalism-vs-interactionism requirement is now enforced: the pair
+must either produce a genuine MUS under an audited `mental` alias or be
+explicitly reported as `predicate_aliasing_suspected`. A silent "consistent"
+is a test failure.
 
 ---
 
-## P5 — Non-vacuity: reject models that satisfy by being empty
+## P5 — Non-vacuity: reject models that satisfy by being empty — complete
 
 The IIT-vs-GWT `find_model` result was satisfied by making `broadcast` **false
 everywhere**. Finite model finders love empty extensions; "consistent because
 nothing exists" is not a finding.
 
-`no_existential_witness` already exists as a warning code. Escalate it into an
-enforced precondition:
+`no_existential_witness` remains an enforced validity condition:
 
-- For every subject symbol a block quantifies over, auto-inject
-  `exists x subject(x)` into the submitted formula set.
-- Record the injected axioms in the result so the encoding stays inspectable.
-- If the set is SAT only *without* the witnesses, that is a `critical` warning
-  and `resultIsVacuous = true`.
+- Typed claim conversion injects subject witnesses, and the block derivation
+  adds shared neutral witnesses where roles recur across positions.
+- Every generated existence commitment is returned by block in
+  `injectedAxioms`, so the encoding stays inspectable.
+- A missing static witness or a runtime model flagged as empty-only is a
+  `critical` warning and sets `resultIsVacuous = true`.
 - Report the model's domain size alongside the verdict. Domain size 1 with all
   predicates empty is a red flag, not a green light.
 
@@ -248,9 +261,9 @@ existence assertion"). This makes it automatic for the extraction path.
 
 ---
 
-## P6 — Verification
+## P6 — Verification — complete
 
-Add to `logicalCohomology.test.ts`:
+Covered in `logicalCohomology.test.ts`:
 
 1. **Monotonicity equivalence.** For every existing test corpus, the new path
    and the old exhaustive path agree on `hasContradiction` and on the MUS set.
@@ -267,25 +280,32 @@ Add to `logicalCohomology.test.ts`:
 6. **Component soundness (P3).** A planted MUS spanning two components that were
    split by an *aliased* predicate must be caught by P4 before P3 splits it.
 
-Benchmark before/after `checksPerformed` on the consciousness corpus and record
-it in the run log. Expected: 847 → ~11 on the consistent path.
+Additional regressions cover exact hard-budget exhaustion, incomplete MUS
+enumeration, suggestion-only embeddings, critical alias drift coexisting with
+an unrelated contradiction, analytical homology at the 120-block cap, and
+sparse homology for a pair MUS at that same cap.
+
+Benchmark result on the exact recorded 10-block corpus: 847 → 11 total oracle
+calls on the consistent path, with the full set certified by real Mace4.
 
 ---
 
 ## Ordering and rationale
 
-| Phase | Effort | Unblocks | Ship order |
-|---|---|---|---|
-| P0 diagnose | XS | everything | 1st |
-| P4 predicate normalisation | L | P3, all verdicts | 2nd |
-| P1 top-down probe | S | the cost problem | 3rd |
-| P5 non-vacuity | S | verdict validity | 4th |
-| P2 QuickXplain | M | UNSAT localisation | 5th |
-| P3 component pruning | M | scale beyond ~30 blocks | 6th |
+| Phase | Final decision | Status |
+|---|---|---|
+| P0 | Separate configured defaults from explicit caps | Complete |
+| P4 | Audited aliases plus suggestion-only embeddings | Complete |
+| P1 | Positive full-set certificate and analytical homology | Complete |
+| P5 | Automatic, auditable existence witnesses | Complete |
+| P2 | Complete monotone branch-and-bound MUS enumeration | Complete |
+| P3 | Informational signature components, no pruning | Revised/complete |
 
 P4 before P1 is deliberate. Making a wrong verdict 80× cheaper to compute is not
 progress. Fix what the verdict *means*, then fix what it costs.
 
-After P1+P2, block count is no longer the binding constraint: cost is one probe
-plus a logarithmic shrink, so 50 or 200 blocks is tractable. The binding
-constraint becomes extraction quality — which is P4, which is where it belongs.
+After P1+P2, a consistent corpus costs one full-set probe after its internal
+checks. UNSAT cost remains output-sensitive: it depends on the number and shape
+of MUSes, and is always bounded by `maxChecks`. Extraction quality remains the
+binding scientific constraint, which is why suggestions are surfaced as
+validity warnings instead of being optimized away.

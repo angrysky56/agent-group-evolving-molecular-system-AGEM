@@ -103,7 +103,10 @@ const ROLE_SPEC: Record<ClaimKind, { roles: string[]; extras?: string[]; gloss: 
   },
 };
 
-function buildPrompt(segment: string): string {
+export function buildClaimExtractionPrompt(
+  segment: string,
+  glossary: readonly string[] = [],
+): string {
   const kinds = (Object.entries(ROLE_SPEC) as [ClaimKind, typeof ROLE_SPEC[ClaimKind]][])
     .map(([kind, spec]) => {
       const roles = [...new Set(spec.roles)].join(", ");
@@ -111,6 +114,16 @@ function buildPrompt(segment: string): string {
       return `- ${kind}\n  roles: ${roles}\n${extras}  ${spec.gloss}`;
     })
     .join("\n");
+
+  const glossarySection = glossary.length === 0
+    ? ""
+    : `\nRUNNING PREDICATE GLOSSARY (already used in this corpus):\n${[
+        ...new Set(glossary),
+      ]
+        .sort()
+        .slice(0, 120)
+        .map((label) => `- ${label}`)
+        .join("\n")}\nReuse a glossary label whenever it names the same concept. Coin a new label only for a genuinely different concept.\n`;
 
   return `Extract the explicit claims from ONE sentence. Output JSON only.
 
@@ -127,6 +140,7 @@ Rules:
   ("phenomenal-consciousness", "phi", "global-broadcast").
 - A "distinction" needs exactly two distinct values under "distinguished";
   supply them as an array.
+${glossarySection}
 
 Output shape:
 [{"kind":"exclusion","roles":{"excluder":"phi","excluded":"global-broadcast"}},
@@ -289,10 +303,18 @@ export async function storeSegment(
 }
 
 /** Ask the model for claims in one segment. Returns null on unparseable output. */
-export async function proposeClaims(segment: string): Promise<ExtractedClaim[] | null> {
+export async function proposeClaims(
+  segment: string,
+  glossary: readonly string[] = [],
+): Promise<ExtractedClaim[] | null> {
   const provider = getActiveProvider();
   const res = await provider.chat({
-    messages: [{ role: "user", content: buildPrompt(segment) }],
+    messages: [
+      {
+        role: "user",
+        content: buildClaimExtractionPrompt(segment, glossary),
+      },
+    ],
     maxTokens: 1024,
   });
   const match = res.content.match(/\[[\s\S]*\]/);
@@ -328,9 +350,12 @@ const BATCH_CONCURRENCY = 4;
  */
 const BATCH_MAX_TOKENS = settings.all.EXTRACTION_MAX_TOKENS;
 
-function buildBatchPrompt(segments: Array<{ id: string; text: string }>): string {
+function buildBatchPrompt(
+  segments: Array<{ id: string; text: string }>,
+  glossary: readonly string[],
+): string {
   const numbered = segments.map((s, i) => `[${i}] ${s.text}`).join("\n");
-  return `${buildPrompt("(see the numbered sentences below)")}
+  return `${buildClaimExtractionPrompt("(see the numbered sentences below)", glossary)}
 
 You are given SEVERAL sentences. Treat each INDEPENDENTLY — do not carry a
 claim from one sentence into another, and do not merge them.
@@ -345,6 +370,7 @@ ${numbered}`;
 /** Extract claims for a batch. Returns a map from batch index to claims. */
 async function proposeClaimsBatch(
   segments: Array<{ id: string; text: string }>,
+  glossary: readonly string[],
 ): Promise<Map<number, ExtractedClaim[] | null>> {
   const out = new Map<number, ExtractedClaim[] | null>();
   const provider = getActiveProvider();
@@ -356,7 +382,7 @@ async function proposeClaimsBatch(
    */
   const fallbackPerSegment = async () => {
     const results = await Promise.all(
-      segments.map((s) => proposeClaims(s.text).catch(() => null)),
+      segments.map((s) => proposeClaims(s.text, glossary).catch(() => null)),
     );
     results.forEach((r, i) => out.set(i, r));
     return out;
@@ -365,7 +391,9 @@ async function proposeClaimsBatch(
   let content = "";
   try {
     const res = await provider.chat({
-      messages: [{ role: "user", content: buildBatchPrompt(segments) }],
+      messages: [
+        { role: "user", content: buildBatchPrompt(segments, glossary) },
+      ],
       maxTokens: BATCH_MAX_TOKENS,
     });
     content = res.content;
@@ -416,12 +444,24 @@ export async function extractIntoStore(
     batches.push(segments.slice(i, i + BATCH_SIZE));
 
   const proposals: Array<{ seg: { id: string; text: string }; claims: ExtractedClaim[] | null }> = [];
+  const runningGlossary = new Set<string>();
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
     const wave = batches.slice(i, i + BATCH_CONCURRENCY);
-    const results = await Promise.all(wave.map((b) => proposeClaimsBatch(b)));
+    const glossary = [...runningGlossary];
+    const results = await Promise.all(
+      wave.map((batch) => proposeClaimsBatch(batch, glossary)),
+    );
     wave.forEach((batch, w) => {
       batch.forEach((seg, idx) => {
-        proposals.push({ seg, claims: results[w].get(idx) ?? null });
+        const claims = results[w].get(idx) ?? null;
+        proposals.push({ seg, claims });
+        for (const claim of claims ?? []) {
+          for (const value of Object.values(claim.roles)) {
+            for (const label of Array.isArray(value) ? value : [value]) {
+              if (String(label).trim()) runningGlossary.add(String(label).trim());
+            }
+          }
+        }
       });
     });
   }
