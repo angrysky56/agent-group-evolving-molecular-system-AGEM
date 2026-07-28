@@ -13,9 +13,21 @@ export function registryCohomologySnapshot(
   sheaf: CellularSheaf,
   builtFromRegistry: boolean,
   analyzedFromRegistry: boolean,
+  buildError?: string | null,
 ): CohomologySnapshot {
   const domain = "lcm-subgraph-registry" as const;
   if (!builtFromRegistry) {
+    if (buildError) {
+      return {
+        status: "not-computed",
+        notComputed: `registry sheaf build failed — ${buildError}`,
+        remedy:
+          "Re-embed the affected subgraphs with one embedding model, then rerun the sectioned corpus.",
+        domain,
+        sheaf_vertices: 0,
+        sheaf_edges: 0,
+      };
+    }
     return {
       status: "not-computed",
       notComputed:

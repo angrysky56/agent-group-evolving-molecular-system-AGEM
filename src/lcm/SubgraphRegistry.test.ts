@@ -89,6 +89,19 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     );
   });
 
+  it("B1: snapshots every subgraph with the active embedding model", () => {
+    const registry = new SubgraphRegistry(
+      embedder,
+      tokenCounter,
+      "provider/model-v2",
+    );
+    registry.create("biology", "bio-id");
+
+    expect(
+      registry.snapshot().subgraphs.map((subgraph) => subgraph.embeddingModel),
+    ).toEqual(["provider/model-v2", "provider/model-v2"]);
+  });
+
   it("B1/C1: SubgraphRegistry routes queries to correct subgraphs based on root similarity and reflections", async () => {
     const registry = new SubgraphRegistry(embedder, tokenCounter);
     const subBio = registry.create("biology", "bio-id");
@@ -378,6 +391,45 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     }
   });
 
+  it.each([384, 768, 2048])(
+    "Sheaf: builds finite restriction maps at the provider's %i-D width",
+    async (dimension) => {
+      const vector = (): Float64Array => {
+        const value = 1 / Math.sqrt(dimension);
+        return new Float64Array(dimension).fill(value);
+      };
+      const providerWidthEmbedder = {
+        embed: async () => vector(),
+        embedBatch: async (texts: string[]) => texts.map(() => vector()),
+      };
+      const orch = new Orchestrator(
+        providerWidthEmbedder,
+        new MockCompressor(),
+      );
+
+      try {
+        orch.activateOrCreateSubgraph("first");
+        await orch.lcmClient.appendBatch(["shared alpha", "shared beta"]);
+        orch.activateOrCreateSubgraph("second");
+        await orch.lcmClient.appendBatch(["shared gamma", "shared delta"]);
+
+        const sheaf = await orch.buildSheafFromRegistry();
+        const edgeIds = sheaf.getEdgeIds();
+
+        expect(edgeIds).toHaveLength(1);
+        const edge = sheaf.getEdge(edgeIds[0]!);
+        expect(
+          Array.from(edge.sourceRestriction.entries).every(Number.isFinite),
+        ).toBe(true);
+        expect(
+          Array.from(edge.targetRestriction.entries).every(Number.isFinite),
+        ).toBe(true);
+      } finally {
+        await orch.shutdown();
+      }
+    },
+  );
+
   it("Sheaf: H^0 grows with #disconnected semantic clusters (scalar sheaf semantics hold)", async () => {
     const orch = new Orchestrator(embedder, new MockCompressor());
     try {
@@ -446,6 +498,19 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     expect(subspace).not.toBeNull();
     expect(subspace).toHaveLength(1); // k_eff = 2 - 1 = 1
     expect(subspace![0]!.length).toBe(384);
+  });
+
+  it("ConceptSubspace: rejects mixed embedding widths instead of zero-padding them", () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const sub = registry.create("mixed-model", "mixed-id");
+    const first = sub.store.append("first model entry");
+    const second = sub.store.append("second model entry");
+    sub.cache.seed(first.id, new Float64Array(384).fill(1));
+    sub.cache.seed(second.id, new Float64Array(2048).fill(1));
+
+    expect(() => registry.getConceptSubspace("mixed-id", 3)).toThrow(
+      /mixed embedding dimensions.*384.*2048.*re-embed/i,
+    );
   });
 
   it("ConceptSubspace: adaptive-rank ladder — N > k sets k_eff = k", async () => {

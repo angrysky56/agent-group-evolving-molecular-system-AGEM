@@ -42,7 +42,6 @@ import {
   EscalationProtocol,
   MockCompressor,
   SubgraphRegistry,
-  EMBEDDING_DIM,
 } from "../lcm/index.js";
 import type {
   IEmbedder,
@@ -113,6 +112,8 @@ import type { AnyEvent } from "./interfaces.js";
 export interface ReasoningCycleOptions {
   /** Independently embedded LCM material for one conceptual-section cycle. */
   lcmEntries?: readonly string[];
+  /** Sectioned runs defer construction so the registry sheaf is built once. */
+  buildSheaf?: boolean;
   /** Sectioned runs defer the corpus-level sheaf verdict until the last cycle. */
   analyzeSheaf?: boolean;
 }
@@ -167,6 +168,9 @@ export class Orchestrator {
 
   /** False while sectioned ingestion deliberately defers the corpus verdict. */
   readonly sheafAnalyzedFromRegistry: boolean = false;
+
+  /** Last registry-sheaf construction failure; null after mutation or success. */
+  readonly sheafBuildError: string | null = null;
 
   /** Cohomology analyzer: computes H^0/H^1 from sheaf and emits obstruction events. */
   readonly cohomologyAnalyzer!: CohomologyAnalyzer;
@@ -267,6 +271,7 @@ export class Orchestrator {
     options?: {
       vdwAgentMaxIterations?: number;
       /** Overrides for LCM escalation thresholds; see #initLcm. */
+      embeddingModel?: string;
       lcmThresholds?: Partial<{
         level1TokenLimit: number;
         level2MinRatio: number;
@@ -295,7 +300,7 @@ export class Orchestrator {
       this.#lcmCompactionTargetRatio = options.lcmCompaction.targetRatio;
     }
 
-    this.#initLcm(embedder, compressor);
+    this.#initLcm(embedder, compressor, options?.embeddingModel);
     this.#initSheaf();
     this.#initTna();
     this.#initSoc();
@@ -671,6 +676,11 @@ export class Orchestrator {
     console.log(
       `[ORCH] Iteration ${this.#iterationCounter}: Appended ${entryIds.length} LCM entr${entryIds.length === 1 ? "y" : "ies"}: ${entryIds.join(", ")}`,
     );
+    // The registry changed, so any previously built sheaf is now stale until
+    // this cycle rebuilds it (or a sectioned run performs its final rebuild).
+    (this as any).sheafBuiltFromRegistry = false;
+    (this as any).sheafAnalyzedFromRegistry = false;
+    (this as any).sheafBuildError = null;
 
     // Context compaction / escalation check
     const store = this.lcmClient.store;
@@ -833,32 +843,36 @@ export class Orchestrator {
 
     // Step 6: Run Sheaf cohomology analysis
     // Dynamically construct CellularSheaf base graph from SubgraphRegistry (Move B2)
-    const dynamicSheaf = await this.buildSheafFromRegistry();
-    (this as any).sheaf = dynamicSheaf;
-    (this as any).sheafBuiltFromRegistry = true;
-    (this as any).sheafAnalyzedFromRegistry = false;
+    if (options.buildSheaf !== false) {
+      await this.#rebuildRegistrySheaf();
 
-    const sheafVertices = this.sheaf.getVertexIds().length;
-    const sheafEdges = this.sheaf.getEdgeIds().length;
-    if (options.analyzeSheaf !== false) {
-      const cohomologyResult = this.analyzeRegistrySheaf();
-      if (cohomologyResult) {
-        console.log(
-          `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
-            `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
-        );
-        // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
-        // (and are forwarded to eventBus via #wireEventBus handlers above)
+      const sheafVertices = this.sheaf.getVertexIds().length;
+      const sheafEdges = this.sheaf.getEdgeIds().length;
+      if (options.analyzeSheaf !== false) {
+        const cohomologyResult = this.analyzeRegistrySheaf();
+        if (cohomologyResult) {
+          console.log(
+            `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
+              `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
+          );
+          // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
+          // (and are forwarded to eventBus via #wireEventBus handlers above)
+        } else {
+          console.log(
+            `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis not computed ` +
+              `(${sheafVertices} registry vertices, ${sheafEdges} edges)`,
+          );
+        }
       } else {
         console.log(
-          `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis not computed ` +
+          `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis deferred ` +
             `(${sheafVertices} registry vertices, ${sheafEdges} edges)`,
         );
       }
     } else {
       console.log(
-        `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis deferred ` +
-          `(${sheafVertices} registry vertices, ${sheafEdges} edges)`,
+        `[ORCH] Iteration ${this.#iterationCounter}: Registry sheaf build deferred ` +
+          `(${this.subgraphRegistry.list().length} registry vertices)`,
       );
     }
 
@@ -1101,9 +1115,17 @@ export class Orchestrator {
   }
 
   // -------------------------------------------------------------------------
-  #initLcm(embedder: IEmbedder, compressor?: ICompressor): void {
+  #initLcm(
+    embedder: IEmbedder,
+    compressor?: ICompressor,
+    embeddingModel = "",
+  ): void {
     const tokenCounter = new GptTokenCounter();
-    const registry = new SubgraphRegistry(embedder, tokenCounter);
+    const registry = new SubgraphRegistry(
+      embedder,
+      tokenCounter,
+      embeddingModel,
+    );
     (this as any).subgraphRegistry = registry;
 
     const active = registry.activeSubgraph;
@@ -1167,6 +1189,7 @@ export class Orchestrator {
   /** Analyze the current registry sheaf only when it has comparison topology. */
   analyzeRegistrySheaf(): CohomologyResult | null {
     if (
+      !this.sheafBuiltFromRegistry ||
       this.sheaf.getVertexIds().length < 2 ||
       this.sheaf.getEdgeIds().length === 0
     ) {
@@ -1178,6 +1201,28 @@ export class Orchestrator {
     );
     (this as any).sheafAnalyzedFromRegistry = true;
     return result;
+  }
+
+  /** Build the current registry sheaf once, then analyze its comparison topology. */
+  async rebuildAndAnalyzeRegistrySheaf(): Promise<CohomologyResult | null> {
+    await this.#rebuildRegistrySheaf();
+    return this.analyzeRegistrySheaf();
+  }
+
+  /** Replace the derived sheaf atomically from the registry, recording failures. */
+  async #rebuildRegistrySheaf(): Promise<void> {
+    (this as any).sheafBuiltFromRegistry = false;
+    (this as any).sheafAnalyzedFromRegistry = false;
+    (this as any).sheafBuildError = null;
+    try {
+      const dynamicSheaf = await this.buildSheafFromRegistry();
+      (this as any).sheaf = dynamicSheaf;
+      (this as any).sheafBuiltFromRegistry = true;
+    } catch (error) {
+      (this as any).sheafBuildError =
+        error instanceof Error ? error.message : String(error);
+      throw error;
+    }
   }
 
   #initSheaf(): void {
@@ -1435,10 +1480,10 @@ export class Orchestrator {
       if (subspace && subspace.length > 0) {
         return subspace;
       }
-      // Safe 1-D fallback: a single unit vector of dimension EMBEDDING_DIM
-      const fallbackVec = new Float64Array(EMBEDDING_DIM);
-      fallbackVec[0] = 1.0;
-      return [fallbackVec];
+      // Empty subgraphs never form similarity edges, so only the number of
+      // basis vectors matters for their vertex stalk. Do not invent an
+      // embedding-provider width here.
+      return [Float64Array.of(1.0)];
     };
 
     const vertices: SheafVertex[] = subgraphs.map((sub) => {
@@ -1479,6 +1524,30 @@ export class Orchestrator {
         const k_A = P_A.length;
         const k_B = P_B.length;
         const m = Math.min(k_A, k_B);
+        const ambientDim = P_A[0]!.length;
+        const targetAmbientDim = P_B[0]!.length;
+        if (ambientDim === 0 || targetAmbientDim !== ambientDim) {
+          throw new Error(
+            `Cannot build sheaf edge '${edgeId}': embedding dimensions differ ` +
+              `(${sub1.name}=${ambientDim}, ${sub2.name}=${targetAmbientDim}). ` +
+              "Re-embed both subgraphs with the same embedding model.",
+          );
+        }
+        for (const [subgraph, subspace] of [
+          [sub1, P_A] as const,
+          [sub2, P_B] as const,
+        ]) {
+          const mismatched = subspace.findIndex(
+            (vector) => vector.length !== ambientDim,
+          );
+          if (mismatched >= 0) {
+            throw new Error(
+              `Cannot build sheaf edge '${edgeId}': subgraph '${subgraph.name}' ` +
+                `contains mixed embedding dimensions (${ambientDim} and ` +
+                `${subspace[mismatched]!.length}). Re-embed the subgraph with one model.`,
+            );
+          }
+        }
 
         // Run SVD on combined subspaces to find shared reference basis E of dimension m
         const combined: number[][] = [];
@@ -1497,18 +1566,18 @@ export class Orchestrator {
 
         const E: Float64Array[] = [];
         for (let col = 0; col < m; col++) {
-          const dir = new Float64Array(EMBEDDING_DIM);
-          for (let row = 0; row < EMBEDDING_DIM; row++) {
+          const dir = new Float64Array(ambientDim);
+          for (let row = 0; row < ambientDim; row++) {
             dir[row] = V.get(row, col);
           }
 
           // Resolve SVD sign ambiguity by aligning E[col] with P_A[0]
           let dot = 0;
-          for (let i = 0; i < EMBEDDING_DIM; i++) {
+          for (let i = 0; i < ambientDim; i++) {
             dot += P_A[0]![i]! * dir[i]!;
           }
           if (dot < 0) {
-            for (let i = 0; i < EMBEDDING_DIM; i++) {
+            for (let i = 0; i < ambientDim; i++) {
               dir[i] = -dir[i]!;
             }
           }
@@ -1520,6 +1589,12 @@ export class Orchestrator {
         const targetEntries = new Float64Array(m * k_B);
 
         const dotProduct = (v1: Float64Array, v2: Float64Array): number => {
+          if (v1.length !== v2.length) {
+            throw new Error(
+              `Cannot build sheaf edge '${edgeId}': restriction vectors have ` +
+                `different dimensions (${v1.length} and ${v2.length}).`,
+            );
+          }
           let dot = 0;
           for (let i = 0; i < v1.length; i++) {
             dot += v1[i]! * v2[i]!;

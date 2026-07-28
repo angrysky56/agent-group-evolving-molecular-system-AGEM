@@ -41,10 +41,12 @@ import type { GapMetrics } from "#agem/tna/interfaces.js";
 import { settings } from "../config.js";
 import { registryCohomologySnapshot } from "./cohomology-snapshot.js";
 import type { PlannedSection } from "./sectioned-ingestion.js";
+import { prepareSubgraphsForEmbeddingModel } from "./subgraph-snapshot.js";
 
 export interface RunCycleOptions {
   subgraph?: string;
   lcmEntries?: readonly string[];
+  buildSheaf?: boolean;
   analyzeSheaf?: boolean;
   autoSave?: boolean;
 }
@@ -98,6 +100,7 @@ class AgemBridge {
     this.#embedder = embedder;
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
+      embeddingModel: getEmbeddingModelName(),
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
       lcmThresholds: {
         level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,
@@ -473,6 +476,7 @@ class AgemBridge {
       signal,
       {
         lcmEntries: options.lcmEntries,
+        buildSheaf: options.buildSheaf,
         analyzeSheaf: options.analyzeSheaf,
       },
     );
@@ -637,6 +641,7 @@ class AgemBridge {
         {
           subgraph: section.subgraph,
           lcmEntries: section.lcmEntries,
+          buildSheaf: false,
           analyzeSheaf: false,
           autoSave: false,
         },
@@ -651,7 +656,7 @@ class AgemBridge {
       });
     }
 
-    this.#orchestrator.analyzeRegistrySheaf();
+    await this.#orchestrator.rebuildAndAnalyzeRegistrySheaf();
     const state = this.getState();
     await this.saveState();
     return {
@@ -673,6 +678,7 @@ class AgemBridge {
       this.#orchestrator.sheaf,
       this.#orchestrator.sheafBuiltFromRegistry,
       this.#orchestrator.sheafAnalyzedFromRegistry,
+      this.#orchestrator.sheafBuildError,
     );
   }
 
@@ -1037,27 +1043,15 @@ class AgemBridge {
     // Restore LCM multiple subgraphs registry (Move B1/B2/C1/C2)
     const currentModel = getEmbeddingModelName();
     if (snapshot.version === 3 && snapshot.lcmSubgraphs) {
-      // Validate model mismatch across all subgraphs
-      const subgraphs = snapshot.lcmSubgraphs.subgraphs.map((sub) => {
-        let restoredEmbeddings = sub.embeddings;
-        if (sub.embeddingModel && sub.embeddingModel !== currentModel) {
-          console.warn(
-            `[AgemBridge] Embedding model mismatch for subgraph '${sub.name}': snapshot used '${sub.embeddingModel}', ` +
-              `current is '${currentModel}'. Discarding cache to recompute lazily.`,
-          );
-          restoredEmbeddings = {};
-        }
-        return {
-          ...sub,
-          embeddingModel: currentModel,
-          embeddings: restoredEmbeddings,
-        };
-      });
-
-      orch.subgraphRegistry.restore({
-        activeSubgraphId: snapshot.lcmSubgraphs.activeSubgraphId,
-        subgraphs,
-      });
+      const prepared = prepareSubgraphsForEmbeddingModel(
+        snapshot.lcmSubgraphs,
+        currentModel,
+        snapshot.lcmEmbeddings,
+      );
+      for (const warning of prepared.invalidations) {
+        console.warn(`[AgemBridge] ${warning} Recomputing lazily.`);
+      }
+      orch.subgraphRegistry.restore(prepared.snapshot);
 
       // Wire active client & DAG references
       orch.activateSubgraph(orch.subgraphRegistry.activeSubgraphId);
@@ -1187,6 +1181,7 @@ class AgemBridge {
     this.#embedder = embedder;
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
+      embeddingModel: getEmbeddingModelName(),
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
       lcmThresholds: {
         level1TokenLimit: settings.all.LCM_LEVEL1_TOKEN_LIMIT,

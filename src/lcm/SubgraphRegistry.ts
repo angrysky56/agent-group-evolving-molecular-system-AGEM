@@ -57,15 +57,18 @@ export interface SubgraphRegistrySnapshot {
 export class SubgraphRegistry {
   readonly #embedder: IEmbedder;
   readonly #tokenCounter: ITokenCounter;
+  readonly #embeddingModel: string;
   readonly #subgraphs = new Map<string, Subgraph>();
   #activeSubgraphId: string;
 
   constructor(
     embedder: IEmbedder,
     tokenCounter: ITokenCounter = new GptTokenCounter(),
+    embeddingModel = "",
   ) {
     this.#embedder = embedder;
     this.#tokenCounter = tokenCounter;
+    this.#embeddingModel = embeddingModel;
 
     // Create the default subgraph at start to keep single-graph backward compatibility
     const defaultGraph = this.create("default", "default");
@@ -88,7 +91,7 @@ export class SubgraphRegistry {
       cache,
       dag,
       summaryIndex,
-      embeddingModel: "",
+      embeddingModel: this.#embeddingModel,
     };
 
     this.#subgraphs.set(subgraphId, subgraph);
@@ -268,6 +271,13 @@ export class SubgraphRegistry {
     const N = vecs.length;
     if (N === 0) return null;
     const dim = vecs[0]!.length;
+    const mismatched = vecs.find((vector) => vector.length !== dim);
+    if (mismatched) {
+      throw new Error(
+        `SubgraphRegistry: subgraph '${sub.name}' contains mixed embedding dimensions ` +
+          `(${dim} and ${mismatched.length}); re-embed it with one model.`,
+      );
+    }
 
     // N = 1: no spread to measure. Vertex degrades to weak-level-only stalk (the single embedding)
     if (N === 1) {

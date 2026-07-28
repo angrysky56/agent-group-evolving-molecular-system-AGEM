@@ -20,6 +20,24 @@ describe("registryCohomologySnapshot", () => {
     expect("h1_dimension" in result).toBe(false);
   });
 
+  it("reports a failed registry build instead of exposing stale sheaf numbers", () => {
+    const result = registryCohomologySnapshot(
+      buildFlatSheaf(2, 1, "path"),
+      false,
+      false,
+      "mixed embedding dimensions (384 and 2048)",
+    );
+
+    expect(result).toMatchObject({
+      status: "not-computed",
+      sheaf_vertices: 0,
+      sheaf_edges: 0,
+      notComputed: expect.stringMatching(/build failed.*mixed embedding/i),
+      remedy: expect.stringMatching(/re-embed/i),
+    });
+    expect("h0_dimension" in result).toBe(false);
+  });
+
   it("omits numeric invariants for a single registry vertex", () => {
     const result = registryCohomologySnapshot(
       buildFlatSheaf(1, 3, "path"),

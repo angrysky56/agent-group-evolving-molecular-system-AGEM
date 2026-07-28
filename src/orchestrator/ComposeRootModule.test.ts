@@ -502,7 +502,7 @@ describe("Orchestrator (ComposeRootModule)", () => {
       expect(cohomologyCount).toBe(0);
     });
 
-    it("defers section-level verdicts and emits one corpus-level verdict on demand", async () => {
+    it("defers section-level sheaf builds and emits one corpus-level verdict on demand", async () => {
       const embedder = createMockEmbedder();
       const orchestrator = new Orchestrator(embedder);
       let cohomologyCount = 0;
@@ -512,16 +512,41 @@ describe("Orchestrator (ComposeRootModule)", () => {
 
       orchestrator.activateOrCreateSubgraph("first");
       await orchestrator.runReasoning("shared concept one", undefined, {
+        buildSheaf: false,
         analyzeSheaf: false,
       });
       orchestrator.activateOrCreateSubgraph("second");
       await orchestrator.runReasoning("shared concept two", undefined, {
+        buildSheaf: false,
         analyzeSheaf: false,
       });
 
       expect(cohomologyCount).toBe(0);
-      expect(orchestrator.analyzeRegistrySheaf()).not.toBeNull();
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(false);
+      expect(await orchestrator.rebuildAndAnalyzeRegistrySheaf()).not.toBeNull();
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(true);
       expect(cohomologyCount).toBe(1);
+    });
+
+    it("marks a failed registry rebuild as unavailable instead of retaining stale status", async () => {
+      const orchestrator = new Orchestrator(createMockEmbedder());
+      const first = orchestrator.activateOrCreateSubgraph("first");
+      await orchestrator.lcmClient.append("shared first");
+      orchestrator.activateOrCreateSubgraph("second");
+      await orchestrator.lcmClient.append("shared second");
+      await orchestrator.rebuildAndAnalyzeRegistrySheaf();
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(true);
+
+      const incompatible = first.store.append("different model width");
+      first.cache.seed(incompatible.id, new Float64Array(2048).fill(0.5));
+
+      await expect(orchestrator.rebuildAndAnalyzeRegistrySheaf()).rejects.toThrow(
+        /mixed embedding dimensions/i,
+      );
+      expect(orchestrator.sheafBuiltFromRegistry).toBe(false);
+      expect(orchestrator.analyzeRegistrySheaf()).toBeNull();
+      expect(orchestrator.sheafAnalyzedFromRegistry).toBe(false);
+      expect(orchestrator.sheafBuildError).toMatch(/mixed embedding dimensions/i);
     });
   });
 
