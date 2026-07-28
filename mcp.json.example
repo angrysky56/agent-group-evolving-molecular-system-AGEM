@@ -28,6 +28,8 @@
     "sqlite": {
       "command": "uvx",
       "args": [
+        "--with",
+        "mcp<1.2.0",
         "mcp-server-sqlite",
         "--db-path",
         "./knowledge_base/agem.db"
@@ -58,6 +60,8 @@
     "docker-mcp": {
       "command": "uvx",
       "args": [
+        "--with",
+        "mcp<1.2.0",
         "docker-mcp"
       ]
     }

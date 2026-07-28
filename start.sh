@@ -133,6 +133,18 @@ if [ "$RUN_BACKEND" = true ]; then
   info "Starting backend (Express on port ${PORT:-8000})…"
   (cd "$BACKEND_DIR" && npm run dev) &
   PIDS+=($!)
+
+  if [ "$RUN_FRONTEND" = true ]; then
+    info "Waiting for backend server on port ${PORT:-8000}…"
+    PORT_TO_CHECK="${PORT:-8000}"
+    for i in {1..30}; do
+      if (echo > "/dev/tcp/127.0.0.1/$PORT_TO_CHECK") 2>/dev/null; then
+        ok "Backend server is ready on port $PORT_TO_CHECK"
+        break
+      fi
+      sleep 0.5
+    done
+  fi
 fi
 
 # ── Start frontend ──
