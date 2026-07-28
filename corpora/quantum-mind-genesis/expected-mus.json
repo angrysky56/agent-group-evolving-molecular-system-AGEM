@@ -1,0 +1,65 @@
+{
+  "corpus": "quantum-mind-genesis",
+  "note": "The only corpus here whose thesis we WANT tested rather than validated. A MUS is a useful result: it names the commitment to drop. Ships with a cross-corpus link to theories-of-mind, which makes it the first test of shared-claim reasoning across corpora.",
+  "mustFind": [
+    {
+      "id": "orch_or_decoherence",
+      "arity": 3,
+      "stances": ["sustained_neural_coherence", "tegmark_decoherence_bound", "empirically_adequate"],
+      "source": "Tegmark PRE 61 (2000) 4194; contested by Hagan, Hameroff & Tuszynski PRE 65 (2002) 061901",
+      "note": "The central empirical constraint. Corpus states both sides, so a correct run reports this as positions-incompatible with an open empirical question attached, NOT as a settled corpus contradiction."
+    },
+    {
+      "id": "teleological_bridge_fails",
+      "arity": 3,
+      "stances": ["code_optimized_for_consciousness", "selection_for_requires_contemporaneous_causal_role", "consciousness_postdates_code_by_geological_time"],
+      "source": "Sober, The Nature of Selection (1984) — selection-for vs selection-of",
+      "note": "THE result this corpus exists to produce. The strong teleological reading is incoherent on standard evolutionary theory. The weak enabling reading survives — see mustNotFind."
+    },
+    {
+      "id": "substrate_bridge_vs_multiple_realizability",
+      "arity": 2,
+      "stances": ["consciousness_requires_biological_quantum_substrate", "multiple_realizability"],
+      "source": "CROSS-CORPUS: theories-of-mind distinction #10",
+      "note": "First cross-corpus MUS in the set. The claim store should link these without re-deriving. If AGEM finds this by pulling multiple_realizability from the ToM run rather than from this corpus text, the persistent claim graph is working."
+    },
+    {
+      "id": "noncomputability_vs_church_turing",
+      "arity": 2,
+      "stances": ["orch_or_noncomputable", "church_turing_physical_adequacy"],
+      "source": "Penrose, The Emperor's New Mind (1989); standard objections",
+      "note": "Straightforward. Included as an arity-2 sanity check."
+    }
+  ],
+  "mustNotFind": [
+    {
+      "id": "enabling_bridge_survives",
+      "stances": ["code_optimized_for_error_robustness", "robustness_permits_open_ended_complexity", "consciousness_downstream_of_complexity", "selection_of_not_selection_for"],
+      "why": "THE POINT OF THE CORPUS. The weak synthesis is coherent. If AGEM reports this as contradictory it has failed to distinguish selection-for from selection-of, and the teleological_bridge_fails MUS above is then meaningless because it would have fired on anything."
+    },
+    {
+      "id": "quantum_biology_is_real",
+      "stances": ["radical_pair_magnetoreception", "enzymatic_tunnelling", "empirically_adequate"],
+      "why": "Established results. Demonstrated quantum effects in biology are consistent; they simply do not support Orch-OR's scale requirement. Absence of support is not contradiction."
+    },
+    {
+      "id": "code_optimization_pluralism",
+      "stances": ["error_minimization", "stereochemical_affinity", "coevolution", "frozen_accident"],
+      "why": "These four are usually presented as rivals but are largely COMPATIBLE — the code could be a frozen accident that was subsequently refined for error-robustness within a stereochemically-seeded core. Reporting a MUS here means rival-framing was read as logical opposition. Second tripwire for the HOT/HOP failure."
+    }
+  ],
+  "openQuestions": [
+    {
+      "id": "what_survives",
+      "stances": [],
+      "status": "the actual deliverable",
+      "note": "Enumerate maximal satisfiable subsets. The largest MSS containing consciousness_downstream_of_complexity is the strongest defensible version of the synthesis. That statement — precisely bounded, with the dropped commitments named — is worth more than a vindication."
+    },
+    {
+      "id": "quantum_substrate_weak_form",
+      "stances": ["quantum_effects_functionally_relevant_in_neurons", "classical_simulation_adequate_for_consciousness", "multiple_realizability"],
+      "status": "unknown",
+      "note": "Is there a coherent middle position where quantum effects matter to neural function without consciousness being substrate-bound? If yes it is unoccupied territory and interesting."
+    }
+  ]
+}

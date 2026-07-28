@@ -7,6 +7,7 @@ describe("registryCohomologySnapshot", () => {
     const result = registryCohomologySnapshot(
       buildFlatSheaf(2, 1, "path"),
       false,
+      false,
     );
 
     expect(result).toMatchObject({
@@ -23,6 +24,7 @@ describe("registryCohomologySnapshot", () => {
     const result = registryCohomologySnapshot(
       buildFlatSheaf(1, 3, "path"),
       true,
+      false,
     );
 
     expect(result).toMatchObject({
@@ -30,6 +32,9 @@ describe("registryCohomologySnapshot", () => {
       sheaf_vertices: 1,
       sheaf_edges: 0,
       notComputed: expect.stringMatching(/single registry vertex/i),
+      remedy: expect.stringMatching(
+        /run_agem_cycles_sectioned|distinct.*subgraph/i,
+      ),
     });
     expect("h0_dimension" in result).toBe(false);
   });
@@ -39,7 +44,7 @@ describe("registryCohomologySnapshot", () => {
       getVertexIds: () => ["a", "b"],
       getEdgeIds: () => [],
     } as any;
-    const result = registryCohomologySnapshot(edgeless, true);
+    const result = registryCohomologySnapshot(edgeless, true, false);
 
     expect(result).toMatchObject({
       status: "not-computed",
@@ -54,11 +59,27 @@ describe("registryCohomologySnapshot", () => {
     const result = registryCohomologySnapshot(
       buildFlatSheaf(2, 1, "path"),
       true,
+      true,
     );
 
     expect(result.status).toBe("computed");
     if (result.status !== "computed") throw new Error("expected computed result");
     expect(result.h0_dimension).toBeTypeOf("number");
     expect(result.h1_dimension).toBeTypeOf("number");
+  });
+
+  it("omits numeric invariants while a sectioned run defers corpus analysis", () => {
+    const result = registryCohomologySnapshot(
+      buildFlatSheaf(2, 1, "path"),
+      true,
+      false,
+    );
+
+    expect(result).toMatchObject({
+      status: "not-computed",
+      notComputed: expect.stringMatching(/deferred/i),
+      remedy: expect.stringMatching(/final section/i),
+    });
+    expect("h0_dimension" in result).toBe(false);
   });
 });

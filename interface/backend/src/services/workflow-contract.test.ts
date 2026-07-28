@@ -36,6 +36,13 @@ describe("WorkflowContract — completion", () => {
     expect(c.nudge()).toBeNull();
   });
 
+  it("accepts sectioned corpus ingestion as the ingest requirement", () => {
+    const c = withCorpus();
+    c.record("run_agem_cycles_sectioned");
+    c.record("get_graph_topology");
+    expect(c.evaluate().satisfied).toBe(true);
+  });
+
   it("lets a fast run finish — the old turn-count heuristic did not", () => {
     // Three turns of real work used to trigger a spurious nudge because
     // turnCount < 4. The contract only cares whether the work happened.

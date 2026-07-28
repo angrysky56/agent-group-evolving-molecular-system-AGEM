@@ -94,7 +94,8 @@ export interface ChatSession {
 /** Snapshot of the AGEM engine state for UI rendering. */
 export interface AgemStateSnapshot {
   agent_count: number;
-  sheaf_energy: number;
+  /** Present only when registry cohomology was actually computed. */
+  sheaf_energy?: number;
   gap_count: number;
   iteration: number;
   communities: number;
@@ -140,6 +141,8 @@ export type CohomologySnapshot =
   | (CohomologySnapshotBase & {
       status: "not-computed";
       notComputed: string;
+      /** Concrete action that can make the registry sheaf analyzable. */
+      remedy: string;
     })
   | (CohomologySnapshotBase & {
       status: "computed";

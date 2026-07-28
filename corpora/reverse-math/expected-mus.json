@@ -1,0 +1,65 @@
+{
+  "corpus": "reverse-math",
+  "note": "CALIBRATION corpus, not a discovery corpus. Ground truth is solid and hand-verified over fifty years. Its job is to fail loudly if the pipeline is broken. Do not report novel MUSes from this corpus as findings without a proof-theorist reading them.",
+  "mustFind": [
+    {
+      "id": "rt22_not_aca0",
+      "arity": 2,
+      "stances": ["rt22_equivalent_to_aca0", "seetapun_separation"],
+      "source": "Seetapun & Slaman 1995",
+      "note": "RT^2_2 does not imply ACA_0. Asserting the equivalence contradicts the separation."
+    },
+    {
+      "id": "rt22_not_wkl0",
+      "arity": 2,
+      "stances": ["rt22_implies_wkl0", "liu_separation"],
+      "source": "Liu 2012, 'RT^2_2 does not imply WKL_0', JSL",
+      "note": "Fifteen years after Seetapun. Together these place RT^2_2 outside the Big Five."
+    },
+    {
+      "id": "ramsey_uniform_strength",
+      "arity": 3,
+      "stances": ["ramsey_uniform_across_exponents", "rt_n_k_equivalent_to_aca0", "rt22_incomparable_with_wkl0"],
+      "source": "Cholak, Jockusch & Slaman 2001; Liu 2012",
+      "note": "THE test. Treating 'Ramsey's theorem' as one statement with one strength erases the whole point. If the extractor aliases rt22 to rt_n_k this MUS vanishes and the run silently passes while being wrong."
+    },
+    {
+      "id": "hierarchy_strictness",
+      "arity": 2,
+      "stances": ["wkl0_equivalent_to_aca0", "hierarchy_is_strict"],
+      "source": "standard; Simpson, SOSOA II",
+      "note": "Trivial arity-2 sanity check on the extractor."
+    }
+  ],
+  "mustNotFind": [
+    {
+      "id": "big_five_equivalences_are_consistent",
+      "stances": ["wkl0_equiv_heine_borel", "wkl0_equiv_godel_completeness", "aca0_equiv_bolzano_weierstrass", "atr0_equiv_wellordering_comparability", "pi11ca0_equiv_cantor_bendixson"],
+      "why": "All the standard equivalences are jointly true. A contradiction here means the encoding is treating distinct subsystems as one predicate, or distinct theorems as one."
+    },
+    {
+      "id": "rt22_position_is_coherent",
+      "stances": ["rt22_above_rca0", "rt22_below_aca0", "rt22_incomparable_with_wkl0"],
+      "why": "This is RT^2_2's actual location. Strictly between RCA_0 and ACA_0 while incomparable with WKL_0 is a consistent position in a partial order. Reporting it as contradictory means the encoding assumed a linear order."
+    },
+    {
+      "id": "subsystem_distinctness",
+      "stances": ["wkl0", "aca0"],
+      "why": "Two named subsystems. Distinct, not contradictory. Tripwire."
+    }
+  ],
+  "openQuestions": [
+    {
+      "id": "partial_order_encoding",
+      "stances": [],
+      "status": "design question, answer before running",
+      "note": "The Big Five are linearly ordered but RT^2_2 makes the full picture a partial order. FOL encoding must not assume totality of the implication relation. If it does, mustNotFind.rt22_position_is_coherent will fire and that is the pipeline's fault, not the corpus's."
+    },
+    {
+      "id": "surplus_mus",
+      "stances": [],
+      "status": "expect none",
+      "note": "Unlike the other corpora, a surplus MUS here is almost certainly an encoding bug. This corpus is where surplus findings are a NEGATIVE signal."
+    }
+  ]
+}

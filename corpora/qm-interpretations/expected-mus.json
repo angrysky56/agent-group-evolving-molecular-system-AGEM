@@ -1,0 +1,93 @@
+{
+  "corpus": "qm-interpretations",
+  "note": "Stance names must match ontology.json canonical forms. Arity is counted in STANCES, not in extracted blocks; block arity depends on how the extractor groups attributed positions and is not part of the contract.",
+  "mustFind": [
+    {
+      "id": "bell",
+      "arity": 4,
+      "stances": ["locality", "definite_prior_values", "measurement_independence", "empirically_adequate"],
+      "source": "Bell 1964; Aspect 1982; Hensen et al. 2015 loophole-free",
+      "note": "The canonical test. If AGEM misses this, nothing else in this corpus counts."
+    },
+    {
+      "id": "kochen_specker",
+      "arity": 3,
+      "stances": ["noncontextuality", "value_definiteness", "empirically_adequate"],
+      "source": "Kochen & Specker 1967",
+      "note": "Requires dim >= 3. Forces every hidden-variable theory to be contextual."
+    },
+    {
+      "id": "pbr",
+      "arity": 3,
+      "stances": ["psi_epistemic", "preparation_independence", "empirically_adequate"],
+      "source": "Pusey, Barrett & Rudolph 2012, Nature Physics",
+      "note": "Preparation independence is contested (Gao 2025 argues it is dispensable). Corpus states the objection; AGEM should surface it as an attributed challenge, not resolve it."
+    },
+    {
+      "id": "frauchiger_renner",
+      "arity": 3,
+      "stances": ["universal_quantum_theory", "agent_consistency", "single_outcome"],
+      "source": "Frauchiger & Renner 2018, Nature Communications",
+      "note": "Cleanest arity-3 MUS in the corpus. Q/C/S."
+    },
+    {
+      "id": "leggett_garg",
+      "arity": 3,
+      "stances": ["macrorealism", "noninvasive_measurability", "empirically_adequate"],
+      "source": "Leggett & Garg 1985"
+    },
+    {
+      "id": "brukner_wigner",
+      "arity": 4,
+      "stances": ["observer_independent_facts", "locality", "measurement_independence", "universal_quantum_theory"],
+      "source": "Brukner 2018; Bong et al. 2020 Local Friendliness"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "id": "bohm_is_coherent",
+      "stances": ["psi_ontic", "hidden_variables", "determinism", "single_outcome", "nonlocality", "contextuality"],
+      "why": "de Broglie-Bohm is a consistent position. It pays for Bell with nonlocality and for Kochen-Specker with contextuality. Reporting it as contradictory means the escape routes are not encoded."
+    },
+    {
+      "id": "everett_is_coherent",
+      "stances": ["psi_ontic", "no_collapse", "many_outcomes", "determinism", "locality"],
+      "why": "Everett is consistent. It pays for Bell and Frauchiger-Renner by denying single_outcome."
+    },
+    {
+      "id": "superdeterminism_is_coherent",
+      "stances": ["hidden_variables", "locality", "determinism", "single_outcome"],
+      "why": "Consistent precisely because it omits measurement_independence. Philosophically unattractive is not logically inconsistent, and AGEM must not conflate the two."
+    },
+    {
+      "id": "qbism_is_coherent",
+      "stances": ["psi_epistemic", "no_hidden_variables", "observer_relative_facts"],
+      "why": "QBism escapes PBR by denying there is a lambda to be ignorant about, and escapes Frauchiger-Renner by denying absolute agent_consistency."
+    },
+    {
+      "id": "ontic_vs_epistemic_alone",
+      "stances": ["psi_ontic", "psi_epistemic"],
+      "why": "These are opposed stances on one axis, not a MUS. If AGEM reports every axis as an arity-2 contradiction it has learned to detect negation, not impossibility. Expected as positions_incompatible, never as corpus contradiction."
+    }
+  ],
+  "openQuestions": [
+    {
+      "id": "psi_epistemic_plus_relational",
+      "stances": ["psi_epistemic", "observer_relative_facts", "locality", "empirically_adequate"],
+      "status": "unknown",
+      "note": "Does denying observer-independence buy enough to keep both psi-epistemic and locality after PBR and Brukner? Plausibly the most interesting cell in the map."
+    },
+    {
+      "id": "retrocausal_escape",
+      "stances": ["retrocausality", "locality", "hidden_variables", "measurement_independence", "empirically_adequate"],
+      "status": "unknown",
+      "note": "Retrocausal accounts claim to satisfy Bell's letter by making measurement_independence fail in a temporally-backward way. Whether that is a genuine fourth escape route or a relabelling of superdeterminism is live."
+    },
+    {
+      "id": "combined_no_go",
+      "stances": [],
+      "status": "the actual prize",
+      "note": "Are there MUSes arising from the CONJUNCTION of two separately-proved theorems that nobody has named? Enumerate all MUSes and diff against mustFind. Any surplus is the result."
+    }
+  ]
+}

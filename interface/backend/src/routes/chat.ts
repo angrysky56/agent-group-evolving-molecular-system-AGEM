@@ -54,6 +54,11 @@ import {
   sideEffectClass,
 } from "../services/tool-dispatch.js";
 import { createWorkflowContract } from "../services/workflow-contract.js";
+import {
+  RUN_AGEM_CYCLE_DESCRIPTION,
+  RUN_SECTIONED_CYCLES_DESCRIPTION,
+  planSectionedIngestion,
+} from "../services/sectioned-ingestion.js";
 import { settings } from "../config.js";
 import { compress } from "headroom-ai";
 
@@ -353,12 +358,12 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 
 # Workflow
 
-1. **run_agem_cycle** on the topic, passing the corpus / material to analyse as the 'prompt' argument. The cycle INGESTS that text into a persistent, accumulating graph.
+1. Use **run_agem_cycle** for one conceptual section, with a stable named \`subgraph\`. For a structured multi-section corpus, prefer **run_agem_cycles_sectioned**: it preserves authored section boundaries, advances SOC once per section, and computes one corpus-level sheaf result after the final section. A single unnamed cycle cannot produce registry-sheaf cohomology.
 2. **A cycle only advances the graph if you feed it NEW, substantive content.** Running another cycle with no new text — or with a thin scrap, or by re-pasting the same material — does not progress the reasoning; it just piles duplicate co-occurrences on and degrades modularity. So run a second/third cycle ONLY when you genuinely have new material to add: your own synthesis so far, the answers to the catalyst questions, the next step of the argument, additional source text. To make the graph follow the reasoning forward, ingest the reasoning forward.
 3. If you have nothing substantively new to add, do NOT run another cycle — instead inspect and reason over what is already there (steps 4–6).
 4. Inspect with **get_graph_topology** (primary), then **get_cohomology** and **get_soc_metrics** as needed.
 5. For a contested corpus, prefer **extract_and_verify_claims**, which preserves attributed positions. Use **evaluate_logical_consistency** only for already-audited hand-authored assertion contexts. Never use graph communities themselves as logical blocks.
-6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back in via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
+6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back into the relevant named subgraph via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
 7. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
 
 # Cross-run finding memory is automatic
@@ -368,7 +373,7 @@ Before your first turn, the engine has already recalled semantically relevant fi
 Recalled findings are context, not an agenda. Cite one you actually use with its exact \`[finding:<id>]\` marker. An opposite new verdict is not silently allowed to replace an old one: exact overlap between typed supporting claims creates a supersedes candidate in the tool result. Review candidates with list_finding_conflicts and resolve them explicitly with resolve_finding_conflict.
 
 # Native AGEM tools (call directly)
-- run_agem_cycle, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
+- run_agem_cycle, run_agem_cycles_sectioned, get_agem_state, get_graph_topology, get_cohomology, get_soc_metrics
 - evaluate_logical_consistency (minimal unsatisfiable sets — the real contradiction detector; read "frustrations", not H¹)
 - get_check_log (drill into individual satisfiability checks; the digest in the result already gives exact counts, so call this only for a specific entry)
 - extract_and_verify_claims (preferred typed-claim path for contested corpora)
@@ -465,7 +470,7 @@ ${skillContent}`,
         function: {
           name: "get_agem_state",
           description:
-            "Retrieves the current AGEM engine state: iteration count, operational mode, graph size (nodes/edges/communities), sheaf H¹ obstruction level, and gap count.",
+            "Retrieves the current AGEM engine state: iteration count, operational mode, graph size, SOC state, cohomology status, and gap count. H¹ is absent unless registry cohomology was actually computed.",
           parameters: {
             type: "object",
             properties: {},
@@ -477,14 +482,18 @@ ${skillContent}`,
         type: "function" as const,
         function: {
           name: "run_agem_cycle",
-          description:
-            "Execute one full AGEM reasoning pipeline iteration. Runs VNE, updates the TNA graph, computes sheaf cohomology, detects gaps, and returns structured artifacts with post-cycle metrics.",
+          description: RUN_AGEM_CYCLE_DESCRIPTION,
           parameters: {
             type: "object",
             properties: {
               prompt: {
                 type: "string",
-                description: "The problem or topic the agents should discuss.",
+                description: "One conceptual section or new piece of material.",
+              },
+              subgraph: {
+                type: "string",
+                description:
+                  "Stable assertion/topic subgraph name. Reuse it for later material about the same section.",
               },
             },
             required: ["prompt"],
@@ -494,9 +503,39 @@ ${skillContent}`,
       {
         type: "function" as const,
         function: {
+          name: "run_agem_cycles_sectioned",
+          description: RUN_SECTIONED_CYCLES_DESCRIPTION,
+          parameters: {
+            type: "object",
+            properties: {
+              text: {
+                type: "string",
+                description: "The complete structured corpus text.",
+              },
+              sectionPattern: {
+                type: "string",
+                description:
+                  "Optional JavaScript regex source matched in multiline mode. Default '^## '. Use '^### ' for third-level sections.",
+              },
+              maxSections: {
+                type: "integer",
+                minimum: 2,
+                maximum: 100,
+                default: 24,
+                description:
+                  "Hard safety limit. The tool errors before running when the split exceeds it.",
+              },
+            },
+            required: ["text"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "get_cohomology",
           description:
-            "Analyse the LCM subgraph-registry sheaf. Returns status='computed' with H⁰/H¹ only when the registry sheaf has at least two vertices and an edge; otherwise returns status='not-computed' plus notComputed and omits numeric invariants. This is not the concept co-occurrence graph.",
+            "Analyse the LCM subgraph-registry sheaf. Returns H⁰/H¹ only with at least two vertices and an edge; otherwise returns status='not-computed' with a reason and remedy and omits numeric invariants. This is not the concept co-occurrence graph or a logical verdict.",
           parameters: {
             type: "object",
             properties: {},
@@ -516,7 +555,7 @@ ${skillContent}`,
               blocks: {
                 type: "array",
                 description:
-                  "The blocks to test (use concept communities). Each: {name: string, propositions: string[]}. Provide at least 2 blocks.",
+                  "Audited assertion-context blocks grouped by corpus assertion or attributed position, never by graph community. Each: {name: string, propositions: string[]}.",
                 items: {
                   type: "object",
                   properties: {
@@ -1343,6 +1382,12 @@ ${skillContent}`,
                 prompt,
                 sendEvent,
                 abortController.signal,
+                {
+                  subgraph:
+                    typeof args.subgraph === "string"
+                      ? args.subgraph
+                      : undefined,
+                },
               );
               // Trim state for LLM context — strip word-level nodes/edges, keep concept graph
               const st = runResult.state;
@@ -1375,6 +1420,64 @@ ${skillContent}`,
               output = `Cycle completed. State:\n${JSON.stringify(trimmedState, null, 2)}`;
               // Emit AGEM state and artifacts as SSE events
               sendEvent("agem_state", runResult.state);
+              for (const artifact of runResult.artifacts) {
+                sendEvent("artifact", artifact);
+                try {
+                  knowledgeBase.saveArtifact(artifact);
+                } catch {
+                  /* skip */
+                }
+              }
+            } else if (fnName === "run_agem_cycles_sectioned") {
+              const corpusText = String(args.text ?? args.prompt ?? "");
+              const plan = planSectionedIngestion(corpusText, {
+                sectionPattern:
+                  typeof args.sectionPattern === "string"
+                    ? args.sectionPattern
+                    : undefined,
+                maxSections:
+                  typeof args.maxSections === "number"
+                    ? args.maxSections
+                    : undefined,
+              });
+              const runResult = await agemBridge.runSectionedCycles(
+                plan,
+                (event, data) => {
+                  if (event === "section_progress") {
+                    const index = Number((data as { index?: number })?.index ?? 0) - 1;
+                    const section = plan[index];
+                    if (section) runLog.cycleIngest(section.text);
+                  }
+                  sendEvent(event, data);
+                },
+                abortController.signal,
+              );
+              const state = runResult.analysis.state;
+              output = `Sectioned corpus run completed.\n${JSON.stringify(
+                {
+                  sections: runResult.sections,
+                  analysis: {
+                    iteration: state.iteration,
+                    communities: state.communities,
+                    operational_state: state.operational_state,
+                    graph: state.graph_summary
+                      ? {
+                          node_count: state.graph_summary.node_count,
+                          edge_count: state.graph_summary.edge_count,
+                        }
+                      : undefined,
+                    cohomology: runResult.analysis.cohomology,
+                    soc: {
+                      latest: runResult.analysis.soc.latest,
+                      regime: runResult.analysis.soc.regime,
+                      history_length: runResult.analysis.soc.history_length,
+                    },
+                  },
+                },
+                null,
+                2,
+              )}`;
+              sendEvent("agem_state", state);
               for (const artifact of runResult.artifacts) {
                 sendEvent("artifact", artifact);
                 try {

@@ -92,6 +92,13 @@ const finding = (
   method: "derived-from-claims",
   outcome,
   corpusId: "verify",
+  memoryNamespace: "verify-scratch",
+  attributionValidated: true,
+  semanticsValidated: true,
+  semanticVerdictKind:
+    outcome === "contradiction"
+      ? "corpus-contradiction"
+      : "no-contradiction",
   supportingClaims: ["verify-claim-structural-1"],
   supportingClaimRefs: ["verify-claim-occurrence-1"],
   createdAt: "2026-07-27T06:00:00.000Z",

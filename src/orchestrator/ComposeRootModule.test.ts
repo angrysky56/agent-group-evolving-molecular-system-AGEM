@@ -370,6 +370,46 @@ describe("Orchestrator (ComposeRootModule)", () => {
       const entries = orchestrator.lcmClient.store.getAll();
       expect(entries.length).toBe(3);
     });
+
+    it("routes named cycles into distinct registry vertices", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator = new Orchestrator(embedder);
+
+      orchestrator.activateOrCreateSubgraph("field-one");
+      await orchestrator.runReasoning("shared bridge concept from field one");
+      orchestrator.activateOrCreateSubgraph("field-two");
+      await orchestrator.runReasoning("shared bridge concept from field two");
+
+      const subgraphs = orchestrator.subgraphRegistry.list();
+      expect(subgraphs).toHaveLength(2);
+      expect(subgraphs.map((subgraph) => subgraph.name)).toEqual([
+        "field-one",
+        "field-two",
+      ]);
+      expect(subgraphs[0]!.store.getAll()[0]!.content).toContain("field one");
+      expect(subgraphs[1]!.store.getAll()[0]!.content).toContain("field two");
+      expect(orchestrator.sheaf.getVertexIds()).toHaveLength(2);
+      expect(orchestrator.sheaf.getEdgeIds().length).toBeGreaterThan(0);
+    });
+
+    it("keeps paragraph entries distinct inside one section cycle", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator = new Orchestrator(embedder);
+      orchestrator.activateOrCreateSubgraph("multi-paragraph");
+
+      await orchestrator.runReasoning("the complete section", undefined, {
+        lcmEntries: ["paragraph one", "paragraph two", "paragraph three"],
+      });
+
+      expect(orchestrator.lcmClient.store.getAll().map((entry) => entry.content)).toEqual([
+        "paragraph one",
+        "paragraph two",
+        "paragraph three",
+      ]);
+      expect(
+        orchestrator.subgraphRegistry.getConceptSubspace("default", 3),
+      ).toHaveLength(2);
+    });
   });
 
   describe("T8: TNA graph accumulation", () => {
@@ -438,8 +478,8 @@ describe("Orchestrator (ComposeRootModule)", () => {
     });
   });
 
-  describe("T10: Sheaf cohomology per iteration", () => {
-    it("emits at least one sheaf event per iteration", async () => {
+  describe("T10: Registry sheaf cohomology", () => {
+    it("does not emit a cohomology verdict for a single registry vertex", async () => {
       const embedder = createMockEmbedder();
       const orchestrator = new Orchestrator(embedder);
 
@@ -457,7 +497,31 @@ describe("Orchestrator (ComposeRootModule)", () => {
       // Allow async event propagation
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
 
-      expect(cohomologyCount).toBeGreaterThanOrEqual(2);
+      expect(orchestrator.sheaf.getVertexIds()).toHaveLength(1);
+      expect(orchestrator.sheaf.getEdgeIds()).toHaveLength(0);
+      expect(cohomologyCount).toBe(0);
+    });
+
+    it("defers section-level verdicts and emits one corpus-level verdict on demand", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator = new Orchestrator(embedder);
+      let cohomologyCount = 0;
+      orchestrator.eventBus.subscribe("sheaf:consensus-reached", () => {
+        cohomologyCount++;
+      });
+
+      orchestrator.activateOrCreateSubgraph("first");
+      await orchestrator.runReasoning("shared concept one", undefined, {
+        analyzeSheaf: false,
+      });
+      orchestrator.activateOrCreateSubgraph("second");
+      await orchestrator.runReasoning("shared concept two", undefined, {
+        analyzeSheaf: false,
+      });
+
+      expect(cohomologyCount).toBe(0);
+      expect(orchestrator.analyzeRegistrySheaf()).not.toBeNull();
+      expect(cohomologyCount).toBe(1);
     });
   });
 

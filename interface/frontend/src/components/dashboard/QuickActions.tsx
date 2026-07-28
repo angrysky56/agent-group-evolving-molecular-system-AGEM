@@ -40,7 +40,7 @@ const ACTIONS = [
   {
     icon: GitBranch,
     label: "Cohomology",
-    desc: "Analyze sheaf cohomology: H⁰ shows connected components, H¹ reveals inconsistencies between agent perspectives. Non-zero H¹ means agents disagree — the system will try to resolve this by spawning new agents.",
+    desc: "Analyze the named-subgraph registry sheaf. H⁰/H¹ are computed only when at least two subgraphs share an edge; they describe restriction-map topology, not logical consistency or theory disagreement.",
     prompt: "Use the get_cohomology tool to analyze the current sheaf cohomology state.",
     color: "var(--accent-secondary)",
   },

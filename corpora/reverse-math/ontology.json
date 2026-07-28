@@ -1,0 +1,19 @@
+{
+  "recursive_comprehension": "rca0",
+  "weak_konig_lemma": "wkl0",
+  "arithmetical_comprehension": "aca0",
+  "arithmetical_transfinite_recursion": "atr0",
+  "pi_1_1_comprehension": "pi11ca0",
+  "ramsey_pairs_two_colours": "rt22",
+  "ramsey_theorem_for_pairs": "rt22",
+  "heine_borel": "wkl0_equiv_heine_borel",
+  "godel_completeness": "wkl0_equiv_godel_completeness",
+  "bolzano_weierstrass": "aca0_equiv_bolzano_weierstrass",
+  "wellordering_comparability": "atr0_equiv_wellordering_comparability",
+  "cantor_bendixson": "pi11ca0_equiv_cantor_bendixson",
+  "_DO_NOT_MERGE": [
+    "rt22 and rt_n_k are DIFFERENT statements with different strengths. Any alias between them destroys the corpus. Listed here so an embedding pass that proposes the merge gets refused by a human reading this file.",
+    "wkl0 / aca0 / atr0 / pi11ca0 are distinct subsystems, not phrasings of one.",
+    "implies / equivalent_to / incomparable_with are three distinct relations. Collapsing implication into equivalence linearises a partial order and will manufacture the RT22 contradiction the corpus exists to avoid."
+  ]
+}

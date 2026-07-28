@@ -10,11 +10,14 @@
 # commands, not raw TypeQL, so inline queries fail on argument parsing and look
 # like schema rejections when they are nothing of the kind.
 set -uo pipefail
-export PATH="$HOME/.typedb:$PATH"
 DB="${1:-agem-claims}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-TDB=(typedb console --address 127.0.0.1:1729 --tls-disabled --username admin --password password)
+ADDRESS="${TYPEDB_CONSOLE_ADDRESS:-127.0.0.1:1729}"
+USERNAME="${TYPEDB_USERNAME:-admin}"
+PASSWORD="${TYPEDB_PASSWORD:-password}"
+TDB=(typedb console --address "$ADDRESS" --tls-disabled --username "$USERNAME" --password "$PASSWORD")
+failures=0
 
 run() { # run <label> <expectation> <query-text>
   printf '%s\n' "$3" > "$TMP/q.tql"
@@ -22,9 +25,16 @@ run() { # run <label> <expectation> <query-text>
   echo "     expect: $2"
   out=$("${TDB[@]}" --command "transaction write $DB" --command "source $TMP/q.tql" --command "commit" 2>&1)
   if echo "$out" | grep -qi "Successfully committed"; then
-    echo "     RESULT: ACCEPTED"
+    actual="ACCEPTED"
   else
-    echo "     RESULT: REJECTED"
+    actual="REJECTED"
+  fi
+  echo "     RESULT: $actual"
+  if [ "$actual" != "$2" ]; then
+    echo "     CONTRACT FAILURE: expected $2, got $actual"
+    failures=$((failures + 1))
+  fi
+  if [ "$actual" = "REJECTED" ]; then
     echo "$out" | grep -oiE "\[[A-Z]{3}[0-9]+\][^\\\\]{0,110}" | head -2 | sed 's/^/       /'
   fi
 }
@@ -38,7 +48,12 @@ insert
   $bc isa concept, has label "broadcast";
   $cs isa concept, has label "consciousness";
 EOF
-"${TDB[@]}" --command "transaction write $DB" --command "source $TMP/seed.tql" --command "commit" >/dev/null 2>&1
+seed_out=$("${TDB[@]}" --command "transaction write $DB" --command "source $TMP/seed.tql" --command "commit" 2>&1)
+if ! echo "$seed_out" | grep -qi "Successfully committed"; then
+  echo "Seed write failed; the contract probe did not run."
+  echo "$seed_out" | head -20
+  exit 1
+fi
 
 run "well-formed exclusion (Φ excludes broadcast)" "ACCEPTED" '
 match
@@ -69,3 +84,11 @@ match
   $s isa segment, has segment-id "tom-3-1";
 insert
   $_ isa causal-claim, links (cause: $cs, effect: $bc, source: $s);'
+
+if [ "$failures" -gt 0 ]; then
+  echo ""
+  echo "$failures CONTRACT FAILURE(S)"
+  exit 1
+fi
+echo ""
+echo "ALL CONTRACT EXPECTATIONS PASSED"

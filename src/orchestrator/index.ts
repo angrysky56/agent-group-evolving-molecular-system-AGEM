@@ -30,6 +30,7 @@
 // ---------------------------------------------------------------------------
 
 export { Orchestrator } from "./ComposeRootModule.js";
+export type { ReasoningCycleOptions } from "./ComposeRootModule.js";
 
 // ---------------------------------------------------------------------------
 // Obstruction handling (ROADMAP criteria #3)

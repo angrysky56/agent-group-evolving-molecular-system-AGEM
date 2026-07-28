@@ -39,6 +39,7 @@ describe("sideEffectClass", () => {
   it("treats graph/scenario mutations as mutating", () => {
     for (const t of [
       "run_agem_cycle",
+      "run_agem_cycles_sectioned",
       "spawn_agem_agent",
       "reset_agem_engine",
       "record_scenario_turn",
@@ -95,6 +96,7 @@ describe("isRetrySafe", () => {
   it("never blind-retries run_agem_cycle", () => {
     // Retrying an ingest double-counts co-occurrences in the persistent graph.
     expect(isRetrySafe("run_agem_cycle", { prompt: "x" })).toBe(false);
+    expect(isRetrySafe("run_agem_cycles_sectioned", { text: "x" })).toBe(false);
   });
 
   it("allows retry of pure reads and idempotent writes", () => {

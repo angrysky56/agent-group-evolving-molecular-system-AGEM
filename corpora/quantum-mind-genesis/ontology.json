@@ -1,0 +1,24 @@
+{
+  "orchestrated_objective_reduction": "orch_or",
+  "penrose_hameroff": "orch_or",
+  "microtubule_coherence": "sustained_neural_coherence",
+  "quantum_coherence_in_neurons": "sustained_neural_coherence",
+  "decoherence_timescale": "tegmark_decoherence_bound",
+  "warm_wet_decoherence": "tegmark_decoherence_bound",
+  "classical_neural_computation": "classical_simulation_adequate_for_consciousness",
+  "radical_pair_mechanism": "radical_pair_magnetoreception",
+  "avian_magnetoreception": "radical_pair_magnetoreception",
+  "hydrogen_tunnelling": "enzymatic_tunnelling",
+  "error_minimisation": "error_minimization",
+  "code_robustness": "error_minimization",
+  "freeland_hurst": "error_minimization",
+  "stereochemical": "stereochemical_affinity",
+  "crick_frozen_accident": "frozen_accident",
+  "substrate_independence": "multiple_realizability",
+  "_DO_NOT_MERGE": [
+    "selection_for and selection_of are the distinction the corpus turns on. Lexically near-identical, semantically opposed. An embedding pass WILL propose this merge. Refuse it.",
+    "code_optimized_for_consciousness (teleological) and consciousness_downstream_of_complexity (enabling) must stay distinct — the first is expected UNSAT, the second expected SAT.",
+    "sustained_neural_coherence and radical_pair_magnetoreception are both 'quantum coherence in biology' and are NOT the same claim: microseconds in a protected radical pair vs hundreds of milliseconds across a cytoskeleton.",
+    "substrate_independence is aliased INTO multiple_realizability here to match the theories-of-mind corpus. Note this deliberately contradicts ToM distinction #10, which keeps them apart. Resolve before running a joint session — see answer-key.md."
+  ]
+}

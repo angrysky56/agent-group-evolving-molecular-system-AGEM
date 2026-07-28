@@ -57,6 +57,32 @@ export class LCMClient {
     return entry.id;
   }
 
+  /** Append several independently addressable entries with one batch embedding call. */
+  async appendBatch(
+    contents: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<string[]> {
+    if (signal?.aborted) throw new Error("Aborted");
+    const entries = contents.map((content) => this.#store.append(content));
+    if (entries.length === 0) return [];
+
+    if (entries.length > 1 && this.#embedder.embedBatch) {
+      const vectors = await this.#embedder.embedBatch([...contents], signal);
+      if (vectors.length === entries.length) {
+        entries.forEach((entry, index) => {
+          const vector = vectors[index];
+          if (vector) this.#cache.seed(entry.id, vector);
+        });
+        return entries.map((entry) => entry.id);
+      }
+    }
+
+    for (const entry of entries) {
+      await this.#cache.cacheEntry(entry.id, entry.content, signal);
+    }
+    return entries.map((entry) => entry.id);
+  }
+
   /**
    * store — exposes the underlying ImmutableStore for direct reads.
    * Callers may read from the store but must write through LCMClient.append().

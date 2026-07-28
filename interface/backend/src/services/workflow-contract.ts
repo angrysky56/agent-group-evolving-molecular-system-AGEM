@@ -96,6 +96,7 @@ export interface WorkflowContractOptions {
  */
 const ANALYSIS_SURFACE = new Set([
   "run_agem_cycle",
+  "run_agem_cycles_sectioned",
   "get_graph_topology",
   "get_cohomology",
   "get_soc_metrics",
@@ -107,6 +108,8 @@ const ANALYSIS_SURFACE = new Set([
   "mcp-logic/prove",
   "mcp-logic/find_counterexample",
 ]);
+
+const INGEST_TOOLS = ["run_agem_cycle", "run_agem_cycles_sectioned"] as const;
 
 /** Tool names that satisfy the "verify logical consistency" requirement. */
 const LOGIC_TOOLS = new Set([
@@ -200,7 +203,7 @@ export class WorkflowContract {
   /** Evaluate κ against what the run has done so far. */
   evaluate(): ContractEvaluation {
     const analysisRun = this.#isAnalysisRun();
-    const ranCycle = this.count("run_agem_cycle") > 0;
+    const ranCycle = INGEST_TOOLS.some((tool) => this.count(tool) > 0);
     const contested = analysisRun && ranCycle && this.#safeIsContested();
     const logicRuns = [...LOGIC_TOOLS].reduce(
       (sum, name) => sum + this.count(name),
@@ -211,8 +214,8 @@ export class WorkflowContract {
     const items: ContractItem[] = [
       {
         id: "ingest",
-        requirement: "At least one run_agem_cycle",
-        hint: "You have not ingested the material into the graph yet — call run_agem_cycle with the text to analyse.",
+        requirement: "At least one AGEM cycle or sectioned corpus run",
+        hint: "You have not ingested the material into the graph yet — call run_agem_cycle for one conceptual section, or run_agem_cycles_sectioned for a structured corpus.",
         satisfied: ranCycle,
         applicable: analysisRun,
       },

@@ -55,6 +55,19 @@ describe("SubgraphRegistry & MEMO-inspired Subgraphs (Move B & C)", () => {
     expect(registry.activeSubgraph.name).toBe("molecular-biology");
   });
 
+  it("claims the empty default slot for the first named subgraph", () => {
+    const registry = new SubgraphRegistry(embedder, tokenCounter);
+
+    const first = registry.getOrCreate("field-one");
+    const second = registry.getOrCreate("field-two");
+
+    expect(first.id).toBe("default");
+    expect(first.name).toBe("field-one");
+    expect(second.name).toBe("field-two");
+    expect(registry.list()).toHaveLength(2);
+    expect(registry.getOrCreate("field-one")).toBe(first);
+  });
+
   it("B1: SubgraphRegistry correctly snapshots and restores the entire registry", () => {
     const registry = new SubgraphRegistry(embedder, tokenCounter);
     const subA = registry.create("biology");

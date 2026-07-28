@@ -13,9 +13,9 @@
 # with both roles filled. An extraction that drops the exclusion has nothing to
 # insert; it fails rather than silently becoming a wrong answer.
 #
-# STATUS: NOT YET VALIDATED. typeql-check is not installed (the apt candidate
-# 3.12.0-rc0 is a truncated artifact on TypeDB's CDN; pin =3.12.0 instead).
-# Treat every line here as a draft until `typeql-check schema/claims.tql` passes.
+# STATUS: validated against an isolated TypeDB CE 3.12.1 database on 2026-07-28.
+# `schema/contract-probe.sh` confirmed valid shaped writes are accepted while
+# missing roles, provenance, and causal polarity are rejected by cardinality.
 
 define
 

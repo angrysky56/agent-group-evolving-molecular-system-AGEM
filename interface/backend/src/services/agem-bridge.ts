@@ -26,7 +26,6 @@ import type {
 
 import { Orchestrator, MetaOrchestrator } from "#agem/orchestrator/index.js";
 import { createProvider } from "./llm.js";
-import { computeCohomology } from "#agem/sheaf/CohomologyAnalyzer.js";
 import {
   GptTokenCounter,
   ImmutableStore,
@@ -41,6 +40,32 @@ import type { EngineSnapshot } from "./state/index.js";
 import type { GapMetrics } from "#agem/tna/interfaces.js";
 import { settings } from "../config.js";
 import { registryCohomologySnapshot } from "./cohomology-snapshot.js";
+import type { PlannedSection } from "./sectioned-ingestion.js";
+
+export interface RunCycleOptions {
+  subgraph?: string;
+  lcmEntries?: readonly string[];
+  analyzeSheaf?: boolean;
+  autoSave?: boolean;
+}
+
+export interface SectionedCycleSummary {
+  heading: string;
+  subgraph: string;
+  tokenCount: number;
+  iteration: number;
+  soc: SOCSnapshot["latest"];
+}
+
+export interface SectionedRunResult {
+  sections: SectionedCycleSummary[];
+  analysis: {
+    state: AgemStateSnapshot;
+    cohomology: CohomologySnapshot;
+    soc: SOCSnapshot;
+  };
+  artifacts: Artifact[];
+}
 
 /* ─── AGEM Engine Bridge ─── */
 
@@ -54,6 +79,7 @@ import { registryCohomologySnapshot } from "./cohomology-snapshot.js";
 class AgemBridge {
   #orchestrator: Orchestrator;
   #metaOrchestrator: MetaOrchestrator;
+  #embedder: ProviderEmbedder;
   #grep: LCMGrep;
   #eventCounter = 0;
   #activeSessionId = "default";
@@ -69,6 +95,7 @@ class AgemBridge {
 
   constructor() {
     const embedder = new ProviderEmbedder();
+    this.#embedder = embedder;
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
@@ -257,14 +284,11 @@ class AgemBridge {
       // Gaps not available yet
     }
 
-    // Sheaf energy approximation: h1Dimension from last cohomology
-    let sheafEnergy = 0;
-    try {
-      const cohom = computeCohomology(orch.sheaf);
-      sheafEnergy = cohom.h1Dimension;
-    } catch {
-      // Sheaf not ready
-    }
+    const cohomology = this.getCohomology();
+    const sheafEnergy =
+      cohomology.status === "computed"
+        ? cohomology.h1_dimension
+        : undefined;
 
     // Community count from last Louvain run
     let communities = 0;
@@ -277,14 +301,14 @@ class AgemBridge {
 
     return {
       agent_count: 0, // VdW agents are internal; no external pool yet
-      sheaf_energy: sheafEnergy,
+      ...(sheafEnergy === undefined ? {} : { sheaf_energy: sheafEnergy }),
       gap_count: gapCount,
       iteration: orch.getIterationCount(),
       communities,
       operational_state: this.#mapOperationalState(orch.getState()),
       graph_summary: this.getGraphSummary(),
       soc: this.getSOCMetrics(),
-      cohomology: this.#getSafeCohomology(),
+      cohomology,
       regime: this.#getRegimeData(),
       lumpability: this.#getLumpabilityData(),
       evolution: this.#getEvolutionData(),
@@ -316,15 +340,6 @@ class AgemBridge {
     // LumpabilityAuditor is on ComposeRootModule, not base Orchestrator.
     // Return placeholder until full CRM integration is wired.
     return undefined;
-  }
-
-  /** Safe cohomology getter for dashboard (returns undefined if sheaf empty). */
-  #getSafeCohomology(): CohomologySnapshot | undefined {
-    try {
-      return this.getCohomology();
-    } catch {
-      return undefined;
-    }
   }
 
   /** Get Price equation evolution data for dashboard. */
@@ -428,7 +443,15 @@ class AgemBridge {
     userMessage: string,
     onProgress?: (event: string, data: unknown) => void,
     signal?: AbortSignal,
+    options: RunCycleOptions = {},
   ): Promise<{ artifacts: Artifact[]; state: AgemStateSnapshot }> {
+    const targetSubgraph = options.subgraph?.trim() || "default";
+    const activeSubgraph =
+      this.#orchestrator.activateOrCreateSubgraph(targetSubgraph);
+    // LCMGrep holds concrete store/cache references, so it must follow the
+    // active subgraph just as lcmClient and lcmDag do.
+    this.#grep = this.#buildGrep(this.#embedder);
+
     this.#emitEvent(
       "agem:state-update",
       "info",
@@ -448,6 +471,10 @@ class AgemBridge {
       userMessage,
       { accuracyRequirement: "standard" },
       signal,
+      {
+        lcmEntries: options.lcmEntries,
+        analyzeSheaf: options.analyzeSheaf,
+      },
     );
     const totalMs = Date.now() - cycleStart;
     const reasoningMs = this.#orchestrator.getLastPhaseTimings().total ?? 0;
@@ -469,6 +496,7 @@ class AgemBridge {
           `## Cycle ${state.iteration}`,
           "",
           `**Input**: ${userMessage.slice(0, 200)}`,
+          `**Subgraph**: \`${activeSubgraph.name}\``,
           "",
           "### Meta-Orchestrator Routing",
           `- **Topology**: \`${metaResult.manifest.topologyType}\``,
@@ -482,7 +510,12 @@ class AgemBridge {
           `- Graph Nodes: ${state.graph_summary?.node_count ?? 0}`,
           `- Graph Edges: ${state.graph_summary?.edge_count ?? 0}`,
           `- Communities: ${state.communities}`,
-          `- Sheaf H¹ (obstruction): ${state.sheaf_energy}`,
+          state.cohomology?.status === "computed"
+            ? `- Sheaf H¹ (obstruction): ${state.cohomology.h1_dimension}`
+            : `- Sheaf cohomology: not computed — ${state.cohomology?.notComputed ?? "registry topology unavailable"}`,
+          state.cohomology?.status === "not-computed"
+            ? `- Remedy: ${state.cohomology.remedy}`
+            : "",
           `- Gaps Detected: ${state.gap_count}`,
           "",
           "### SOC Metrics",
@@ -536,7 +569,7 @@ class AgemBridge {
       }
     }
 
-    if (state.sheaf_energy > 0) {
+    if (state.sheaf_energy !== undefined && state.sheaf_energy > 0) {
       this.#emitEvent(
         "sheaf:h1-obstruction-detected",
         "warning",
@@ -563,12 +596,73 @@ class AgemBridge {
       );
     }
 
-    // Auto-save state after each cycle
-    void this.saveState().catch((err) =>
-      console.error("[AgemBridge] Auto-save failed:", err),
-    );
+    // Auto-save state after each ordinary cycle. Sectioned runs save once after
+    // their final corpus-level analysis rather than racing N snapshot writes.
+    if (options.autoSave !== false) {
+      void this.saveState().catch((err) =>
+        console.error("[AgemBridge] Auto-save failed:", err),
+      );
+    }
 
     return { artifacts, state };
+  }
+
+  /** Run one cycle per authored section, then emit one corpus-level sheaf verdict. */
+  async runSectionedCycles(
+    sections: readonly PlannedSection[],
+    onProgress?: (event: string, data: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<SectionedRunResult> {
+    if (sections.length < 2) {
+      throw new Error(
+        "Sectioned ingestion requires at least two planned sections.",
+      );
+    }
+
+    const summaries: SectionedCycleSummary[] = [];
+    const artifacts: Artifact[] = [];
+    for (let index = 0; index < sections.length; index++) {
+      if (signal?.aborted) throw new Error("Aborted");
+      const section = sections[index]!;
+      onProgress?.("section_progress", {
+        index: index + 1,
+        total: sections.length,
+        heading: section.heading,
+        subgraph: section.subgraph,
+      });
+      const result = await this.runCycle(
+        section.text,
+        onProgress,
+        signal,
+        {
+          subgraph: section.subgraph,
+          lcmEntries: section.lcmEntries,
+          analyzeSheaf: false,
+          autoSave: false,
+        },
+      );
+      artifacts.push(...result.artifacts);
+      summaries.push({
+        heading: section.heading,
+        subgraph: section.subgraph,
+        tokenCount: section.tokenCount,
+        iteration: result.state.iteration,
+        soc: result.state.soc?.latest ?? null,
+      });
+    }
+
+    this.#orchestrator.analyzeRegistrySheaf();
+    const state = this.getState();
+    await this.saveState();
+    return {
+      sections: summaries,
+      analysis: {
+        state,
+        cohomology: this.getCohomology(),
+        soc: this.getSOCMetrics(),
+      },
+      artifacts,
+    };
   }
 
   /* ─────────────── Cohomology ─────────────── */
@@ -578,6 +672,7 @@ class AgemBridge {
     return registryCohomologySnapshot(
       this.#orchestrator.sheaf,
       this.#orchestrator.sheafBuiltFromRegistry,
+      this.#orchestrator.sheafAnalyzedFromRegistry,
     );
   }
 
@@ -966,6 +1061,7 @@ class AgemBridge {
 
       // Wire active client & DAG references
       orch.activateSubgraph(orch.subgraphRegistry.activeSubgraphId);
+      this.#grep = this.#buildGrep(this.#embedder);
       console.log(
         `[AgemBridge] Restored SubgraphRegistry with ${orch.subgraphRegistry.list().length} subgraphs. ` +
           `Active subgraph: '${orch.subgraphRegistry.activeSubgraph.name}'`,
@@ -1057,6 +1153,11 @@ class AgemBridge {
       return false;
     }
 
+    // Restore into a fresh runtime. Clearing only the TNA graph is insufficient:
+    // named subgraphs, live SOC history, sheaf flags and embedding caches are
+    // all session-scoped mutable state.
+    await this.reset();
+    if (this.#activeSessionId !== sessionId) return false;
     await this.restoreFromSnapshot(snapshot);
 
     this.#emitEvent(
@@ -1083,6 +1184,7 @@ class AgemBridge {
   async reset(): Promise<void> {
     await this.#orchestrator.shutdown();
     const embedder = new ProviderEmbedder();
+    this.#embedder = embedder;
     const compressor = new ProviderCompressor();
     this.#orchestrator = new Orchestrator(embedder, compressor, {
       vdwAgentMaxIterations: settings.all.VDW_AGENT_MAX_ITERATIONS,
@@ -1126,18 +1228,10 @@ class AgemBridge {
    * Used when switching to a new session with no saved state.
    */
   async #clearEngineState(): Promise<void> {
-    // Clear graph
-    this.#orchestrator.tnaGraph.getGraph().clear();
-
-    // Reset iteration counter
-    this.#orchestrator.setIterationCount(0);
-
-    // Clear cached histories
-    this.#restoredSocHistory = [];
-    this.#restoredEvolutionHistory = [];
-
-    // Clear node embeddings
-    this.#orchestrator.setNodeEmbeddings(new Map());
+    // A graph-only clear left the SubgraphRegistry, LCM entries, sheaf and live
+    // SOC tracker attached to the previous session. Recreate the runtime so a
+    // new session cannot inherit named subgraphs or topology from another one.
+    await this.reset();
   }
 
   /* ─────────────── Private Helpers ─────────────── */

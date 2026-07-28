@@ -59,6 +59,7 @@ import type {
   EdgeId,
   SheafVertex,
   SheafEdge,
+  CohomologyResult,
 } from "../types/index.js";
 import { uuidv7 } from "uuidv7";
 
@@ -109,6 +110,13 @@ import { ObstructionHandler } from "./ObstructionHandler.js";
 import { VdWAgentSpawner } from "./VdWAgentSpawner.js";
 import type { AnyEvent } from "./interfaces.js";
 
+export interface ReasoningCycleOptions {
+  /** Independently embedded LCM material for one conceptual-section cycle. */
+  lcmEntries?: readonly string[];
+  /** Sectioned runs defer the corpus-level sheaf verdict until the last cycle. */
+  analyzeSheaf?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Orchestrator class
 // ---------------------------------------------------------------------------
@@ -156,6 +164,9 @@ export class Orchestrator {
    * proxy for "the sheaf is real".
    */
   readonly sheafBuiltFromRegistry: boolean = false;
+
+  /** False while sectioned ingestion deliberately defers the corpus verdict. */
+  readonly sheafAnalyzedFromRegistry: boolean = false;
 
   /** Cohomology analyzer: computes H^0/H^1 from sheaf and emits obstruction events. */
   readonly cohomologyAnalyzer!: CohomologyAnalyzer;
@@ -583,7 +594,11 @@ export class Orchestrator {
    *
    * @param prompt - Text input for this reasoning iteration.
    */
-  async runReasoning(prompt: string, signal?: AbortSignal): Promise<void> {
+  async runReasoning(
+    prompt: string,
+    signal?: AbortSignal,
+    options: ReasoningCycleOptions = {},
+  ): Promise<void> {
     if (signal?.aborted) throw new Error("Aborted");
     // Step 1: Increment iteration counter
     this.#iterationCounter++;
@@ -643,11 +658,18 @@ export class Orchestrator {
     lap("louvain_centrality_layout");
 
     // Step 5: Append prompt to LCM
-    const entryId = await this.lcmClient.append(prompt, signal);
+    const lcmEntries =
+      options.lcmEntries
+        ?.map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0) ?? [];
+    const entryIds =
+      lcmEntries.length > 0
+        ? await this.lcmClient.appendBatch(lcmEntries, signal)
+        : [await this.lcmClient.append(prompt, signal)];
     lap("lcm_append");
     if (signal?.aborted) throw new Error("Aborted");
     console.log(
-      `[ORCH] Iteration ${this.#iterationCounter}: Appended to LCM: ${entryId}`,
+      `[ORCH] Iteration ${this.#iterationCounter}: Appended ${entryIds.length} LCM entr${entryIds.length === 1 ? "y" : "ies"}: ${entryIds.join(", ")}`,
     );
 
     // Context compaction / escalation check
@@ -814,17 +836,31 @@ export class Orchestrator {
     const dynamicSheaf = await this.buildSheafFromRegistry();
     (this as any).sheaf = dynamicSheaf;
     (this as any).sheafBuiltFromRegistry = true;
+    (this as any).sheafAnalyzedFromRegistry = false;
 
-    const cohomologyResult = this.cohomologyAnalyzer.analyze(
-      this.sheaf,
-      this.#iterationCounter,
-    );
-    console.log(
-      `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
-        `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
-    );
-    // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
-    // (and are forwarded to eventBus via #wireEventBus handlers above)
+    const sheafVertices = this.sheaf.getVertexIds().length;
+    const sheafEdges = this.sheaf.getEdgeIds().length;
+    if (options.analyzeSheaf !== false) {
+      const cohomologyResult = this.analyzeRegistrySheaf();
+      if (cohomologyResult) {
+        console.log(
+          `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
+            `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
+        );
+        // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
+        // (and are forwarded to eventBus via #wireEventBus handlers above)
+      } else {
+        console.log(
+          `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis not computed ` +
+            `(${sheafVertices} registry vertices, ${sheafEdges} edges)`,
+        );
+      }
+    } else {
+      console.log(
+        `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis deferred ` +
+          `(${sheafVertices} registry vertices, ${sheafEdges} edges)`,
+      );
+    }
 
     lap("sheaf");
 
@@ -1119,6 +1155,29 @@ export class Orchestrator {
       this.#embedder,
     );
     (this as any).lcmDag = active.dag;
+  }
+
+  /** Resolve a named subgraph, activate it, and rewire all active LCM handles. */
+  activateOrCreateSubgraph(name: string): Subgraph {
+    const subgraph = this.subgraphRegistry.getOrCreate(name);
+    this.activateSubgraph(subgraph.id);
+    return subgraph;
+  }
+
+  /** Analyze the current registry sheaf only when it has comparison topology. */
+  analyzeRegistrySheaf(): CohomologyResult | null {
+    if (
+      this.sheaf.getVertexIds().length < 2 ||
+      this.sheaf.getEdgeIds().length === 0
+    ) {
+      return null;
+    }
+    const result = this.cohomologyAnalyzer.analyze(
+      this.sheaf,
+      this.#iterationCounter,
+    );
+    (this as any).sheafAnalyzedFromRegistry = true;
+    return result;
   }
 
   #initSheaf(): void {

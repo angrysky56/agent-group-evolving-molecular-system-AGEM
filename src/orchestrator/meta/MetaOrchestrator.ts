@@ -10,7 +10,10 @@
  */
 
 import { AgenticDesignPicker, type PickerConstraints } from "./AgenticDesignPicker.js";
-import { Orchestrator } from "../ComposeRootModule.js";
+import {
+  Orchestrator,
+  type ReasoningCycleOptions,
+} from "../ComposeRootModule.js";
 import type { TopologicalManifest, LLMProvider } from "../interfaces.js";
 
 /**
@@ -58,7 +61,8 @@ export class MetaOrchestrator {
   async execute(
     prompt: string, 
     constraints: PickerConstraints, 
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    cycleOptions?: ReasoningCycleOptions,
   ): Promise<{ manifest: TopologicalManifest }> {
     // Phase 1: Topological Routing (The Picker)
     // This step consumes minimal tokens to determine the most efficient path.
@@ -74,7 +78,11 @@ export class MetaOrchestrator {
     // Future expansion: In Phase 8, we will dispatch to different execution
     // strategies (Sequential, ReAct, Planning, Multi-Agent) based on manifest.topologyType.
     // For now, we utilize the standard iterative AGEM pipeline.
-    await this.#orchestrator.runReasoning(prompt, signal);
+    if (cycleOptions) {
+      await this.#orchestrator.runReasoning(prompt, signal, cycleOptions);
+    } else {
+      await this.#orchestrator.runReasoning(prompt, signal);
+    }
 
     return { manifest };
   }

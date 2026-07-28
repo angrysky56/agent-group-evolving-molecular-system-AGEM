@@ -95,6 +95,39 @@ export class SubgraphRegistry {
     return subgraph;
   }
 
+  /**
+   * Resolve a stable named subgraph, creating it when necessary.
+   *
+   * The registry starts with an empty `default` subgraph for backwards
+   * compatibility. When the first production cycle is explicitly named, that
+   * empty slot is relabelled instead of leaving behind a content-free phantom
+   * vertex in the registry sheaf.
+   */
+  getOrCreate(name: string): Subgraph {
+    const normalized = name.trim();
+    if (!normalized) {
+      throw new Error("SubgraphRegistry: subgraph name must not be empty");
+    }
+
+    const existing = this.list().find((subgraph) => subgraph.name === normalized);
+    if (existing) return existing;
+
+    const defaultGraph = this.#subgraphs.get("default");
+    if (
+      normalized !== "default" &&
+      this.#subgraphs.size === 1 &&
+      defaultGraph?.name === "default" &&
+      defaultGraph.store.size === 0 &&
+      defaultGraph.summaryIndex.list().length === 0
+    ) {
+      const claimed = { ...defaultGraph, name: normalized };
+      this.#subgraphs.set(defaultGraph.id, claimed);
+      return claimed;
+    }
+
+    return this.create(normalized);
+  }
+
   /** Retrieve a Subgraph by ID. */
   get(id: string): Subgraph | undefined {
     return this.#subgraphs.get(id);
