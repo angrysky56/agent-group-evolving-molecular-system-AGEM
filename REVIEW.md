@@ -1,5 +1,35 @@
 # Code Review: AGEM Attribution, Logical Blocking, and Last-Run Correctness
 
+## Resolution (2026-07-27)
+
+All seven findings are addressed in the implementation:
+
+- Claims now carry mandatory `corpus` or `position` scope, position holders are
+  persisted through TypeDB attribution, and holder identity participates in
+  structural and occurrence keys.
+- Logical blocks are keyed only by `(corpusId, assertion scope, positionId)`.
+  Communities remain diagnostic annotations and cannot affect formulas, MUS
+  membership, arity, or verdict kind.
+- Typed results distinguish `corpus-contradiction`,
+  `position-contradiction`, `positions-incompatible`, `no-contradiction`, and
+  `inconclusive`; only semantically validated single-context verdicts enter
+  automatic finding memory.
+- Missing/flattened attribution, rejected claims, and parse failures stop the
+  logical verdict as inconclusive. Legacy derived findings without validation
+  receipts are quarantined from recall, including the reviewed false HOT/HOP
+  finding.
+- Recurring vocabulary no longer creates global witnesses. Only claim-local
+  witnesses and explicitly audited caller seeds remain.
+- Finding recall is namespace-scoped by default, with the chat session as the
+  fallback namespace and an explicit opt-in available for cross-namespace
+  research.
+- Registry cohomology is a discriminated result. Unbuilt, single-vertex, and
+  edgeless sheaves return `not-computed` with no H0/H1 numeric fields.
+
+Regression coverage lives in `claim-extractor.test.ts`,
+`claim-blocks.test.ts`, `finding-capture.test.ts`, `finding-store.test.ts`, and
+`cohomology-snapshot.test.ts`.
+
 **Scope:** Latest consciousness-corpus run artifacts and the current claim extraction, blocking, finding-memory, cohomology, and community-detection paths.
 
 **Files and artifacts reviewed:** 14

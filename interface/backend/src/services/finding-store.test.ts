@@ -51,7 +51,20 @@ const input = (
   method,
   outcome,
   corpusId: "provenance-only",
+  memoryNamespace: "default-test",
   supportingClaims: claims,
+  ...(method === "derived-from-claims"
+    ? {
+        attributionValidated: true,
+        semanticsValidated: true,
+        semanticVerdictKind:
+          outcome === "contradiction"
+            ? ("position-contradiction" as const)
+            : outcome === "no-contradiction"
+              ? ("no-contradiction" as const)
+              : ("inconclusive" as const),
+      }
+    : {}),
 });
 
 describe("FindingStore", () => {
@@ -81,7 +94,9 @@ describe("FindingStore", () => {
     await store.store(input("secondary", "no-contradiction", ["b"]));
     await store.store(input("unrelated", "contradiction", ["c"]));
 
-    const recalled = await store.recall("cue");
+    const recalled = await store.recall("cue", {
+      memoryNamespace: "default-test",
+    });
 
     expect(embedder.calls.filter((call) => call === "cue")).toHaveLength(1);
     expect(recalled.map((match) => match.finding.verdict)).toEqual([
@@ -108,7 +123,60 @@ describe("FindingStore", () => {
       { directory, similarityFloor: 0.4, topK: 3 },
     );
     await store.store(input("finding", "contradiction", ["a"]));
-    await expect(store.recall("unrelatedCue")).resolves.toEqual([]);
+    await expect(
+      store.recall("unrelatedCue", { memoryNamespace: "default-test" }),
+    ).resolves.toEqual([]);
+  });
+
+  it("recalls only the requested namespace even when another corpus is an identical vector match", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ consciousness: [1, 0], genetics: [1, 0], cue: [1, 0] }),
+      { directory, similarityFloor: 0.4, topK: 3 },
+    );
+    await store.store({
+      ...input("consciousness", "contradiction", ["claim:mind"], "mind-run"),
+      memoryNamespace: "consciousness",
+      corpusId: "theories-of-mind",
+    });
+    await store.store({
+      ...input("genetics", "contradiction", ["claim:code"], "code-run"),
+      memoryNamespace: "genetic-code",
+      corpusId: "origin-of-genetic-code",
+    });
+
+    const recalled = await store.recall("cue", {
+      memoryNamespace: "consciousness",
+    });
+
+    expect(recalled.map((match) => match.finding.verdict)).toEqual([
+      "consciousness",
+    ]);
+  });
+
+  it("quarantines legacy derived findings that have no attribution receipt", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ legacy: [1, 0], cue: [1, 0] }),
+      { directory, similarityFloor: 0.4 },
+    );
+    await store.store(
+      input(
+        "legacy",
+        "contradiction",
+        ["claim:legacy"],
+        "legacy-run",
+        "derived-from-claims",
+      ),
+    );
+    const indexPath = join(directory, "index.json");
+    const index = JSON.parse(await readFile(indexPath, "utf8"));
+    delete index.findings[0].attributionValidated;
+    delete index.findings[0].semanticsValidated;
+    delete index.findings[0].semanticVerdictKind;
+    await writeFile(indexPath, JSON.stringify(index), "utf8");
+
+    await expect(
+      store.recall("cue", { memoryNamespace: "default-test" }),
+    ).resolves.toEqual([]);
   });
 
   it("detects conflict only from exact shared claims and opposite outcomes", async () => {
@@ -281,7 +349,7 @@ describe("FindingStore", () => {
     );
 
     now = new Date("2026-01-12T00:00:00.000Z");
-    await store.recall("miss");
+    await store.recall("miss", { memoryNamespace: "default-test" });
 
     expect(await store.getStats()).toEqual({
       active: 1,
@@ -322,7 +390,9 @@ describe("FindingStore", () => {
       input("three", "no-contradiction", ["claim:x"], "three", "derived-from-claims"),
     );
 
-    expect(await store.recall("cue")).toHaveLength(1);
+    expect(
+      await store.recall("cue", { memoryNamespace: "default-test" }),
+    ).toHaveLength(1);
     expect((await store.listOpenConflicts()).length).toBeGreaterThan(0);
   });
 

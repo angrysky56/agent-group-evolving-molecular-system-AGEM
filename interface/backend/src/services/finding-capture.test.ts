@@ -6,7 +6,11 @@ import {
   formatRecallContext,
 } from "./finding-capture.js";
 
-const context = { runLogId: "run-1", producedByModel: "model-a" };
+const context = {
+  runLogId: "run-1",
+  producedByModel: "model-a",
+  memoryNamespace: "consciousness",
+};
 
 describe("automatic finding capture", () => {
   it("captures a hand-authored conclusive verdict with structural formula keys", () => {
@@ -65,6 +69,9 @@ describe("automatic finding capture", () => {
       hasContradiction: false,
       searchTruncated: false,
       checkFailures: [],
+      attributionComplete: true,
+      semanticsValidated: true,
+      verdictKind: "no-contradiction",
       supportingClaimKeys: ["claim:a", "claim:b"],
       supportingClaimRefs: ["claim-occurrence:1", "claim-occurrence:2"],
       supportingClaimEvidence: [
@@ -75,6 +82,7 @@ describe("automatic finding capture", () => {
           claim: {
             kind: "exclusion",
             roles: { excluder: "phi", excluded: "global-broadcast" },
+            scope: "corpus",
           },
         },
         {
@@ -84,6 +92,7 @@ describe("automatic finding capture", () => {
           claim: {
             kind: "identity-claim",
             roles: { identified: "consciousness", "identified-with": "phi" },
+            scope: "corpus",
           },
         },
       ],
@@ -97,6 +106,7 @@ describe("automatic finding capture", () => {
     expect(captured).toMatchObject({
       method: "derived-from-claims",
       outcome: "no-contradiction",
+      memoryNamespace: "consciousness",
       supportingClaims: ["claim:a", "claim:b"],
       supportingClaimRefs: [
         "claim-occurrence:1",
@@ -116,8 +126,8 @@ describe("automatic finding capture", () => {
       "Phi can occur without global broadcast. Consciousness is phi. Additional corpus context remains available for compression.",
     );
     expect(narrative?.schemaFacts).toEqual([
-      'exclusion(excluder="phi",excluded="global-broadcast")',
-      'identity-claim(identified="consciousness",identified-with="phi")',
+      'exclusion(excluder="phi",excluded="global-broadcast",scope="corpus")',
+      'identity-claim(identified="consciousness",identified-with="phi",scope="corpus")',
     ]);
   });
 
@@ -135,6 +145,9 @@ describe("automatic finding capture", () => {
         {},
         JSON.stringify({
           supportingClaimKeys: ["claim:a", "claim:missing"],
+          attributionComplete: true,
+          semanticsValidated: true,
+          verdictKind: "no-contradiction",
           supportingClaimEvidence: [
             {
               claimKey: "claim:a",
@@ -143,6 +156,7 @@ describe("automatic finding capture", () => {
               claim: {
                 kind: "exclusion",
                 roles: { excluder: "a", excluded: "b" },
+                scope: "corpus",
               },
             },
           ],
@@ -170,6 +184,108 @@ describe("automatic finding capture", () => {
     ).toBeNull();
   });
 
+  it("stores no derived finding when attribution or semantic classification is unsafe", () => {
+    const base = {
+      verdict: "The rival positions are incompatible, not a corpus contradiction.",
+      coverage: "Coverage: all 2 blocks evaluated.",
+      hasContradiction: true,
+      supportingClaimKeys: ["claim:hot", "claim:hop"],
+      supportingClaimEvidence: [
+        {
+          claimKey: "claim:hot",
+          segmentId: "survey-1",
+          sourceText: "HOT theorists identify meta-states with thoughts.",
+          claim: {
+            kind: "identity-claim",
+            roles: { identified: "meta-state", "identified-with": "thought" },
+            scope: "position",
+            positionId: "HOT",
+          },
+        },
+        {
+          claimKey: "claim:hop",
+          segmentId: "survey-1",
+          sourceText: "HOP theorists identify meta-states with perceptions.",
+          claim: {
+            kind: "identity-claim",
+            roles: {
+              identified: "meta-state",
+              "identified-with": "perception",
+            },
+            scope: "position",
+            positionId: "HOP",
+          },
+        },
+      ],
+      checkFailures: [],
+    };
+
+    for (const unsafe of [
+      {
+        ...base,
+        attributionComplete: false,
+        semanticsValidated: false,
+        verdictKind: "inconclusive",
+      },
+      {
+        ...base,
+        attributionComplete: true,
+        semanticsValidated: true,
+        verdictKind: "positions-incompatible",
+      },
+      {
+        ...base,
+        attributionComplete: true,
+        semanticsValidated: true,
+        verdictKind: "mixed",
+      },
+    ]) {
+      expect(
+        captureFindingFromTool(
+          "extract_and_verify_claims",
+          { corpusId: "consciousness" },
+          JSON.stringify(unsafe),
+          context,
+        ),
+      ).toBeNull();
+      expect(
+        captureFindingNarrativeFromTool(
+          "extract_and_verify_claims",
+          { text: "theory survey" },
+          JSON.stringify(unsafe),
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("captures an internally contradictory attributed position without calling the corpus contradictory", () => {
+    const captured = captureFindingFromTool(
+      "extract_and_verify_claims",
+      { corpusId: "consciousness" },
+      JSON.stringify({
+        verdict: "Position HOT is internally contradictory.",
+        coverage: "Coverage: all 1 blocks evaluated.",
+        hasContradiction: true,
+        attributionComplete: true,
+        semanticsValidated: true,
+        verdictKind: "position-contradiction",
+        supportingClaimKeys: ["claim:hot"],
+        supportingClaimRefs: ["occurrence:hot"],
+        checkFailures: [],
+      }),
+      context,
+    );
+
+    expect(captured).toMatchObject({
+      outcome: "contradiction",
+      memoryNamespace: "consciousness",
+      attributionValidated: true,
+      semanticsValidated: true,
+      semanticVerdictKind: "position-contradiction",
+      verdict: "Position HOT is internally contradictory.",
+    });
+  });
+
   it("surfaces write conflicts and formats recalled memory with citation discipline", () => {
     const finding = {
       id: "finding-1",
@@ -180,6 +296,7 @@ describe("automatic finding capture", () => {
       method: "hand-authored" as const,
       outcome: "contradiction" as const,
       corpusId: "corpus",
+      memoryNamespace: "consciousness",
       supportingClaims: ["claim:a"],
       createdAt: "2026-01-01T00:00:00.000Z",
       recallCount: 1,

@@ -101,33 +101,26 @@ export interface AgemStateSnapshot {
         population_size: number;
     };
 }
-/** Sheaf cohomology analysis snapshot. */
-export interface CohomologySnapshot {
-    h0_dimension: number;
-    h1_dimension: number;
-    has_obstruction: boolean;
-    coboundary_rank: number;
-    tolerance: number;
-    /** Set only in edge cases (e.g. empty graph) to explain a default-looking value. */
-    note?: string;
-    /**
-     * WHAT THESE NUMBERS ARE OVER — always present.
-     *
-     * The sheaf is built over the LCM SUBGRAPH REGISTRY (a handful of memory
-     * subgraphs, with embedding-cosine restriction maps), NOT over the concept
-     * co-occurrence graph that `get_graph_topology` reports on. Those are two
-     * unrelated structures with different vertex sets and different sizes.
-     *
-     * Reported side by side without this label, "H⁰ = 3" next to "11 communities,
-     * fully connected, no gaps" reads as a contradiction about one graph. It is
-     * two facts about two graphs. Every downstream analysis so far has misread it.
-     */
+interface CohomologySnapshotBase {
+    /** WHAT THESE NUMBERS ARE OVER — always present. */
     domain: "lcm-subgraph-registry";
     /** Vertices in the sheaf — i.e. subgraphs, NOT concept-graph nodes. */
     sheaf_vertices: number;
     /** Edges in the sheaf — subgraph pairs whose concept centroids exceed threshold. */
     sheaf_edges: number;
 }
+/** Sheaf cohomology analysis snapshot. Degenerate topology has no numbers. */
+export type CohomologySnapshot = (CohomologySnapshotBase & {
+    status: "not-computed";
+    notComputed: string;
+}) | (CohomologySnapshotBase & {
+    status: "computed";
+    h0_dimension: number;
+    h1_dimension: number;
+    has_obstruction: boolean;
+    coboundary_rank: number;
+    tolerance: number;
+});
 /** SOC metrics snapshot with regime analysis. */
 export interface SOCSnapshot {
     latest: {
@@ -291,6 +284,8 @@ export interface KnowledgeFile {
 export interface ChatRequest {
     message: string;
     session_id?: string;
+    /** Hard boundary for automatic finding recall/write. Defaults to the session. */
+    memory_namespace?: string;
     model?: string;
     provider?: LLMProviderType;
 }
@@ -299,4 +294,5 @@ export interface CreateSessionRequest {
     model?: string;
     provider?: LLMProviderType;
 }
+export {};
 //# sourceMappingURL=types.d.ts.map

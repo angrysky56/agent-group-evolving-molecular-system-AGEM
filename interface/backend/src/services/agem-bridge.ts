@@ -40,6 +40,7 @@ import { saveEngineState, loadEngineState } from "./state/index.js";
 import type { EngineSnapshot } from "./state/index.js";
 import type { GapMetrics } from "#agem/tna/interfaces.js";
 import { settings } from "../config.js";
+import { registryCohomologySnapshot } from "./cohomology-snapshot.js";
 
 /* ─── AGEM Engine Bridge ─── */
 
@@ -574,66 +575,10 @@ class AgemBridge {
 
   /** Get current sheaf cohomology analysis. */
   getCohomology(): CohomologySnapshot {
-    /*
-     * Honesty guard. The previous version asked the TNA CONCEPT GRAPH whether
-     * it was empty, then reported cohomology of the SHEAF — two unrelated
-     * objects. `sheaf` starts life as buildFlatSheaf(2, 1), a two-vertex stub,
-     * and is only replaced when a cycle reaches step 6. Restoring a persisted
-     * concept graph populates the graph but does NOT build the sheaf, so the
-     * guard passed and the stub's cohomology was returned as a finding —
-     * exactly the misreading the guard was written to prevent.
-     *
-     * Ask the sheaf about the sheaf.
-     */
-    if (!this.#orchestrator.sheafBuiltFromRegistry) {
-      return {
-        h0_dimension: 0,
-        h1_dimension: 0,
-        has_obstruction: false,
-        coboundary_rank: 0,
-        tolerance: 0,
-        domain: "lcm-subgraph-registry",
-        sheaf_vertices: 0,
-        sheaf_edges: 0,
-        note:
-          "sheaf not built — no cycle has run in this process, so H⁰/H¹ are " +
-          "undefined. A restored concept graph does not build the sheaf. " +
-          "Run run_agem_cycle first.",
-      };
-    }
-
-    const sheaf = this.#orchestrator.sheaf;
-    const vertices = sheaf.getVertexIds().length;
-    const edges = sheaf.getEdgeIds().length;
-    const cohom = computeCohomology(sheaf);
-
-    /*
-     * With no edges the coboundary is empty, so every section is global:
-     * H⁰ = c0Dimension = the SUM of vertex stalk dimensions, and H¹ = 0. Both
-     * are facts about an unconnected registry, not about the corpus — and both
-     * are indistinguishable from a real result unless said out loud.
-     */
-    const note =
-      edges === 0
-        ? `sheaf has ${vertices} vertex/vertices and NO edges — no pair of ` +
-          `subgraphs cleared the similarity threshold, so H¹ is trivially 0 and ` +
-          `H⁰ is just the total stalk dimension. NOTE H⁰ IS A DIMENSION, NOT A ` +
-          `COUNT: vertex stalks are concept subspaces of up to 3 dimensions, so ` +
-          `a single subgraph can report H⁰ = 3. That is not "3 components" and ` +
-          `not "3 semantic clusters". This says nothing about the concept graph.`
-        : undefined;
-
-    return {
-      h0_dimension: cohom.h0Dimension,
-      h1_dimension: cohom.h1Dimension,
-      has_obstruction: cohom.hasObstruction,
-      coboundary_rank: cohom.coboundaryRank,
-      tolerance: cohom.tolerance,
-      domain: "lcm-subgraph-registry",
-      sheaf_vertices: vertices,
-      sheaf_edges: edges,
-      note,
-    };
+    return registryCohomologySnapshot(
+      this.#orchestrator.sheaf,
+      this.#orchestrator.sheafBuiltFromRegistry,
+    );
   }
 
   /* ─────────────── SOC Metrics ─────────────── */

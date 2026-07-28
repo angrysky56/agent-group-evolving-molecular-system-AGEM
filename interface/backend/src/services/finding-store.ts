@@ -28,6 +28,11 @@ export type FindingOutcome =
   | "contradiction"
   | "no-contradiction"
   | "inconclusive";
+export type FindingSemanticVerdictKind =
+  | "position-contradiction"
+  | "corpus-contradiction"
+  | "no-contradiction"
+  | "inconclusive";
 
 export interface FindingInput {
   verdict: string;
@@ -60,6 +65,12 @@ export interface FindingInput {
   method: FindingMethod;
   outcome: FindingOutcome;
   corpusId: string;
+  /** Hard retrieval boundary. Similarity never crosses it unless opted in. */
+  memoryNamespace: string;
+  /** Required safety receipts for findings derived from extracted claims. */
+  attributionValidated?: boolean;
+  semanticsValidated?: boolean;
+  semanticVerdictKind?: FindingSemanticVerdictKind;
   condensedNarrative?: string;
   /** Stable structural keys. These, not embeddings, define conflicts. */
   supportingClaims: string[];
@@ -134,6 +145,13 @@ export interface FindingStoreOptions {
   graph?: FindingGraph;
 }
 
+export interface RecallOptions {
+  memoryNamespace: string;
+  /** Explicit research-mode opt-in for labeled cross-namespace recall. */
+  includeOtherNamespaces?: boolean;
+  signal?: AbortSignal;
+}
+
 const EMPTY_INDEX = (): FindingIndex => ({
   version: 1,
   findings: [],
@@ -183,6 +201,19 @@ export class FindingStore {
     }
     if (input.supportingClaims.length === 0) {
       throw new Error("A reusable finding requires at least one supporting claim.");
+    }
+    if (!input.memoryNamespace.trim()) {
+      throw new Error("A reusable finding requires a memory namespace.");
+    }
+    if (
+      input.method === "derived-from-claims" &&
+      (input.attributionValidated !== true ||
+        input.semanticsValidated !== true ||
+        !input.semanticVerdictKind)
+    ) {
+      throw new Error(
+        "A derived finding requires attribution and semantic-validation receipts.",
+      );
     }
 
     return this.#serial(async () => {
@@ -272,16 +303,24 @@ export class FindingStore {
   }
 
   /** One cue embedding, raw cosine floor, then a bounded ranked result. */
-  async recall(cue: string, signal?: AbortSignal): Promise<RecallMatch[]> {
+  async recall(cue: string, options: RecallOptions): Promise<RecallMatch[]> {
     if (!cue.trim()) return [];
-    const cueVector = await this.#embedder.embed(boundCue(cue), signal);
+    const memoryNamespace = options.memoryNamespace.trim();
+    if (!memoryNamespace) return [];
+    const cueVector = await this.#embedder.embed(boundCue(cue), options.signal);
 
     return this.#serial(async () => {
       const index = await this.#readIndex();
       await this.#sink(index);
       const now = this.#now();
       const ranked = index.findings
-        .filter((finding) => finding.status === "active")
+        .filter(
+          (finding) =>
+            finding.status === "active" &&
+            isRecallEligible(finding) &&
+            (options.includeOtherNamespaces === true ||
+              finding.memoryNamespace === memoryNamespace),
+        )
         .map((finding) => {
           const similarity = cosine(cueVector, finding.embedding);
           const ageFraction = Math.min(
@@ -594,7 +633,13 @@ export class FindingStore {
       }
       return {
         version: 1,
-        findings: parsed.findings,
+        findings: parsed.findings.map((finding) => ({
+          ...finding,
+          // Legacy records predate namespaces. Corpus identity is the safest
+          // available retrieval boundary; never promote them to global scope.
+          memoryNamespace:
+            finding.memoryNamespace?.trim() || finding.corpusId,
+        })),
         conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
         archivedCount: Number(parsed.archivedCount ?? 0),
       };
@@ -682,6 +727,8 @@ function findingFingerprint(input: FindingInput): string {
     .update(
       JSON.stringify({
         runLogId: input.runLogId,
+        memoryNamespace: input.memoryNamespace,
+        semanticVerdictKind: input.semanticVerdictKind ?? null,
         method: input.method,
         verdict: input.verdict,
         supportingClaims: input.supportingClaims,
@@ -697,10 +744,20 @@ function isConclusive(
   return outcome === "contradiction" || outcome === "no-contradiction";
 }
 
+function isRecallEligible(finding: StoredFinding): boolean {
+  return (
+    finding.method !== "derived-from-claims" ||
+    (finding.attributionValidated === true &&
+      finding.semanticsValidated === true &&
+      !!finding.semanticVerdictKind)
+  );
+}
+
 function conflictEvidence(
   newer: StoredFinding,
   older: StoredFinding,
 ): Pick<ConflictCandidate, "basis" | "sharedClaims" | "sharedCorpusId"> | null {
+  if (newer.memoryNamespace !== older.memoryNamespace) return null;
   if (newer.outcome === older.outcome) return null;
   if (
     newer.method === "derived-from-claims" &&

@@ -18,6 +18,15 @@ export class TypeDBFindingGraph implements FindingGraph {
       finding.condensedNarrative
         ? `has condensed-narrative "${esc(finding.condensedNarrative)}"`
         : "",
+      finding.semanticVerdictKind
+        ? `has semantic-verdict-kind "${esc(finding.semanticVerdictKind)}"`
+        : "",
+      finding.attributionValidated === true
+        ? "has attribution-validated true"
+        : "",
+      finding.semanticsValidated === true
+        ? "has semantics-validated true"
+        : "",
     ].filter(Boolean);
     await requireWrite(`put
   $f isa finding,
@@ -28,6 +37,7 @@ export class TypeDBFindingGraph implements FindingGraph {
     has produced-by-model "${esc(finding.producedByModel)}",
     has method "${esc(finding.method)}",
     has finding-outcome "${esc(finding.outcome)}",
+    has memory-namespace "${esc(finding.memoryNamespace)}",
     has created-at ${finding.createdAt},
     has corpus-id "${esc(finding.corpusId)}"${optional.length ? `,\n    ${optional.join(",\n    ")}` : ""};`);
 

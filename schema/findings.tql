@@ -21,6 +21,10 @@ define
   attribute condensed-narrative, value string;
   attribute reason, value string;
   attribute finding-outcome, value string @values("contradiction", "no-contradiction", "inconclusive");
+  attribute memory-namespace, value string;
+  attribute semantic-verdict-kind, value string @values("position-contradiction", "corpus-contradiction", "no-contradiction", "inconclusive");
+  attribute attribution-validated, value boolean;
+  attribute semantics-validated, value boolean;
   attribute created-at, value datetime-tz;
 
   entity finding,
@@ -32,6 +36,10 @@ define
     owns produced-by-model,
     owns method,
     owns finding-outcome,
+    owns memory-namespace,
+    owns semantic-verdict-kind @card(0..1),
+    owns attribution-validated @card(0..1),
+    owns semantics-validated @card(0..1),
     owns created-at,
     owns condensed-narrative @card(0..1),
     owns corpus-id;

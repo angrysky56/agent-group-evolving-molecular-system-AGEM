@@ -30,8 +30,8 @@ import {
   extractIntoStore,
 } from "../services/claim-extractor.js";
 import {
+  classifyClaimVerdict,
   deriveClaimBlocks,
-  mapSegmentsToPositions,
 } from "../services/claim-blocks.js";
 import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
@@ -244,6 +244,8 @@ chatRouter.post("/completions", async (req, res) => {
       const session = sessionStore.create({ model, provider: providerType });
       sessionId = session.id;
     }
+    const memoryNamespace =
+      body.memory_namespace?.trim() || `session:${sessionId}`;
 
     sendEvent("session", { session_id: sessionId });
 
@@ -300,7 +302,10 @@ chatRouter.post("/completions", async (req, res) => {
     try {
       const recalled = await findingStore.recall(
         message,
-        abortController.signal,
+        {
+          memoryNamespace,
+          signal: abortController.signal,
+        },
       );
       recalledFindingIds = recalled.map((match) => match.finding.id);
       recalledContext = formatRecallContext(recalled, effectiveModel);
@@ -311,6 +316,7 @@ chatRouter.post("/completions", async (req, res) => {
           similarity: match.similarity,
           conflictCandidates: match.conflicts.map((c) => c.id),
         })),
+        memoryNamespace,
       });
     } catch (error) {
       // Long-term memory must degrade safely just as TypeDB does.
@@ -341,9 +347,7 @@ chatRouter.post("/completions", async (req, res) => {
 Each cycle, the engine ingests text into a concept graph, detects communities, and computes metrics. Read these honestly — do not over-claim what they mean:
 
 - **get_graph_topology** — the concept communities and the bridges between them. This is your richest signal: which ideas cluster, which clusters connect, where the structure is.
-- **get_cohomology** — H⁰ and H¹ of the sheaf built over the concept clusters.
-  - **H⁰ = number of connected semantic components.** This is meaningful: H⁰ rising means the discussion is fragmenting into separate topic-islands; H⁰ falling means a new idea bridged previously separate clusters. Use H⁰ as a *connectivity/fragmentation* readout.
-  - **H¹** currently reflects cycle topology in the cluster graph, NOT logical contradiction. A nonzero H¹ does NOT mean the ideas conflict, and H¹ = 0 does NOT mean they agree. Do not narrate H¹ as "consensus reached" or "obstruction = disagreement." Report it plainly and rely on formal logic (below) for actual contradiction.
+- **get_cohomology** — cohomology of the LCM subgraph-registry sheaf, NOT the concept graph. First read \`status\`: when it is \`not-computed\`, numeric H⁰/H¹ fields are deliberately absent. When computed, H⁰ is a vector-space dimension rather than a count of semantic clusters, and H¹ is a topological invariant of registry restriction maps rather than a logical contradiction verdict.
 - **get_soc_metrics** — VNE/EE/CDP and regime (nascent/stable/critical). A rough measure of how much the graph is still developing. Useful for pacing, not for truth.
 - **detect_gaps / generate_catalyst_questions** — structural gaps between clusters and questions that would bridge them. Good for deciding what to explore next.
 
@@ -353,7 +357,7 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 2. **A cycle only advances the graph if you feed it NEW, substantive content.** Running another cycle with no new text — or with a thin scrap, or by re-pasting the same material — does not progress the reasoning; it just piles duplicate co-occurrences on and degrades modularity. So run a second/third cycle ONLY when you genuinely have new material to add: your own synthesis so far, the answers to the catalyst questions, the next step of the argument, additional source text. To make the graph follow the reasoning forward, ingest the reasoning forward.
 3. If you have nothing substantively new to add, do NOT run another cycle — instead inspect and reason over what is already there (steps 4–6).
 4. Inspect with **get_graph_topology** (primary), then **get_cohomology** and **get_soc_metrics** as needed.
-5. For any claim of contradiction, entailment, or logical (in)consistency, do NOT assert it from the graph — verify it with **evaluate_logical_consistency**.
+5. For a contested corpus, prefer **extract_and_verify_claims**, which preserves attributed positions. Use **evaluate_logical_consistency** only for already-audited hand-authored assertion contexts. Never use graph communities themselves as logical blocks.
 6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back in via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
 7. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
 
@@ -376,14 +380,14 @@ Recalled findings are context, not an agenda. Cite one you actually use with its
 The graph cannot detect contradiction, entailment, or consistency — only formal logic can. So whenever a corpus contains multiple positions, claims, or theories that might conflict, you MUST verify their logical relations with mcp-logic. Do NOT adjudicate "these positions are consistent / contradictory / the same axis" in prose alone — that judgement has to be checked, not asserted.
 
 Required procedure for contested topics:
-1. After clustering, name the key blocks (use the concept communities as candidates).
+1. Identify who asserts each claim. Logical blocks are corpus-level assertions or named attributed positions; concept communities may help discovery but never define assertion contexts.
 2. State each block's core claim as one or more SINGLE first-order-logic propositions.
    **NEGATION MUST USE THE "-" OPERATOR.** Write "-travels(x)". NEVER encode negation in a predicate NAME — "not_travels(x)", "no_transfer(x)", "non_local(x)" are, to the prover, symbols with no relationship whatsoever to "travels(x)", so they can never contradict it. This is the single most common way this tool gets a meaningless answer: a set of formulas with no "-" anywhere is ALWAYS satisfiable (make every predicate true everywhere), so it will report "no contradiction" no matter what the text said.
    Blocks must also SHARE predicate symbols. If block A says "travels(capability)" and block B says "distribution_bound(policy)", nothing connects them. Use the same predicate for the same idea across blocks, and negate it where a block denies it.
    A contradiction is normally expressed by one block asserting P and another asserting -P, or by a conditional in one block whose antecedent the others satisfy — so if the text contains a conditional ("X only if Y", "if X then not Y"), ENCODE IT AS A CONDITIONAL. Dropping it usually destroys the tension.
    **EVERY BLOCK OF UNIVERSALS NEEDS AN EXISTENTIAL WITNESS.** "all x (capability(x) -> travels(x))" is TRUE when nothing is a capability, so a set of pure "all x (...)" formulas is satisfied by the empty world and can never contradict. Whenever you write "all x (P(x) -> ...)" and P is supposed to be non-empty, also assert "exists x (P(x))". This has produced a real false "no contradiction" on a corpus that contained two.
 3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed). A model of the full set certifies every subset at once; an unsatisfiable full set triggers complete, monotone MUS enumeration unless a caller cap, budget, or undetermined oracle result prevents completion. A **minimal unsatisfiable set** is a set of blocks that cannot all be true together, but every proper subset of which can.
-4. **Read "verdict" and "frustrations". Do NOT read H¹.** "hasContradiction" is the answer; "frustrations" names the offending sets and their arity. H¹ is a topological summary that is mathematically pinned to 0 whenever there are 4 or more blocks, and cannot see frustrations above arity 3 at all — so "H¹ = 0" is NOT evidence of consistency and must never be reported as such. If "h1Note" is present it explains the discrepancy.
+4. On the typed path, read \`verdictKind\`: \`position-contradiction\` and \`corpus-contradiction\` are contradictions in one assertion context; \`positions-incompatible\` means rival positions cannot jointly hold and does NOT make a survey corpus contradictory. On the hand-authored path, read \`frustrations\`. Do NOT use H¹ as a verdict.
 5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing. **Read "truncationNote"** — it says WHICH cap stopped the search. If it names a budget limit, "checksRequiredForNextLevel" is the exact 'maxChecks' that settles the question: call the tool again passing that value. Truncation is a setting, not a capability ceiling — never report it as "the tool cannot search further".
 6. Report the frustrated sets whenever "hasContradiction" is true, and check "frustrationsComplete" plus "checkFailures". A found MUS remains evidence when enumeration is incomplete, but it is not proof that no additional MUS exists.
 7. **If "resultIsVacuous" is true, the overall verdict is invalid.** With no contradiction, the encoding made "consistent" a foregone conclusion. If contradictions were found, the listed clashes remain evidence, but critical alias/arity defects can hide additional ones. Read "formalizationWarnings", fix the formulas, and call the tool again. Never report a clean consistency or complete contradiction inventory from a vacuous result.
@@ -492,7 +496,7 @@ ${skillContent}`,
         function: {
           name: "get_cohomology",
           description:
-            "Analyse current sheaf cohomology. Returns H⁰ (connected components), H¹ (obstructions / inconsistencies), coboundary rank, and whether an obstruction exists. Use after a cycle to assess consensus quality.",
+            "Analyse the LCM subgraph-registry sheaf. Returns status='computed' with H⁰/H¹ only when the registry sheaf has at least two vertices and an edge; otherwise returns status='not-computed' plus notComputed and omits numeric invariants. This is not the concept co-occurrence graph.",
           parameters: {
             type: "object",
             properties: {},
@@ -505,7 +509,7 @@ ${skillContent}`,
         function: {
           name: "evaluate_logical_consistency",
           description:
-            "LOGIC-BASED H⁰/H¹ (the real contradiction detector — the graph's H¹ cannot do this). You supply the key blocks of the corpus, each with its core claims as first-order-logic propositions; the engine checks internal, pairwise, and triple-wise satisfiability via mcp-logic (Prover9/Mace4) and computes the consistency complex. H¹ > 0 means a set of blocks that are consistent in every pair but impossible all together (genuine higher-order contradiction). Use this for contested/multi-position corpora instead of judging consistency in prose. Formula syntax: lowercase predicates over constants, '-' for negation, '->' implies, parenthesised quantifiers; one formula per array element, never newlines inside a formula. Example proposition: 'p(a) -> q(a)'.",
+            "Hand-authored logical consistency over already-audited assertion-context blocks. The real result is hasContradiction plus minimal unsatisfiable sets in frustrations; H¹ is only a lossy topological summary and is never the verdict. Prefer extract_and_verify_claims for raw contested corpora because it preserves attribution. Formula syntax: lowercase predicates over constants, '-' for negation, '->' implies, parenthesised quantifiers; one formula per array element, never newlines inside a formula.",
           parameters: {
             type: "object",
             properties: {
@@ -583,7 +587,7 @@ ${skillContent}`,
         function: {
           name: "extract_and_verify_claims",
           description:
-            "PREFERRED over evaluate_logical_consistency for contested corpora. Give it the corpus TEXT and it does the whole chain with no hand-written logic: splits into sentences, extracts typed claims (exclusion, identity-claim, causal-claim, distinction, dissociation, entailment) with named roles and mandatory provenance, stores them in the schema-enforced claim store (a malformed claim is REJECTED, not silently accepted), derives first-order logic DETERMINISTICALLY from the claim types, and runs the consistency check on the result. The negation in an exclusion is emitted because the relation is typed 'exclusion' — it cannot be forgotten, which is the failure mode that makes hand-written encodings of the same corpus disagree with each other run to run. Returns the extraction report (accepted/rejected counts with reasons) and the consistency verdict.",
+            "PREFERRED over evaluate_logical_consistency for contested corpora. Extracts typed, attributed claims and groups logic only by corpus assertion or named position; graph communities are diagnostic annotations and never logical blocks. Rival positions that cannot be jointly satisfied are reported as positions-incompatible, not as a contradictory corpus. Missing attribution is explicitly inconclusive and creates no automatic finding.",
           parameters: {
             type: "object",
             properties: {
@@ -606,7 +610,7 @@ ${skillContent}`,
                 type: "array",
                 items: { type: "string" },
                 description:
-                  "Additional neutral entities whose existence every position accepts, e.g. [\"codon\",\"amino_acid\",\"assignment\"]. The derivation also links positions automatically through up to three canonical roles that recur across blocks. Every applied seed is returned for audit; supply only corpus-wide commitments.",
+                  "Explicitly audited neutral entities whose existence every position accepts, e.g. [\"codon\",\"amino_acid\",\"assignment\"]. No witnesses are inferred from recurring vocabulary. Every applied seed is returned for audit; supply only corpus-wide commitments.",
               },
             },
             required: ["text"],
@@ -1582,13 +1586,18 @@ ${skillContent}`,
                 // and collect related claims into corpus positions annotated
                 // with their graph communities before the subset search.
                 const derivation = await deriveClaimBlocks(extraction.outcomes, {
+                  corpusId,
                   communities: graphCommunities,
                   ontology,
                   embedder: claimBlockEmbedder,
-                  positionBySegment: mapSegmentsToPositions(segs),
                   sharedExistencePredicates,
                 });
                 const distinct = derivation.blocks;
+
+                const extractionComplete =
+                  extraction.parseFailures.length === 0 &&
+                  extraction.claimsRejected === 0 &&
+                  derivation.attributionComplete;
 
                 /*
                  * CAP THE BLOCK COUNT. Unlike the hand-curated path, extraction
@@ -1614,15 +1623,32 @@ ${skillContent}`,
                     `or raise the cap deliberately.`
                   : undefined;
 
-                if (blocks.length < 2) {
+                if (!extractionComplete) {
                   output = JSON.stringify({
                     runLogId: runLog.runId,
                     extraction,
+                    attributionComplete: derivation.attributionComplete,
+                    attributionIssues: derivation.attributionIssues,
+                    semanticsValidated: false,
+                    verdictKind: "inconclusive",
+                    hasContradiction: false,
+                    supportingClaimKeys: [],
+                    supportingClaimRefs: [],
                     verdict:
-                      `Only ${blocks.length} distinct claim block(s) were extracted — ` +
-                      `too few to check for contradiction. This is a finding about the ` +
-                      `EXTRACTION, not about the corpus: report it as such, do not report ` +
-                      `"no contradiction".`,
+                      "INCONCLUSIVE EXTRACTION — one or more claims lacked valid attribution, were rejected, or came from an unparseable segment. No logical verdict was computed and no finding may be stored.",
+                  });
+                } else if (blocks.length === 0) {
+                  output = JSON.stringify({
+                    runLogId: runLog.runId,
+                    extraction,
+                    attributionComplete: true,
+                    semanticsValidated: false,
+                    verdictKind: "inconclusive",
+                    hasContradiction: false,
+                    supportingClaimKeys: [],
+                    supportingClaimRefs: [],
+                    verdict:
+                      "No attributed claim blocks were extracted. This is inconclusive about the corpus and creates no finding.",
                   });
                 } else {
                   const oracle = makeMcpLogicOracle((server, tool, a) =>
@@ -1650,9 +1676,30 @@ ${skillContent}`,
                         derivation.predicateAliasSuggestions,
                     },
                   );
-                  const evaluatedNames = new Set(result.vertices);
-                  const supporting = selected.filter((block) =>
+                  const classified = classifyClaimVerdict(derivation, result);
+                  // A clean result over a capped prefix is not a clean corpus
+                  // result. Preserve it as an inconclusive run-memory record.
+                  const semantic =
+                    capped && classified.verdictKind === "no-contradiction"
+                      ? { ...classified, verdictKind: "inconclusive" as const }
+                      : classified;
+                  const evaluatedNames = new Set([
+                    ...result.vertices,
+                    ...result.internallyInconsistent,
+                  ]);
+                  const evaluatedBlocks = selected.filter((block) =>
                     evaluatedNames.has(block.name),
+                  );
+                  const evidenceBlockNames = new Set(
+                    semantic.verdictKind === "position-contradiction" ||
+                      semantic.verdictKind === "corpus-contradiction"
+                      ? semantic.semanticFrustrations
+                          .filter(({ kind }) => kind === semantic.verdictKind)
+                          .flatMap(({ blocks }) => blocks)
+                      : [...evaluatedNames],
+                  );
+                  const supporting = selected.filter((block) =>
+                    evidenceBlockNames.has(block.name),
                   );
                   const segmentTextById = new Map(
                     segs.map((segment) => [segment.id, segment.text]),
@@ -1690,7 +1737,7 @@ ${skillContent}`,
                         ]
                       : [];
                   });
-                  const evaluated = supporting.length;
+                  const evaluated = evaluatedBlocks.length;
                   const coverageDetails = [
                     capped
                       ? `${distinct.length - BLOCK_CAP} block(s) excluded by LOGIC_MAX_BLOCKS`
@@ -1721,23 +1768,24 @@ ${skillContent}`,
                     totalChecks: checkLog.length,
                     checkLog,
                   });
-                  const verdict = result.resultIsVacuous
-                    ? (result.hasContradiction
-                        ? `CONTRADICTION(S) FOUND, BUT FORMALIZATION INCOMPLETE — the listed clashes are valid evidence, but critical predicate-alias defects can hide additional contradictions. Review predicateAliasSuggestions, supply an audited ontology map, and re-run.`
-                        : `INVALID FORMALIZATION — the derived consistency result is VACUOUS and must not be reported as a finding. Review formalizationWarnings and predicateAliasSuggestions, then re-run.`)
-                    : result.hasContradiction
-                      ? `CONTRADICTION FOUND — ${result.frustrations.length} minimal ` +
-                        `unsatisfiable set(s): ` +
-                        result.frustrations
-                          .map((f) => `{${f.blocks.join(", ")}} (arity ${f.arity})`)
-                          .join("; ") +
-                        (result.frustrationsComplete
-                          ? ""
-                          : ` WARNING: MUS enumeration is incomplete; more minimal ` +
-                            `contradictions may exist. ${result.frustrationSearchNote ?? result.truncationNote ?? ""}`)
-                      : result.searchTruncated
-                        ? `No contradiction found up to arity ${result.searchedToArity} — the search was TRUNCATED, so higher-order frustrations are not ruled out. ${result.truncationNote ?? ""}`
-                        : `No contradiction among ${evaluated} evaluated extracted claim blocks up to arity ${result.searchedToArity}.`;
+                  const semanticSets = semantic.semanticFrustrations
+                    .map(
+                      (frustration) =>
+                        `{${frustration.blocks.join(", ")}} (arity ${frustration.arity})`,
+                    )
+                    .join("; ");
+                  const verdict =
+                    semantic.verdictKind === "corpus-contradiction"
+                      ? `CORPUS CONTRADICTION — direct corpus-level assertions form ${semantic.semanticFrustrations.length} minimal unsatisfiable set(s): ${semanticSets}`
+                      : semantic.verdictKind === "position-contradiction"
+                        ? `POSITION CONTRADICTION — one attributed position is internally inconsistent: ${semanticSets}. This does not by itself make the survey corpus contradictory.`
+                        : semantic.verdictKind === "positions-incompatible"
+                          ? `POSITIONS INCOMPATIBLE — rival attributed positions cannot be jointly satisfied: ${semanticSets}. The corpus is not contradictory merely for accurately reporting their disagreement.`
+                          : semantic.verdictKind === "mixed"
+                            ? `MIXED LOGICAL RESULTS — multiple semantic conflict kinds were found (${semanticSets}). Manual interpretation is required; no automatic finding will be stored.`
+                            : semantic.verdictKind === "inconclusive"
+                              ? `INCONCLUSIVE — attribution or formalization validation failed, a check was undetermined, or the search was truncated. ${result.truncationNote ?? "Review formalizationWarnings."}`
+                              : `No contradiction within ${evaluated} evaluated assertion context(s) up to arity ${result.searchedToArity}.`;
                   output = JSON.stringify(
                     {
                       runLogId: runLog.runId,
@@ -1753,6 +1801,16 @@ ${skillContent}`,
                       distinctBlocksExtracted: distinct.length,
                       blocksChecked: blocks.length,
                       blocksEvaluated: evaluated,
+                      attributionComplete: derivation.attributionComplete,
+                      attributionIssues: derivation.attributionIssues,
+                      semanticsValidated: semantic.semanticsValidated,
+                      verdictKind: semantic.verdictKind,
+                      hasCorpusContradiction: semantic.hasCorpusContradiction,
+                      hasPositionContradiction:
+                        semantic.hasPositionContradiction,
+                      hasPositionIncompatibility:
+                        semantic.hasPositionIncompatibility,
+                      semanticFrustrations: semantic.semanticFrustrations,
                       extraction: {
                         segmentsProcessed: extraction.segmentsProcessed,
                         claimsProposed: extraction.claimsProposed,
@@ -1775,6 +1833,8 @@ ${skillContent}`,
                         communityIds: block.communityIds,
                         communityLabel: block.communityLabel,
                         positionLabel: block.positionLabel,
+                        assertionScope: block.assertionScope,
+                        assertionContextId: block.assertionContextId,
                         claimKeys: block.claimKeys,
                         segmentIds: block.segmentIds,
                       })),
@@ -2249,6 +2309,7 @@ ${skillContent}`,
                   {
                     runLogId: runLog.runId,
                     producedByModel: effectiveModel,
+                    memoryNamespace,
                   },
                 );
                 if (finding) {
@@ -2320,6 +2381,7 @@ ${skillContent}`,
                     conflictCandidates: memory.conflicts.map((c) => c.id),
                     method: memory.finding.method,
                     outcome: memory.finding.outcome,
+                    memoryNamespace: memory.finding.memoryNamespace,
                     condensedNarrativeStored:
                       !!memory.finding.condensedNarrative,
                     densificationStatus:

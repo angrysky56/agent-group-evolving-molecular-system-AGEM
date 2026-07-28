@@ -42,7 +42,9 @@ export function SystemVitals() {
   const cdp = socHistory.length > 0
     ? socHistory[socHistory.length - 1]!.cdp
     : null;
-  const h1 = state?.cohomology?.h1_dimension ?? 0;
+  const h1 = state?.cohomology?.status === "computed"
+    ? state.cohomology.h1_dimension
+    : 0;
 
   return (
     <div className="vitals">

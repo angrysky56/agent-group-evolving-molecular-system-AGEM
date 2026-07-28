@@ -18,6 +18,7 @@ import type {
 export interface FindingCaptureContext {
   runLogId: string;
   producedByModel: string;
+  memoryNamespace: string;
 }
 
 type CapturedNarrativeRequest = Omit<
@@ -57,6 +58,21 @@ export function captureFindingFromTool(
     toolName === "extract_and_verify_claims"
       ? "derived-from-claims"
       : "hand-authored";
+  if (method === "derived-from-claims") {
+    const safeVerdictKinds = new Set([
+      "position-contradiction",
+      "corpus-contradiction",
+      "no-contradiction",
+      "inconclusive",
+    ]);
+    if (
+      result.attributionComplete !== true ||
+      result.semanticsValidated !== true ||
+      !safeVerdictKinds.has(result.verdictKind)
+    ) {
+      return null;
+    }
+  }
   const supportingClaims =
     method === "derived-from-claims"
       ? stringArray(result.supportingClaimKeys)
@@ -66,11 +82,14 @@ export function captureFindingFromTool(
   const checkFailures = Array.isArray(result.checkFailures)
     ? result.checkFailures.length
     : 0;
-  const outcome = result.hasContradiction
-    ? "contradiction"
-    : result.searchTruncated === true || checkFailures > 0
+  const outcome =
+    method === "derived-from-claims" && result.verdictKind === "inconclusive"
       ? "inconclusive"
-      : "no-contradiction";
+      : result.hasContradiction
+        ? "contradiction"
+        : result.searchTruncated === true || checkFailures > 0
+          ? "inconclusive"
+          : "no-contradiction";
   const coverage =
     typeof result.coverage === "string" && result.coverage.trim()
       ? result.coverage
@@ -108,6 +127,14 @@ export function captureFindingFromTool(
     method,
     outcome,
     corpusId,
+    memoryNamespace: context.memoryNamespace,
+    ...(method === "derived-from-claims"
+      ? {
+          attributionValidated: true,
+          semanticsValidated: true,
+          semanticVerdictKind: result.verdictKind,
+        }
+      : {}),
     supportingClaims,
     supportingClaimRefs:
       method === "derived-from-claims"
@@ -134,7 +161,20 @@ export function captureFindingNarrativeFromTool(
   } catch {
     return null;
   }
-  if (result.error || result.resultIsVacuous === true) return null;
+  if (
+    result.error ||
+    result.resultIsVacuous === true ||
+    result.attributionComplete !== true ||
+    result.semanticsValidated !== true ||
+    ![
+      "position-contradiction",
+      "corpus-contradiction",
+      "no-contradiction",
+      "inconclusive",
+    ].includes(result.verdictKind)
+  ) {
+    return null;
+  }
 
   const supportingKeys = stringArray(result.supportingClaimKeys);
   if (
@@ -258,6 +298,7 @@ export function formatRecallContext(
       "",
       `## [finding:${finding.id}] — formed ${finding.createdAt} — cosine ${match.similarity.toFixed(3)} — ${modelNote}`,
       `Method: ${finding.method}`,
+      `Memory namespace: ${finding.memoryNamespace}`,
       `Verdict (verbatim): ${finding.verdict}`,
       `Coverage (verbatim): ${finding.coverage}`,
     );

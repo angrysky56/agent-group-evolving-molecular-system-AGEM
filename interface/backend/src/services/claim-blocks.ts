@@ -5,6 +5,7 @@ import {
   type ExtractionOutcome,
 } from "./claim-extractor.js";
 import type { PredicateAliasSuggestion } from "./predicate-aliases.js";
+import type { LogicalCohomologyResult } from "./logicalCohomology.js";
 
 export interface ClaimCommunity {
   id: number;
@@ -21,6 +22,10 @@ export interface PredicateMapping {
 export interface DerivedClaimBlock {
   name: string;
   propositions: string[];
+  /** Stable assertion context; graph topology never participates in this key. */
+  assertionContextId: string;
+  assertionScope: "corpus" | "position";
+  positionId?: string;
   communityId?: number;
   communityIds: number[];
   communityLabel: string;
@@ -32,6 +37,9 @@ export interface DerivedClaimBlock {
 
 export interface ClaimBlockDerivation {
   blocks: DerivedClaimBlock[];
+  /** False when any proposed claim omitted or contradicted its holder scope. */
+  attributionComplete: boolean;
+  attributionIssues: Array<{ segmentId: string; reason: string }>;
   predicateMapping: PredicateMapping[];
   /** Embedding candidates requiring human/ontology approval before use. */
   predicateAliasSuggestions: PredicateAliasSuggestion[];
@@ -42,17 +50,17 @@ export interface ClaimBlockDerivation {
 }
 
 export interface DeriveClaimBlocksOptions {
+  corpusId?: string;
   communities?: readonly ClaimCommunity[];
   /** Caller-audited alias -> canonical predicate symbol. */
   ontology?: Readonly<Record<string, string>>;
-  /** Segment id -> corpus position/section. Keeps rival positions separate. */
-  positionBySegment?: Readonly<Record<string, string>>;
   /** Neutral corpus entities whose existence every position accepts. */
   sharedExistencePredicates?: readonly string[];
   embedder?: IEmbedder;
   similarityThreshold?: number;
 }
 
+/** Heading hints for display/provenance only. Logical derivation ignores them. */
 export function mapSegmentsToPositions(
   segments: ReadonlyArray<{ id: string; text: string }>,
 ): Record<string, string> {
@@ -129,6 +137,20 @@ function claimQualityIssue(claim: ExtractedClaim): string | null {
     PRONOUN_SUBJECTS.has(label.trim().toLowerCase()),
   );
   return pronoun ? `pronoun subject '${pronoun}' has no stable referent` : null;
+}
+
+function attributionIssue(claim: ExtractedClaim): string | null {
+  if (claim.scope !== "corpus" && claim.scope !== "position") {
+    return "claim scope is missing or invalid; attribution is incomplete";
+  }
+  const positionId = claim.positionId?.trim();
+  if (claim.scope === "position" && !positionId) {
+    return "position-scoped claim is missing positionId; attribution is incomplete";
+  }
+  if (claim.scope === "corpus" && positionId) {
+    return "corpus-scoped claim also names a positionId; attribution is ambiguous";
+  }
+  return null;
 }
 
 function repairClauseLabel(label: string): string | null {
@@ -334,10 +356,19 @@ export async function deriveClaimBlocks(
   outcomes: readonly ExtractionOutcome[],
   options: DeriveClaimBlocksOptions = {},
 ): Promise<ClaimBlockDerivation> {
+  const corpusId = options.corpusId?.trim() || "corpus";
+  const attributionIssues = outcomes.flatMap((outcome) => {
+    const reason = attributionIssue(outcome.claim);
+    return reason ? [{ segmentId: outcome.segmentId, reason }] : [];
+  });
   const structurallyEligible = outcomes.filter(
-    (outcome) => outcome.accepted && outcome.claimKey && outcome.claimId,
+    (outcome) =>
+      outcome.accepted &&
+      outcome.claimKey &&
+      outcome.claimId &&
+      !attributionIssue(outcome.claim),
   );
-  const rejected: ClaimBlockDerivation["rejected"] = [];
+  const rejected: ClaimBlockDerivation["rejected"] = [...attributionIssues];
   const eligible = structurallyEligible.filter((outcome) => {
     const reason = claimQualityIssue(outcome.claim);
     if (!reason) return true;
@@ -380,23 +411,26 @@ export async function deriveClaimBlocks(
       roleLabels(canonicalClaim),
       options.communities ?? [],
     );
-    const positionLabel = options.positionBySegment?.[outcome.segmentId]?.trim();
-    const groupKey = positionLabel
-      ? `position:${positionLabel}`
-      : community
-        ? `community:${community.id}`
-        : "community:unassigned";
+    const positionId = canonicalClaim.positionId?.trim();
+    const assertionScope = canonicalClaim.scope;
+    const groupKey =
+      assertionScope === "position"
+        ? `corpus=${encodeURIComponent(corpusId)};scope=position;holder=${encodeURIComponent(positionId!)}`
+        : `corpus=${encodeURIComponent(corpusId)};scope=corpus`;
+    const blockName =
+      assertionScope === "position"
+        ? `position:${positionId}`
+        : `corpus:${corpusId}`;
     const block = groups.get(groupKey) ?? {
-      name: positionLabel
-        ? `position:${positionLabel}`
-        : community
-          ? `community:${community.id} ${community.label}`
-          : "community:unassigned",
+      name: blockName,
       propositions: [],
+      assertionContextId: groupKey,
+      assertionScope,
+      positionId: positionId || undefined,
       communityId: community?.id,
       communityIds: community ? [community.id] : [],
       communityLabel: community?.label ?? "unassigned",
-      positionLabel: positionLabel || undefined,
+      positionLabel: positionId || undefined,
       claimKeys: [],
       claimRefs: [],
       segmentIds: [],
@@ -417,34 +451,10 @@ export async function deriveClaimBlocks(
     canonicalLabelsByGroup.set(groupKey, groupLabels);
   }
 
-  /*
-   * Connect position blocks automatically through neutral vocabulary they
-   * demonstrably share. This is deliberately based on canonical typed roles,
-   * not prose similarity: a role must occur in at least two distinct blocks.
-   * The three most widely shared labels are enough to prevent a disconnected
-   * nerve without flooding every block with domain assertions. Caller-audited
-   * seeds remain additive and are never discarded.
-   */
-  const labelPositionCounts = new Map<string, number>();
-  for (const labels of canonicalLabelsByGroup.values()) {
-    for (const label of labels) {
-      labelPositionCounts.set(label, (labelPositionCounts.get(label) ?? 0) + 1);
-    }
-  }
-  const recurringExistencePredicates = [...labelPositionCounts]
-    .filter(([, count]) => count >= 2)
-    .sort(
-      ([leftLabel, leftCount], [rightLabel, rightCount]) =>
-        rightCount - leftCount || leftLabel.localeCompare(rightLabel),
-    )
-    .slice(0, 3)
-    .map(([label]) => label);
-  const sharedExistencePredicates = [
-    ...new Set([
-      ...callerExistencePredicates,
-      ...recurringExistencePredicates,
-    ]),
-  ].sort();
+  // Cross-block existence commitments are semantically meaningful, so only
+  // explicitly caller-audited seeds may be shared. Vocabulary recurrence is
+  // not permission to assert existence in another theory.
+  const sharedExistencePredicates = callerExistencePredicates;
 
   const blocks = [...groups.values()]
     .map((block) => ({
@@ -460,14 +470,7 @@ export async function deriveClaimBlocks(
       claimRefs: [...new Set(block.claimRefs)].sort(),
       segmentIds: [...new Set(block.segmentIds)].sort(),
     }))
-    .sort((a, b) => {
-      if (a.positionLabel && b.positionLabel) return 0;
-      if (a.positionLabel) return -1;
-      if (b.positionLabel) return 1;
-      if (a.communityId === undefined) return 1;
-      if (b.communityId === undefined) return -1;
-      return a.communityId - b.communityId;
-    });
+    .sort((a, b) => a.name.localeCompare(b.name));
   const injectedAxioms = Object.fromEntries(
     blocks.map((block) => [
       block.name,
@@ -490,6 +493,8 @@ export async function deriveClaimBlocks(
 
   return {
     blocks,
+    attributionComplete: attributionIssues.length === 0,
+    attributionIssues,
     predicateMapping: [...predicateMapping.values()].sort((a, b) =>
       a.source.localeCompare(b.source),
     ),
@@ -497,5 +502,98 @@ export async function deriveClaimBlocks(
     sharedExistencePredicates,
     injectedAxioms,
     rejected,
+  };
+}
+
+export type ClaimVerdictKind =
+  | "position-contradiction"
+  | "corpus-contradiction"
+  | "positions-incompatible"
+  | "no-contradiction"
+  | "inconclusive"
+  | "mixed";
+
+export interface ClassifiedClaimVerdict {
+  verdictKind: ClaimVerdictKind;
+  semanticsValidated: boolean;
+  hasCorpusContradiction: boolean;
+  hasPositionContradiction: boolean;
+  hasPositionIncompatibility: boolean;
+  semanticFrustrations: Array<{
+    kind:
+      | "position-contradiction"
+      | "corpus-contradiction"
+      | "positions-incompatible";
+    blocks: string[];
+    arity: number;
+  }>;
+}
+
+/**
+ * Interpret solver UNSAT results in their assertion contexts. A union of rival
+ * theories being UNSAT is disagreement between positions, not a contradiction
+ * asserted by the survey corpus.
+ */
+export function classifyClaimVerdict(
+  derivation: Pick<ClaimBlockDerivation, "blocks" | "attributionComplete">,
+  logical: Pick<
+    LogicalCohomologyResult,
+    | "hasContradiction"
+    | "frustrations"
+    | "resultIsVacuous"
+    | "searchTruncated"
+    | "checkFailures"
+  >,
+): ClassifiedClaimVerdict {
+  const contextByName = new Map(
+    derivation.blocks.map((block) => [block.name, block]),
+  );
+  let semanticsValidated =
+    derivation.attributionComplete && !logical.resultIsVacuous;
+  const semanticFrustrations: ClassifiedClaimVerdict["semanticFrustrations"] = [];
+
+  for (const frustration of logical.frustrations) {
+    const contexts = frustration.blocks.map((name) => contextByName.get(name));
+    if (contexts.some((context) => !context)) {
+      semanticsValidated = false;
+      continue;
+    }
+    const resolved = contexts as DerivedClaimBlock[];
+    const kind =
+      resolved.length === 1
+        ? resolved[0].assertionScope === "position"
+          ? "position-contradiction"
+          : "corpus-contradiction"
+        : resolved.every((context) => context.assertionScope === "corpus")
+          ? "corpus-contradiction"
+          : "positions-incompatible";
+    semanticFrustrations.push({
+      kind,
+      blocks: [...frustration.blocks],
+      arity: frustration.arity,
+    });
+  }
+
+  const kinds = new Set(semanticFrustrations.map(({ kind }) => kind));
+  const hasCorpusContradiction = kinds.has("corpus-contradiction");
+  const hasPositionContradiction = kinds.has("position-contradiction");
+  const hasPositionIncompatibility = kinds.has("positions-incompatible");
+  let verdictKind: ClaimVerdictKind;
+  if (!semanticsValidated) verdictKind = "inconclusive";
+  else if (!logical.hasContradiction) {
+    verdictKind =
+      logical.searchTruncated || logical.checkFailures.length > 0
+        ? "inconclusive"
+        : "no-contradiction";
+  } else if (kinds.size !== 1) verdictKind = "mixed";
+  else verdictKind = [...kinds][0] ?? "inconclusive";
+
+  return {
+    verdictKind,
+    semanticsValidated,
+    hasCorpusContradiction,
+    hasPositionContradiction,
+    hasPositionIncompatibility,
+    semanticFrustrations,
   };
 }

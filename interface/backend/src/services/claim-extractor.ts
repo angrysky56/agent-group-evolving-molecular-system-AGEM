@@ -38,10 +38,16 @@ export type ClaimKind =
   | "causal-claim"
   | "entailment";
 
+export type ClaimScope = "corpus" | "position";
+
 export interface ExtractedClaim {
   kind: ClaimKind;
   /** Role name -> concept label. Role names must match the schema exactly. */
   roles: Record<string, string | string[]>;
+  /** Who commits to the proposition. Never infer this from a graph community. */
+  scope: ClaimScope;
+  /** Required exactly when scope is `position`. */
+  positionId?: string;
   modality?: "epistemic" | "modal" | "functional" | "metaphysical";
   polarity?: "asserts" | "denies";
   differenceKind?: "in-kind" | "in-degree";
@@ -67,6 +73,42 @@ export interface ExtractionReport {
   outcomes: ExtractionOutcome[];
   /** Segments the model returned unparseable output for. */
   parseFailures: string[];
+}
+
+const ATTRIBUTED_ASSERTION_CUE =
+  /\b(?:theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
+
+/**
+ * Deterministic guard against model-elected attribution flattening. The model
+ * still extracts the holder, but an obviously attributed source cannot enter
+ * the corpus assertion context merely because it returned the wrong scope.
+ */
+export function claimAttributionIssue(
+  claim: ExtractedClaim,
+  sourceText = "",
+): string | null {
+  if (claim.scope !== "corpus" && claim.scope !== "position") {
+    return "claim scope is missing or invalid";
+  }
+  const positionId = claim.positionId?.trim();
+  if (claim.scope === "position" && !positionId) {
+    return "position-scoped claim is missing positionId";
+  }
+  if (claim.scope === "corpus" && positionId) {
+    return "corpus-scoped claim also names a positionId";
+  }
+  if (
+    claim.scope === "corpus" &&
+    claim.kind !== "distinction" &&
+    claim.kind !== "dissociation" &&
+    ATTRIBUTED_ASSERTION_CUE.test(sourceText)
+  ) {
+    return (
+      "attribution flattening detected: the source reports what a named holder " +
+      "asserts, but the extracted claim was scoped to the corpus"
+    );
+  }
+  return null;
 }
 
 /**
@@ -140,11 +182,19 @@ Rules:
   ("phenomenal-consciousness", "phi", "global-broadcast").
 - A "distinction" needs exactly two distinct values under "distinguished";
   supply them as an array.
+- Every claim MUST include a scope. Use {"scope":"corpus"} only when the
+  source itself directly asserts the proposition. Use {"scope":"position",
+  "positionId":"..."} when the sentence reports what a theory, author, camp,
+  or other attributed holder asserts. Copy a short stable holder label.
+- Never flatten rival positions into corpus assertions. A survey saying "HOT
+  theorists identify meta-states with thoughts, while HOP theorists identify
+  them with perceptions" contains two position-scoped identity claims, not two
+  unrestricted corpus-level identities.
 ${glossarySection}
 
 Output shape:
-[{"kind":"exclusion","roles":{"excluder":"phi","excluded":"global-broadcast"}},
- {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"differenceKind":"in-kind"}]
+[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},
+ {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]
 
 SENTENCE:
 ${segment}`;
@@ -168,6 +218,9 @@ export function canonicalClaim(claim: ExtractedClaim): string {
   return JSON.stringify({
     kind: claim.kind,
     roles,
+    scope: claim.scope ?? null,
+    positionId:
+      claim.scope === "position" ? claim.positionId?.trim() || null : null,
     modality: claim.modality ?? null,
     polarity: claim.polarity ?? null,
     differenceKind: claim.differenceKind ?? null,
@@ -186,6 +239,10 @@ export function canonicalClaim(claim: ExtractedClaim): string {
 export function schemaClaimFact(claim: ExtractedClaim): string | null {
   const spec = ROLE_SPEC[claim?.kind];
   if (!spec || !claim.roles || typeof claim.roles !== "object") return null;
+  if (claim.scope !== "corpus" && claim.scope !== "position") return null;
+  const positionId = claim.positionId?.trim();
+  if (claim.scope === "position" && !positionId) return null;
+  if (claim.scope === "corpus" && positionId) return null;
 
   const requiredCounts = new Map<string, number>();
   for (const role of spec.roles) {
@@ -215,6 +272,8 @@ export function schemaClaimFact(claim: ExtractedClaim): string | null {
   if (claim.kind === "causal-claim" && !claim.polarity) return null;
 
   const extras = [
+    `scope=${JSON.stringify(claim.scope)}`,
+    positionId ? `positionId=${JSON.stringify(positionId)}` : "",
     claim.modality ? `modality=${JSON.stringify(claim.modality)}` : "",
     claim.polarity ? `polarity=${JSON.stringify(claim.polarity)}` : "",
     claim.differenceKind
@@ -250,9 +309,20 @@ export function claimIdentity(
 export function claimToTypeQL(
   claim: ExtractedClaim,
   segmentId: string,
-): { concepts: string; claim: string; claimId: string; claimKey: string } | null {
+): {
+  concepts: string;
+  position?: string;
+  claim: string;
+  attribution?: string;
+  claimId: string;
+  claimKey: string;
+} | null {
   const spec = ROLE_SPEC[claim.kind];
   if (!spec) return null;
+  const positionId = claim.positionId?.trim();
+  if (claim.scope !== "corpus" && claim.scope !== "position") return null;
+  if (claim.scope === "position" && !positionId) return null;
+  if (claim.scope === "corpus" && positionId) return null;
 
   // Flatten roles, expanding array-valued ones (distinction/dissociation).
   const pairs: Array<[string, string]> = [];
@@ -277,6 +347,7 @@ export function claimToTypeQL(
   const attrs = [
     `has claim-id "${esc(identity.claimId)}"`,
     `has claim-key "${esc(identity.claimKey)}"`,
+    `has claim-scope "${claim.scope}"`,
     claim.modality ? `has modality "${esc(claim.modality)}"` : "",
     claim.polarity ? `has polarity "${esc(claim.polarity)}"` : "",
     claim.differenceKind ? `has difference-kind "${esc(claim.differenceKind)}"` : "",
@@ -285,7 +356,22 @@ export function claimToTypeQL(
 
   return {
     concepts: `put\n${puts}`,
-    claim: `match\n${matches}  $s isa segment, has segment-id "${esc(segmentId)}";\ninsert\n  $_ isa ${claim.kind}, links (${links}, source: $s)${attrClause};`,
+    ...(positionId
+      ? {
+          position: `put\n  $position isa position, has label "${esc(positionId)}";`,
+        }
+      : {}),
+    claim: `match\n${matches}  $s isa segment, has segment-id "${esc(segmentId)}";\ninsert\n  $claim isa ${claim.kind}, links (${links}, source: $s)${attrClause};`,
+    ...(positionId
+      ? {
+          attribution:
+            `match\n` +
+            `  $claim isa claim, has claim-id "${esc(identity.claimId)}";\n` +
+            `  $position isa position, has label "${esc(positionId)}";\n` +
+            `insert\n` +
+            `  $_ isa attribution, links (holder: $position, attributed-claim: $claim);`,
+        }
+      : {}),
     ...identity,
   };
 }
@@ -361,7 +447,7 @@ You are given SEVERAL sentences. Treat each INDEPENDENTLY — do not carry a
 claim from one sentence into another, and do not merge them.
 
 Return a JSON object mapping each index to its claim array, e.g.
-{"0": [], "1": [{"kind":"exclusion","roles":{"excluder":"phi","excluded":"global-broadcast"}}]}
+{"0": [], "1": [{"kind":"exclusion","roles":{"excluder":"phi","excluded":"global-broadcast"},"scope":"position","positionId":"IIT"}]}
 
 SENTENCES:
 ${numbered}`;
@@ -476,6 +562,18 @@ export async function extractIntoStore(
     }
 
     for (const claim of claims) {
+      const attributionRejection = claimAttributionIssue(claim, seg.text);
+      if (attributionRejection) {
+        report.claimsProposed++;
+        report.claimsRejected++;
+        report.outcomes.push({
+          segmentId: seg.id,
+          claim,
+          accepted: false,
+          rejection: attributionRejection,
+        });
+        continue;
+      }
       const query = claimToTypeQL(claim, seg.id);
       if (!query) {
         report.claimsProposed++;
@@ -492,8 +590,21 @@ export async function extractIntoStore(
       // Concepts first (upsert), then the claim. Separate writes — see
       // claimToTypeQL for why they cannot be one pipeline.
       await claimStore.write(query.concepts);
-      const res = await claimStore.write(query.claim);
-      const accepted = !!res && isOkResponse(res);
+      const positionRes = query.position
+        ? await claimStore.write(query.position)
+        : undefined;
+      const positionAccepted =
+        !query.position || (!!positionRes && isOkResponse(positionRes));
+      const res = positionAccepted ? await claimStore.write(query.claim) : null;
+      const claimAccepted = !!res && isOkResponse(res);
+      const attributionRes =
+        claimAccepted && query.attribution
+          ? await claimStore.write(query.attribution)
+          : undefined;
+      const attributionAccepted =
+        !query.attribution ||
+        (!!attributionRes && isOkResponse(attributionRes));
+      const accepted = positionAccepted && claimAccepted && attributionAccepted;
       if (accepted) report.claimsAccepted++;
       else report.claimsRejected++;
       report.outcomes.push({
@@ -502,7 +613,13 @@ export async function extractIntoStore(
         claimId: query.claimId,
         claimKey: query.claimKey,
         accepted,
-        rejection: accepted ? undefined : describeRejection(res),
+        rejection: accepted
+          ? undefined
+          : !positionAccepted
+            ? `position write rejected: ${describeRejection(positionRes)}`
+            : !claimAccepted
+              ? describeRejection(res)
+              : `attribution write rejected: ${describeRejection(attributionRes)}`,
       });
     }
   }

@@ -3,6 +3,7 @@ import {
   canonicalClaim,
   buildClaimExtractionPrompt,
   claimIdentity,
+  claimAttributionIssue,
   claimToTypeQL,
   schemaClaimFact,
   type ExtractedClaim,
@@ -13,6 +14,7 @@ describe("claim identity for finding evidence", () => {
   const claim: ExtractedClaim = {
     kind: "distinction",
     roles: { distinguished: ["b", "a"] } as any,
+    scope: "corpus",
     differenceKind: "in-kind",
   };
 
@@ -36,27 +38,72 @@ describe("claim identity for finding evidence", () => {
     expect(query?.claim).toContain(`has claim-id "${query?.claimId}"`);
   });
 
+  it("keeps the attributed holder in structural and occurrence identity", () => {
+    const hot: ExtractedClaim = {
+      kind: "identity-claim",
+      roles: { identified: "meta-state", "identified-with": "thought-like" },
+      scope: "position",
+      positionId: "HOT",
+    };
+    const hop: ExtractedClaim = { ...hot, positionId: "HOP" };
+
+    expect(claimIdentity(hot, "segment-1").claimKey).not.toBe(
+      claimIdentity(hop, "segment-1").claimKey,
+    );
+    expect(claimIdentity(hot, "segment-1").claimId).not.toBe(
+      claimIdentity(hop, "segment-1").claimId,
+    );
+  });
+
+  it("persists position attribution instead of flattening the claim", () => {
+    const query = claimToTypeQL(
+      {
+        kind: "identity-claim",
+        roles: { identified: "meta-state", "identified-with": "thought-like" },
+        scope: "position",
+        positionId: "HOT theorists",
+      },
+      "segment-1",
+    );
+
+    expect(query?.position).toContain('isa position, has label "HOT theorists"');
+    expect(query?.claim).toContain('has claim-scope "position"');
+    expect(query?.attribution).toContain("holder: $position");
+    expect(query?.attribution).toContain("attributed-claim: $claim");
+  });
+
   it("turns required roles and semantic signs into a compact fidelity fact", () => {
     expect(
       schemaClaimFact({
         kind: "causal-claim",
         roles: { cause: "experience", effect: "report" },
+        scope: "corpus",
         modality: "functional",
         polarity: "denies",
       }),
     ).toBe(
-      'causal-claim(cause="experience",effect="report",modality="functional",polarity="denies")',
+      'causal-claim(cause="experience",effect="report",scope="corpus",modality="functional",polarity="denies")',
     );
+    expect(
+      schemaClaimFact({
+        kind: "identity-claim",
+        roles: { identified: "meta-state", "identified-with": "thought-like" },
+        scope: "position",
+        positionId: "HOT",
+      }),
+    ).toContain('positionId="HOT"');
     expect(
       schemaClaimFact({
         kind: "causal-claim",
         roles: { cause: "experience", effect: "report" },
+        scope: "corpus",
       }),
     ).toBeNull();
     expect(
       schemaClaimFact({
         kind: "distinction",
         roles: { distinguished: ["same", "same"] },
+        scope: "corpus",
       }),
     ).toBeNull();
   });
@@ -76,5 +123,32 @@ describe("claim identity for finding evidence", () => {
     expect(prompt).toContain("RUNNING PREDICATE GLOSSARY");
     expect(prompt).toContain("mental-state");
     expect(prompt).toContain("Reuse a glossary label");
+    expect(prompt).toContain('"scope":"position"');
+    expect(prompt).toContain('"positionId":"HOT"');
+    expect(prompt).toContain("Never flatten rival positions");
+  });
+
+  it("rejects attribution flattening in the exact HOT/HOP survey sentence", () => {
+    const source =
+      "HOT theorists identify a meta-state with a thought-like state, while HOP theorists identify it with a perception-like state; thought-like and perception-like states can come apart.";
+    const flattened: ExtractedClaim = {
+      kind: "identity-claim",
+      roles: { identified: "meta-state", "identified-with": "thought-like" },
+      scope: "corpus",
+    };
+    const attributed: ExtractedClaim = {
+      ...flattened,
+      scope: "position",
+      positionId: "HOT",
+    };
+    const directDistinction: ExtractedClaim = {
+      kind: "distinction",
+      roles: { distinguished: ["thought-like", "perception-like"] },
+      scope: "corpus",
+    };
+
+    expect(claimAttributionIssue(flattened, source)).toMatch(/flatten/i);
+    expect(claimAttributionIssue(attributed, source)).toBeNull();
+    expect(claimAttributionIssue(directDistinction, source)).toBeNull();
   });
 });

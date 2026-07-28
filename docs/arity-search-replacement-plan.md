@@ -7,6 +7,22 @@
 
 ## Implementation outcome (2026-07-27)
 
+### Attribution and verdict correction
+
+The consistency search now receives semantic assertion contexts rather than
+graph communities. Extracted claims must declare either direct corpus scope or
+an attributed position holder; missing or source-text-flattened attribution is
+inconclusive. Communities are retained only as diagnostics. Solver UNSAT is
+classified as a corpus contradiction, an internally contradictory position,
+or incompatibility between rival positions before it can enter finding memory.
+The latter is a fact about theoretical disagreement, not a contradiction in a
+survey that reports it.
+
+Automatic finding writes require attribution and semantic-validation receipts,
+and recall is namespace-scoped. Legacy derived findings without those receipts
+remain auditable on disk but are quarantined from recall. Degenerate registry
+sheaves return `not-computed` without numeric H0/H1 fields.
+
 This plan is implemented with two scientific corrections to the original
 design: UNSAT localisation now enumerates every MUS with monotone
 branch-and-bound instead of returning one QuickXplain core, and signature
@@ -246,8 +262,9 @@ nothing exists" is not a finding.
 
 `no_existential_witness` remains an enforced validity condition:
 
-- Typed claim conversion injects subject witnesses, and the block derivation
-  adds shared neutral witnesses where roles recur across positions.
+- Typed claim conversion injects witnesses only for each claim's own subject.
+  Cross-position witnesses are added only when the caller supplies an audited
+  `sharedExistencePredicates` commitment; recurring vocabulary is never enough.
 - Every generated existence commitment is returned by block in
   `injectedAxioms`, so the encoding stays inspectable.
 - A missing static witness or a runtime model flagged as empty-only is a

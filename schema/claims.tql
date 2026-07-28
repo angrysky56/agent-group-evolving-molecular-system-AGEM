@@ -32,6 +32,7 @@ define
   # conflict detection uses claim-key; evidences links use claim-id.
   attribute claim-key, value string;
   attribute claim-id, value string;
+  attribute claim-scope, value string @values("corpus", "position");
 
   # Epistemic vs modal vs functional. Distinction #9 (explanatory gap vs zombie
   # argument) is ONLY expressible if modality is first-class — the two make the
@@ -69,6 +70,9 @@ define
     relates source @card(1..),
     owns claim-key,
     owns claim-id,
+    # Optional in storage so existing pre-attribution rows remain readable.
+    # The extraction write path requires it before a claim is accepted.
+    owns claim-scope @card(0..1),
     owns modality @card(0..1);
 
   # "A is not B" — the corpus's core move, applied ten times.

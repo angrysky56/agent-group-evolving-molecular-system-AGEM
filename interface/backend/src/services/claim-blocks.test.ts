@@ -1,26 +1,42 @@
 import { describe, expect, it } from "vitest";
+import type { IEmbedder } from "#agem/lcm/interfaces.js";
 import {
+  classifyClaimVerdict,
   deriveClaimBlocks,
   mapSegmentsToPositions,
   type ClaimCommunity,
 } from "./claim-blocks.js";
-import type { ExtractionOutcome } from "./claim-extractor.js";
-import type { IEmbedder } from "#agem/lcm/interfaces.js";
+import type { ExtractedClaim, ExtractionOutcome } from "./claim-extractor.js";
+import {
+  computeLogicalCohomology,
+  type SatOracle,
+} from "./logicalCohomology.js";
+
+type ClaimInput = Omit<ExtractedClaim, "scope"> &
+  Partial<Pick<ExtractedClaim, "scope" | "positionId">>;
 
 const accepted = (
   segmentId: string,
   claimKey: string,
-  claim: ExtractionOutcome["claim"],
+  claim: ClaimInput,
 ): ExtractionOutcome => ({
   segmentId,
-  claim,
+  claim: { scope: "corpus", ...claim } as ExtractedClaim,
   claimKey,
   claimId: `occurrence:${claimKey}`,
   accepted: true,
 });
 
+const hotHopOracle: SatOracle = async (formulas) => ({
+  consistent: !(
+    formulas.includes("all x (meta_state(x) <-> thought_like(x))") &&
+    formulas.includes("all x (meta_state(x) <-> perception_like(x))") &&
+    formulas.includes("exists x (thought_like(x) & -perception_like(x))")
+  ),
+});
+
 describe("deriveClaimBlocks", () => {
-  it("carries markdown section headings forward as segment position provenance", () => {
+  it("retains markdown position hints as provenance only", () => {
     expect(
       mapSegmentsToPositions([
         { id: "0", text: "# Corpus title" },
@@ -35,7 +51,7 @@ describe("deriveClaimBlocks", () => {
     });
   });
 
-  it("applies caller aliases, groups claims by concept community, and reports every merge", async () => {
+  it("applies audited aliases while communities remain diagnostic annotations", async () => {
     const communities: ClaimCommunity[] = [
       {
         id: 2,
@@ -64,6 +80,7 @@ describe("deriveClaimBlocks", () => {
         }),
       ],
       {
+        corpusId: "genetic-code",
         communities,
         ontology: {
           arbitrariness: "arbitrary",
@@ -74,12 +91,13 @@ describe("deriveClaimBlocks", () => {
       },
     );
 
-    expect(result.blocks.map((block) => block.communityId)).toEqual([0, 2]);
-    expect(result.blocks.flatMap((block) => block.claimKeys).sort()).toEqual([
-      "claim:affinity",
-      "claim:frozen",
-    ]);
-    expect(result.blocks.flatMap((block) => block.propositions)).toEqual(
+    expect(result.blocks).toHaveLength(1);
+    expect(result.blocks[0]).toMatchObject({
+      name: "corpus:genetic-code",
+      assertionScope: "corpus",
+      communityIds: [0, 2],
+    });
+    expect(result.blocks[0].propositions).toEqual(
       expect.arrayContaining([
         "all x (stereochemical_affinity(x) -> causes_assignment(x))",
         "all x (assignment(x) -> -arbitrary(x))",
@@ -110,7 +128,6 @@ describe("deriveClaimBlocks", () => {
             : [0, 1],
         );
       }
-
       async embedBatch(texts: string[]): Promise<Float64Array[]> {
         return Promise.all(texts.map((text) => this.embed(text)));
       }
@@ -122,6 +139,8 @@ describe("deriveClaimBlocks", () => {
           kind: "causal-claim",
           roles: { cause: "affinity", effect: "assignment" },
           polarity: "asserts",
+          scope: "position",
+          positionId: "Affinity",
         }),
         accepted("s2", "claim:denies", {
           kind: "causal-claim",
@@ -130,12 +149,14 @@ describe("deriveClaimBlocks", () => {
             effect: "assignment",
           },
           polarity: "denies",
+          scope: "position",
+          positionId: "Stereochemical",
         }),
       ],
       {
+        corpusId: "genetic-code",
         embedder: new FakeEmbedder(),
         similarityThreshold: 0.9,
-        positionBySegment: { s1: "Affinity", s2: "Stereochemical" },
       },
     );
 
@@ -145,11 +166,6 @@ describe("deriveClaimBlocks", () => {
         "all x (stereochemical_interaction(x) -> -causes_assignment(x))",
       ]),
     );
-    expect(result.predicateMapping).toContainEqual({
-      source: "stereochemical-interaction",
-      canonical: "stereochemical_interaction",
-      method: "unchanged",
-    });
     expect(result.predicateAliasSuggestions).toContainEqual({
       source: "stereochemical-interaction",
       target: "affinity",
@@ -157,40 +173,6 @@ describe("deriveClaimBlocks", () => {
       similarity: 1,
       severity: "critical",
     });
-  });
-
-  it("does not suggest labels already unified by an audited ontology", async () => {
-    class CanonicalEmbedder implements IEmbedder {
-      async embed(text: string): Promise<Float64Array> {
-        const vectors: Record<string, number[]> = {
-          assignment: [1, 0, 0],
-          assignments: [1, 0, 0],
-          first: [0, 1, 0],
-          second: [0, 0, 1],
-        };
-        return new Float64Array(vectors[text] ?? [0, 0, 0]);
-      }
-    }
-
-    const result = await deriveClaimBlocks(
-      [
-        accepted("a", "claim:a", {
-          kind: "exclusion",
-          roles: { excluder: "assignments", excluded: "first" },
-        }),
-        accepted("b", "claim:b", {
-          kind: "exclusion",
-          roles: { excluder: "assignment", excluded: "second" },
-        }),
-      ],
-      {
-        ontology: { assignments: "assignment" },
-        embedder: new CanonicalEmbedder(),
-        similarityThreshold: 0.9,
-      },
-    );
-
-    expect(result.predicateAliasSuggestions).toEqual([]);
   });
 
   it("rejects pronoun subjects and repairs clause-shaped predicate labels", async () => {
@@ -218,28 +200,28 @@ describe("deriveClaimBlocks", () => {
     expect(result.blocks.flatMap((block) => block.propositions)).toContain(
       "all x (error_value(x) -> causes_comparison_quantitative(x))",
     );
-    expect(result.predicateMapping).toContainEqual({
-      source: "makes-the-comparison-quantitative",
-      canonical: "comparison_quantitative",
-      method: "repair",
-    });
   });
 
-  it("keeps rival positions separate when they discuss the same community", async () => {
+  it("keeps rival positions separate by holder even in one segment and community", async () => {
     const result = await deriveClaimBlocks(
       [
-        accepted("frozen-1", "claim:denies", {
+        accepted("survey-1", "claim:denies", {
           kind: "causal-claim",
           roles: { cause: "affinity", effect: "assignment" },
           polarity: "denies",
+          scope: "position",
+          positionId: "Frozen accident",
         }),
-        accepted("stereo-1", "claim:asserts", {
+        accepted("survey-1", "claim:asserts", {
           kind: "causal-claim",
           roles: { cause: "affinity", effect: "assignment" },
           polarity: "asserts",
+          scope: "position",
+          positionId: "Stereochemical affinity",
         }),
       ],
       {
+        corpusId: "genetic-code",
         communities: [
           {
             id: 0,
@@ -247,35 +229,34 @@ describe("deriveClaimBlocks", () => {
             members: ["affinity", "assignment"],
           },
         ],
-        positionBySegment: {
-          "frozen-1": "Frozen accident",
-          "stereo-1": "Stereochemical affinity",
-        },
       },
     );
 
-    expect(result.blocks.map((block) => block.positionLabel)).toEqual([
+    expect(result.blocks.map((block) => block.positionId)).toEqual([
       "Frozen accident",
       "Stereochemical affinity",
     ]);
     expect(result.blocks.map((block) => block.communityIds)).toEqual([[0], [0]]);
-    expect(result.blocks).toHaveLength(2);
   });
 
-  it("adds caller-audited shared existence seeds to every position block", async () => {
+  it("adds only caller-audited shared existence seeds to every block", async () => {
     const result = await deriveClaimBlocks(
       [
         accepted("a", "claim:a", {
           kind: "exclusion",
           roles: { excluder: "measurement", excluded: "cell" },
+          scope: "position",
+          positionId: "A",
         }),
         accepted("b", "claim:b", {
           kind: "exclusion",
           roles: { excluder: "code", excluded: "arbitrary" },
+          scope: "position",
+          positionId: "B",
         }),
       ],
       {
-        positionBySegment: { a: "A", b: "B" },
+        corpusId: "genetic-code",
         sharedExistencePredicates: ["codon", "amino-acid", "assignment"],
       },
     );
@@ -296,56 +277,176 @@ describe("deriveClaimBlocks", () => {
     ).toBe(true);
   });
 
-  it("automatically links positions through canonical roles that recur across them", async () => {
+  it("does not inject a recurring predicate into an unrelated position", async () => {
     const result = await deriveClaimBlocks(
       [
         accepted("a", "claim:a", {
           kind: "causal-claim",
-          roles: { cause: "affinity", effect: "assignments" },
+          roles: { cause: "affinity", effect: "assignment" },
           polarity: "asserts",
+          scope: "position",
+          positionId: "Stereochemical",
         }),
         accepted("b", "claim:b", {
           kind: "causal-claim",
-          roles: { cause: "historical accident", effect: "assignment" },
+          roles: { cause: "historical-accident", effect: "assignment" },
           polarity: "denies",
+          scope: "position",
+          positionId: "Frozen accident",
+        }),
+      ],
+      { corpusId: "genetic-code" },
+    );
+
+    expect(result.sharedExistencePredicates).toEqual([]);
+    expect(result.injectedAxioms["position:Stereochemical"]).toEqual([
+      "exists x (affinity(x))",
+    ]);
+    expect(result.injectedAxioms["position:Frozen accident"]).toEqual([
+      "exists x (historical_accident(x))",
+    ]);
+  });
+
+  it("marks missing scope as attribution-incomplete instead of using a community block", async () => {
+    const incomplete: ExtractionOutcome = {
+      segmentId: "s1",
+      claimKey: "claim:missing-scope",
+      claimId: "occurrence:missing-scope",
+      accepted: true,
+      claim: {
+        kind: "identity-claim",
+        roles: { identified: "meta-state", "identified-with": "thought-like" },
+      } as unknown as ExtractedClaim,
+    };
+
+    const result = await deriveClaimBlocks([incomplete], {
+      corpusId: "consciousness",
+      communities: [{ id: 5, label: "thought", members: ["meta-state"] }],
+    });
+
+    expect(result.attributionComplete).toBe(false);
+    expect(result.blocks).toEqual([]);
+    expect(result.rejected[0].reason).toMatch(/scope|attribution/i);
+  });
+
+  it("keeps HOT and HOP separate and classifies their joint clash as position incompatibility", async () => {
+    const sameSegment = "theory-survey-0";
+    const result = await deriveClaimBlocks(
+      [
+        accepted(sameSegment, "claim:hot", {
+          kind: "identity-claim",
+          roles: { identified: "meta-state", "identified-with": "thought-like" },
+          scope: "position",
+          positionId: "HOT",
+        }),
+        accepted(sameSegment, "claim:hop", {
+          kind: "identity-claim",
+          roles: { identified: "meta-state", "identified-with": "perception-like" },
+          scope: "position",
+          positionId: "HOP",
+        }),
+        accepted(sameSegment, "claim:distinction", {
+          kind: "distinction",
+          roles: { distinguished: ["thought-like", "perception-like"] },
+          scope: "corpus",
         }),
       ],
       {
-        ontology: { assignments: "assignment" },
-        positionBySegment: { a: "Stereochemical", b: "Frozen accident" },
+        corpusId: "consciousness",
+        communities: [{ id: 5, label: "higher order", members: ["meta-state"] }],
       },
     );
 
-    expect(result.sharedExistencePredicates).toContain("assignment");
+    expect(result.attributionComplete).toBe(true);
+    expect(result.blocks.map((block) => block.name).sort()).toEqual([
+      "corpus:consciousness",
+      "position:HOP",
+      "position:HOT",
+    ]);
     expect(
-      result.blocks.every((block) =>
-        block.propositions.includes("exists x (assignment(x))"),
-      ),
+      result.blocks
+        .filter((block) => block.positionId)
+        .every((block) => block.segmentIds.includes(sameSegment)),
     ).toBe(true);
-    expect(result.injectedAxioms["position:Stereochemical"]).toEqual(
-      expect.arrayContaining([
-        "exists x (affinity(x))",
-        "exists x (assignment(x))",
-      ]),
+
+    const logical = await computeLogicalCohomology(
+      result.blocks.map(({ name, propositions }) => ({ name, propositions })),
+      hotHopOracle,
     );
-    expect(result.injectedAxioms["position:Frozen accident"]).toEqual(
-      expect.arrayContaining([
-        "exists x (historical_accident(x))",
-        "exists x (assignment(x))",
-      ]),
-    );
+    const semantic = classifyClaimVerdict(result, logical);
+
+    expect(logical.internallyInconsistent).toEqual([]);
+    expect(semantic.verdictKind).toBe("positions-incompatible");
+    expect(semantic.hasCorpusContradiction).toBe(false);
   });
 
-  it("audits compound existence witnesses generated for distinctions", async () => {
-    const result = await deriveClaimBlocks([
-      accepted("d", "claim:d", {
-        kind: "distinction",
-        roles: { distinguished: ["phenomenal", "access"] },
-      }),
-    ]);
+  it("classifies the same clash inside one holder and at corpus scope as real contradictions", async () => {
+    const claims: Array<{
+      kind: ExtractedClaim["kind"];
+      roles: Record<string, string | string[]>;
+    }> = [
+      {
+        kind: "identity-claim" as const,
+        roles: { identified: "meta-state", "identified-with": "thought-like" },
+      },
+      {
+        kind: "identity-claim" as const,
+        roles: { identified: "meta-state", "identified-with": "perception-like" },
+      },
+      {
+        kind: "distinction" as const,
+        roles: { distinguished: ["thought-like", "perception-like"] },
+      },
+    ];
 
-    expect(result.injectedAxioms["community:unassigned"]).toContain(
-      "exists x (phenomenal(x) & -access(x))",
-    );
+    for (const [scope, expected] of [
+      ["position", "position-contradiction"],
+      ["corpus", "corpus-contradiction"],
+    ] as const) {
+      const derivation = await deriveClaimBlocks(
+        claims.map((claim, index) =>
+          accepted(`s${index}`, `claim:${index}`, {
+            ...claim,
+            scope,
+            ...(scope === "position" ? { positionId: "Combined theory" } : {}),
+          }),
+        ),
+        { corpusId: "consciousness" },
+      );
+      const logical = await computeLogicalCohomology(
+        derivation.blocks.map(({ name, propositions }) => ({ name, propositions })),
+        hotHopOracle,
+      );
+      expect(classifyClaimVerdict(derivation, logical).verdictKind).toBe(expected);
+    }
+  });
+
+  it("keeps logical blocks invariant when graph communities are reassigned", async () => {
+    const outcomes = [
+      accepted("s1", "claim:hot", {
+        kind: "identity-claim",
+        roles: { identified: "meta-state", "identified-with": "thought-like" },
+        scope: "position",
+        positionId: "HOT",
+      }),
+      accepted("s2", "claim:hop", {
+        kind: "identity-claim",
+        roles: { identified: "meta-state", "identified-with": "perception-like" },
+        scope: "position",
+        positionId: "HOP",
+      }),
+    ];
+    const left = await deriveClaimBlocks(outcomes, {
+      corpusId: "consciousness",
+      communities: [{ id: 1, label: "meta", members: ["meta-state"] }],
+    });
+    const right = await deriveClaimBlocks(outcomes, {
+      corpusId: "consciousness",
+      communities: [{ id: 99, label: "different", members: ["thought-like"] }],
+    });
+    const logicalView = (derivation: typeof left) =>
+      derivation.blocks.map(({ name, propositions }) => ({ name, propositions }));
+
+    expect(logicalView(left)).toEqual(logicalView(right));
   });
 });
