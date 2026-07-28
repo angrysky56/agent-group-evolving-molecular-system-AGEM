@@ -2,6 +2,7 @@
   "corpus": "decision-theory",
   "note": "Smallest corpus in the set: 3 theories, 8 problems, 4 desiderata, 9 sections. Ingest one cycle per section into a named subgraph. Use as the smoke test before the QM corpus.",
   "revision": "2026-07-28: run 1 correctly REFUTED newcomb_lesion_tension because the corpus asserted the conclusion without its derivation. Sections 2 and 3 now carry the two bridging entailments explicitly. The refutation was a correct engine result against a defective corpus.",
+  "revision2": "2026-07-28: the bridging entailments were first written as nominalized antonyms ('dominance entails Newcomb-inadequacy'). That invites the extractor to mint newcomb_inadequacy as a POSITIVE predicate unrelated to newcomb_adequacy — the pseudo_negation pathology analyzeFormalization already has a warning code for, and one an alias map CANNOT repair since it cannot express 'A is the negation of B'. Rewritten as explicit negation ('any theory holding dominance is not Newcomb-adequate'). PRE-REGISTERED CHECK: grep the check log for newcomb_inadequacy or lesion_inadequacy appearing as standalone predicates. If either does, extraction is nominalizing negation and the arity-4 MUS will be missed for a third distinct reason.",
   "mustFind": [
     {
       "id": "newcomb_lesion_tension",

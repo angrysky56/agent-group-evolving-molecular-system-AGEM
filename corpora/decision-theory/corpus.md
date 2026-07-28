@@ -45,9 +45,10 @@ holds dominance and two-boxes.
 
 **Newcomb-adequacy** is the property of recommending the act that reliably makes
 agents richer in Newcomb. One-boxers reliably end up with $1,000,000; two-boxers
-reliably end up with $1,000. So **recommending two-boxing is Newcomb-inadequacy.**
+reliably end up with $1,000. So **a theory that recommends two-boxing is not
+Newcomb-adequate.**
 
-Combining: **dominance entails Newcomb-inadequacy.** CDT concedes the
+Combining: **any theory that holds dominance is not Newcomb-adequate.** CDT concedes the
 reliably-richer fact and denies it is a reason.
 
 EDT holds evidential responsiveness. One-boxing is strong evidence that B is
@@ -67,10 +68,11 @@ because refraining is evidence against the lesion. EDT holds evidential
 responsiveness and refrains.
 
 **Lesion-adequacy** is the property of recommending smoking, since smoking is
-harmless and pleasant and the correlation is confounded. So **recommending
-refraining is lesion-inadequacy.**
+harmless and pleasant and the correlation is confounded. So **a theory that
+recommends refraining is not lesion-adequate.**
 
-Combining: **evidential responsiveness entails lesion-inadequacy.** This verdict
+Combining: **any theory that holds evidential responsiveness is not
+lesion-adequate.** This verdict
 of EDT's is widely held to be wrong, and it is the mirror image of CDT's Newcomb
 failure — the same structural question, whether correlation without causation is
 decision-relevant, seen from the opposite side.
@@ -87,10 +89,10 @@ Four properties one might want:
 3. **Newcomb-adequacy** — recommends the reliably-richer act in Newcomb.
 4. **Lesion-adequacy** — recommends smoking in the smoking lesion.
 
-From Section 2: dominance entails Newcomb-inadequacy, so **dominance and
+From Section 2: any theory holding dominance is not Newcomb-adequate, so **dominance and
 Newcomb-adequacy are incompatible.**
 
-From Section 3: evidential responsiveness entails lesion-inadequacy, so
+From Section 3: any theory holding evidential responsiveness is not lesion-adequate, so
 **evidential responsiveness and lesion-adequacy are incompatible.**
 
 Therefore **no theory satisfies all four.** This is not merely a fact about the
