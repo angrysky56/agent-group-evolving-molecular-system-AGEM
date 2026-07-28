@@ -16,8 +16,9 @@ import { encode } from "gpt-tokenizer";
 // ---------------------------------------------------------------------------
 
 /**
- * EMBEDDING_DIM — output dimension of all-MiniLM-L6-v2.
- * All embedding vectors in this system are exactly 384-dimensional.
+ * EMBEDDING_DIM — deterministic MockEmbedder output dimension used by tests.
+ * Production embedders may use another native dimension, but every interacting
+ * vector set must remain dimensionally uniform.
  */
 export const EMBEDDING_DIM = 384 as const;
 

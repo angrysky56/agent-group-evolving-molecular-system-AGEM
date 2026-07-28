@@ -1,10 +1,30 @@
 export class RequestTimeoutError extends Error {
   readonly timeoutMs: number;
+  readonly scope = "request" as const;
 
   constructor(timeoutMs: number) {
     super(`Request timed out after ${timeoutMs}ms`);
     this.name = "RequestTimeoutError";
     this.timeoutMs = timeoutMs;
+  }
+}
+
+/** Request-scope cancellation annotated with the active tool's real runtime. */
+export class ToolRequestDeadlineError extends Error {
+  readonly scope = "request" as const;
+
+  constructor(
+    readonly toolName: string,
+    readonly toolElapsedMs: number,
+    readonly requestTimeoutMs: number,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `Request deadline expired while ${toolName} was active ` +
+        `(tool elapsed ${toolElapsedMs}ms; request budget ${requestTimeoutMs}ms).`,
+      options,
+    );
+    this.name = "ToolRequestDeadlineError";
   }
 }
 

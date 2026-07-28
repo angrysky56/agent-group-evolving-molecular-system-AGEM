@@ -57,7 +57,11 @@ import {
   createWorkflowContract,
   workflowToolOutcomeFromOutput,
 } from "../services/workflow-contract.js";
-import { createRequestDeadline } from "../services/request-deadline.js";
+import {
+  createRequestDeadline,
+  ToolRequestDeadlineError,
+} from "../services/request-deadline.js";
+import { assessToolBudget } from "../services/tool-budget.js";
 import {
   finalizeRunOutcome,
   type RunTerminalStatus,
@@ -2412,8 +2416,62 @@ ${skillContent}`,
             );
             runLog.toolCall(fnName, args);
 
+            const budgetDecision = assessToolBudget(
+              fnName,
+              requestDeadline.remainingMs(),
+              {
+                extractionMinimumMs:
+                  settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS,
+              },
+            );
+            if (!budgetDecision.allowed) {
+              const output = JSON.stringify(
+                {
+                  status: budgetDecision.status,
+                  semanticsValidated: false,
+                  remainingMs: budgetDecision.remainingMs,
+                  requiredMs: budgetDecision.requiredMs,
+                  remedy:
+                    "Start a new request to continue verification from the persisted engine state.",
+                  message: budgetDecision.message,
+                },
+                null,
+                2,
+              );
+              runLog.event("tool_deferred", {
+                tool: fnName,
+                status: budgetDecision.status,
+                remainingMs: budgetDecision.remainingMs,
+                requiredMs: budgetDecision.requiredMs,
+              });
+              runLog.toolResult(fnName, output);
+              console.warn(`[Chat] ${budgetDecision.message}`);
+              return {
+                tc,
+                fnName,
+                toolLabel: fnName,
+                output,
+                elapsedMs: Date.now() - toolStart,
+                ok: true,
+              };
+            }
+
             const outcome = await recovery.execute(fnName, args, {
-              run: (a) => runToolOnce(fnName, a),
+              run: async (a) => {
+                try {
+                  return await runToolOnce(fnName, a);
+                } catch (error) {
+                  if (requestDeadline.timedOut) {
+                    throw new ToolRequestDeadlineError(
+                      fnName,
+                      Date.now() - toolStart,
+                      settings.all.CHAT_REQUEST_TIMEOUT_MS,
+                      { cause: error },
+                    );
+                  }
+                  throw error;
+                }
+              },
               signal: requestDeadline.signal,
               // Non-idempotent calls are never blind-retried. run_agem_cycle
               // ingests into a persistent accumulating graph: a silent retry
@@ -2581,10 +2639,16 @@ ${skillContent}`,
             }
             const elapsedMs = Date.now() - toolStart;
             if (!outcome.ok) {
-              console.error(
-                `[Chat] Tool ${fnName} failed after ${outcome.attempts} attempt(s) ` +
-                  `(class=${outcome.diagnosis?.errorClass}, L${outcome.level}): ${outcome.diagnosis?.phi}`,
-              );
+              if (outcome.diagnosis?.errorClass === "cancelled") {
+                console.warn(
+                  `[Chat] Request deadline interrupted ${fnName} after ${elapsedMs}ms`,
+                );
+              } else {
+                console.error(
+                  `[Chat] Tool ${fnName} failed after ${outcome.attempts} attempt(s) ` +
+                    `(class=${outcome.diagnosis?.errorClass}, L${outcome.level}): ${outcome.diagnosis?.phi}`,
+                );
+              }
             }
             // The run log gets the real story; history gets the terse notice.
             runLog.toolResult(

@@ -1,94 +1,122 @@
 /**
- * ProviderEmbedder — production IEmbedder that calls Ollama or OpenRouter
- * embedding APIs via the LLM provider layer.
+ * Production embedding adapter for the AGEM LCM and TNA pipelines.
  *
- * Replaces MockEmbedder for real semantic similarity in the AGEM engine.
- * Falls back to hash-based mock if the provider call fails.
- * Tracks the provider's native dimension so fallback vectors match.
+ * Provider failures are explicit. Fabricating hash vectors here used to mix a
+ * 384-dimensional test fallback with 2,048-dimensional OpenRouter vectors and
+ * could make sheaf construction fail much later, far from the real cause.
  */
 
-import { createHash } from "node:crypto";
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
-import { EMBEDDING_DIM } from "#agem/lcm/interfaces.js";
-import { createProvider, type LLMProvider } from "./llm.js";
+import { createProvider } from "./llm.js";
 import { settings } from "../config.js";
+import type { LLMProviderType } from "../../../shared/types.js";
 
-/**
- * Texts per embedding request.
- *
- * Large enough that the per-request overhead is amortised, small enough that a
- * single body stays modest and one failure only costs one chunk. Measured at
- * 40 texts: 32,485 ms sequential vs 898 ms batched.
- */
+/** Keep remote request bodies bounded while still amortising round-trip cost. */
 const EMBED_BATCH_SIZE = 32;
 
+export interface EmbeddingProviderClient {
+  getEmbedding(
+    text: string,
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[]>;
+  getEmbeddings?(
+    texts: string[],
+    model?: string,
+    signal?: AbortSignal,
+  ): Promise<number[][]>;
+}
+
+export type EmbeddingProviderFactory = (
+  provider?: LLMProviderType,
+) => EmbeddingProviderClient;
+
+export interface EmbeddingTelemetry {
+  provider: LLMProviderType;
+  model: string;
+  status: "uninitialized" | "healthy" | "degraded" | "failed";
+  dimension: number | null;
+  singleRequests: number;
+  batchRequests: number;
+  batchFallbacks: number;
+  vectorsProduced: number;
+  failures: number;
+  lastFailure?: string;
+}
+
+export class EmbeddingProviderError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "EmbeddingProviderError";
+  }
+}
+
 export class ProviderEmbedder implements IEmbedder {
-  #failCount = 0;
-  #maxFails = 3;
-  /** Tracks the dimension of real embeddings so fallback matches. */
-  #knownDim: number = EMBEDDING_DIM;
+  readonly #providerFactory: EmbeddingProviderFactory;
+  #knownDim: number | null = null;
+  #status: EmbeddingTelemetry["status"] = "uninitialized";
+  #singleRequests = 0;
+  #batchRequests = 0;
+  #batchFallbacks = 0;
+  #vectorsProduced = 0;
+  #failures = 0;
+  #lastFailure: string | undefined;
 
-  async embed(text: string, signal?: AbortSignal): Promise<Float64Array> {
-    if (signal?.aborted) return this.#mockFallback(text);
-
-    if (this.#failCount >= this.#maxFails) {
-      return this.#mockFallback(text);
-    }
-
-    try {
-      const config = settings.all;
-      const provider = createProvider(config.EMBEDDING_PROVIDER);
-      const embedding = await provider.getEmbedding(text, undefined, signal);
-
-      if (!embedding || embedding.length === 0) {
-        this.#failCount++;
-        console.warn(
-          `[ProviderEmbedder] Empty result (fail ${this.#failCount}/${this.#maxFails}), fallback`,
-        );
-        return this.#mockFallback(text);
-      }
-
-      this.#failCount = 0;
-      this.#knownDim = embedding.length;
-      return new Float64Array(embedding);
-    } catch (error) {
-      this.#failCount++;
-      console.error(
-        `[ProviderEmbedder] Error (fail ${this.#failCount}/${this.#maxFails}):`,
-        error,
-      );
-      return this.#mockFallback(text);
-    }
+  constructor(
+    providerFactory: EmbeddingProviderFactory = (provider) =>
+      createProvider(provider),
+  ) {
+    this.#providerFactory = providerFactory;
   }
 
-  /**
-   * Embed many texts, using the provider's batch endpoint when it has one.
-   *
-   * Falls back to bounded-concurrency singles otherwise, so callers can always
-   * use this and never need to know which provider is configured. Any text the
-   * batch call fails to return a vector for is retried individually rather than
-   * silently left as a mock — a hash vector is unrelated to everything, and one
-   * of those hiding inside a bulk result is exactly the kind of silent
-   * corruption that is hard to notice later.
-   */
+  getTelemetry(): EmbeddingTelemetry {
+    const provider =
+      settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
+    return {
+      provider,
+      model: settings.getLLMConfig(provider).embedding_model,
+      status: this.#status,
+      dimension: this.#knownDim,
+      singleRequests: this.#singleRequests,
+      batchRequests: this.#batchRequests,
+      batchFallbacks: this.#batchFallbacks,
+      vectorsProduced: this.#vectorsProduced,
+      failures: this.#failures,
+      ...(this.#lastFailure ? { lastFailure: this.#lastFailure } : {}),
+    };
+  }
+
+  async embed(text: string, signal?: AbortSignal): Promise<Float64Array> {
+    signal?.throwIfAborted();
+    this.#singleRequests++;
+    const provider = this.#createProvider();
+    let vector: number[];
+    try {
+      vector = await provider.getEmbedding(text, undefined, signal);
+      signal?.throwIfAborted();
+    } catch (error) {
+      signal?.throwIfAborted();
+      return this.#fail("Embedding provider request failed.", error);
+    }
+
+    if (!vector || vector.length === 0) {
+      return this.#fail("Embedding provider returned an empty vector.");
+    }
+    return this.#acceptVector(vector, "single embedding");
+  }
+
   async embedBatch(
     texts: string[],
     signal?: AbortSignal,
   ): Promise<Float64Array[]> {
+    signal?.throwIfAborted();
     if (texts.length === 0) return [];
-    if (texts.length === 1) return [await this.embed(texts[0], signal)];
+    if (texts.length === 1) return [await this.embed(texts[0]!, signal)];
 
-    /*
-     * Chunk before sending. An unbounded batch is not a faster request, it is
-     * a request that stalls: a graph cycle can hand this hundreds of store
-     * entries, and posting them as one array produced a multi-megabyte body
-     * that hung well past the sequential time it was meant to replace.
-     * Chunking here rather than at the call site means no caller can
-     * accidentally reintroduce it.
-     */
     if (texts.length > EMBED_BATCH_SIZE) {
       const out: Float64Array[] = [];
       for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
+        signal?.throwIfAborted();
         out.push(
           ...(await this.embedBatch(
             texts.slice(i, i + EMBED_BATCH_SIZE),
@@ -99,76 +127,94 @@ export class ProviderEmbedder implements IEmbedder {
       return out;
     }
 
-    if (this.#failCount < this.#maxFails) {
+    const provider = this.#createProvider();
+    if (provider.getEmbeddings) {
+      this.#batchRequests++;
       try {
-        const config = settings.all;
-        const provider = createProvider(config.EMBEDDING_PROVIDER) as
-          LLMProvider & {
-            getEmbeddings?: (
-              texts: string[],
-              model?: string,
-              signal?: AbortSignal,
-            ) => Promise<number[][]>;
-          };
-        if (typeof provider.getEmbeddings === "function") {
-          const vectors = await provider.getEmbeddings(
-            texts,
-            undefined,
-            signal,
-          );
-          if (vectors.length === texts.length) {
-            this.#failCount = 0;
-            const dim = vectors.find((v) => v.length > 0)?.length;
-            if (dim) this.#knownDim = dim;
-            return Promise.all(
-              vectors.map((v, i) =>
-                v.length > 0
-                  ? Promise.resolve(new Float64Array(v))
-                  : this.embed(texts[i], signal),
-              ),
-            );
-          }
-          console.warn(
-            `[ProviderEmbedder] Batch returned ${vectors.length} of ` +
-              `${texts.length} vectors — falling back to singles.`,
-          );
-        }
+        const vectors = await provider.getEmbeddings(texts, undefined, signal);
+        signal?.throwIfAborted();
+        this.#validateBatch(vectors, texts.length);
+        return vectors.map((vector) => this.#acceptVector(vector, "batch embedding"));
       } catch (error) {
-        console.warn("[ProviderEmbedder] Batch embed failed, using singles:", error);
+        signal?.throwIfAborted();
+        this.#recordFailure(
+          error instanceof Error ? error.message : String(error),
+          "degraded",
+        );
+        this.#batchFallbacks++;
+        console.warn(
+          "[ProviderEmbedder] Batch embedding failed; retrying as bounded singles:",
+          error,
+        );
       }
     }
 
-    // Bounded concurrency: enough to hide latency, not enough to trip limits.
     const out: Float64Array[] = new Array(texts.length);
     const width = 8;
     for (let i = 0; i < texts.length; i += width) {
+      signal?.throwIfAborted();
       const slice = texts.slice(i, i + width);
-      const done = await Promise.all(
+      const vectors = await Promise.all(
         slice.map((text) => this.embed(text, signal)),
       );
-      done.forEach((vector, j) => (out[i + j] = vector));
+      vectors.forEach((vector, index) => (out[i + index] = vector));
     }
+    if (this.#failures > 0) this.#status = "degraded";
     return out;
   }
 
-  /**
-   * Hash-based deterministic fallback using the provider's native dimension.
-   * Ensures vectors are always the same size within a session.
-   */
-  #mockFallback(text: string): Float64Array {
-    const dim = this.#knownDim;
-    const hashHex = createHash("sha256").update(text, "utf8").digest("hex");
-    const seed = parseInt(hashHex.slice(0, 8), 16);
-    const raw = new Float64Array(dim);
-    for (let i = 0; i < dim; i++) {
-      raw[i] = Math.sin(seed + i);
+  #createProvider(): EmbeddingProviderClient {
+    const provider =
+      settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
+    return this.#providerFactory(provider);
+  }
+
+  #validateBatch(vectors: number[][], expectedCount: number): void {
+    if (vectors.length !== expectedCount) {
+      throw new EmbeddingProviderError(
+        `Embedding batch returned ${vectors.length} vectors for ${expectedCount} inputs.`,
+      );
     }
-    let norm = 0;
-    for (let i = 0; i < dim; i++) norm += raw[i] * raw[i];
-    norm = Math.sqrt(norm);
-    if (norm > 0) {
-      for (let i = 0; i < dim; i++) raw[i] /= norm;
+    const firstDim = vectors[0]?.length ?? 0;
+    if (firstDim === 0 || vectors.some((vector) => vector.length !== firstDim)) {
+      throw new EmbeddingProviderError(
+        "Embedding batch returned empty or mixed-dimension vectors.",
+      );
     }
-    return raw;
+    if (this.#knownDim !== null && firstDim !== this.#knownDim) {
+      throw new EmbeddingProviderError(
+        `Embedding dimension changed from ${this.#knownDim} to ${firstDim}.`,
+      );
+    }
+  }
+
+  #acceptVector(vector: number[], source: string): Float64Array {
+    if (vector.length === 0) {
+      return this.#fail(`${source} was empty.`);
+    }
+    if (this.#knownDim === null) {
+      this.#knownDim = vector.length;
+    } else if (vector.length !== this.#knownDim) {
+      return this.#fail(
+        `Embedding dimension changed from ${this.#knownDim} to ${vector.length}.`,
+      );
+    }
+    this.#vectorsProduced++;
+    this.#status = this.#failures > 0 ? "degraded" : "healthy";
+    return new Float64Array(vector);
+  }
+
+  #recordFailure(
+    message: string,
+    status: "degraded" | "failed" = "failed",
+  ): void {
+    this.#failures++;
+    this.#lastFailure = message;
+    this.#status = status;
+  }
+
+  #fail(message: string, cause?: unknown): never {
+    this.#recordFailure(message);
+    throw new EmbeddingProviderError(message, { cause });
   }
 }

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRequestDeadline } from "./request-deadline.js";
+import {
+  createRequestDeadline,
+  ToolRequestDeadlineError,
+} from "./request-deadline.js";
 
 describe("request deadline", () => {
   afterEach(() => vi.useRealTimers());
@@ -40,5 +43,25 @@ describe("request deadline", () => {
     expect(deadline.signal.reason).toBe(reason);
     expect(deadline.timedOut).toBe(false);
     deadline.dispose();
+  });
+
+  it("attributes an expired request to the active tool without inflating tool time", () => {
+    const error = new ToolRequestDeadlineError(
+      "extract_and_verify_claims",
+      84_238,
+      1_200_000,
+    );
+
+    expect(error).toMatchObject({
+      name: "ToolRequestDeadlineError",
+      scope: "request",
+      toolName: "extract_and_verify_claims",
+      toolElapsedMs: 84_238,
+      requestTimeoutMs: 1_200_000,
+    });
+    expect(error.message).toBe(
+      "Request deadline expired while extract_and_verify_claims was active " +
+        "(tool elapsed 84238ms; request budget 1200000ms).",
+    );
   });
 });

@@ -284,6 +284,41 @@ describe("Orchestrator (ComposeRootModule)", () => {
       expect(orchestrator.getIterationCount()).toBe(1);
     });
 
+    it("uses the embedder batch interface for newly discovered TNA nodes", async () => {
+      const embed = vi.fn(async () => new Float64Array(384).fill(0.5));
+      const embedBatch = vi.fn(async (texts: string[]) =>
+        texts.map(() => new Float64Array(384).fill(0.5)),
+      );
+      const orchestrator = new Orchestrator({ embed, embedBatch });
+
+      await orchestrator.runReasoning(
+        "alpha beta gamma delta epsilon zeta eta theta",
+        undefined,
+        {
+          lcmEntries: ["paragraph one", "paragraph two"],
+          buildSheaf: false,
+        },
+      );
+
+      expect(
+        embedBatch.mock.calls.some(([texts]) => texts.includes("alpha")),
+      ).toBe(true);
+    });
+
+    it("fails the cycle when a TNA node cannot be embedded", async () => {
+      const embedder: IEmbedder = {
+        embed: async (text) => {
+          if (text === "poison") throw new Error("embedding unavailable");
+          return new Float64Array(384).fill(0.5);
+        },
+      };
+      const orchestrator = new Orchestrator(embedder);
+
+      await expect(
+        orchestrator.runReasoning("poison alpha beta gamma"),
+      ).rejects.toThrow("embedding unavailable");
+    });
+
     /*
      * `sheaf` is initialised to buildFlatSheaf(2, 1) — a stub whose cohomology
      * is a well-formed number that means nothing. Consumers reporting H⁰/H¹

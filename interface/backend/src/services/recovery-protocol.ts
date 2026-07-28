@@ -54,7 +54,7 @@
 // ---------------------------------------------------------------------------
 
 /** Coarse failure class. Determines which recovery level is even applicable. */
-export type ErrorClass = "transient" | "schema" | "structural";
+export type ErrorClass = "cancelled" | "transient" | "schema" | "structural";
 
 /** Highest recovery level reached. 0 = succeeded on the first attempt. */
 export type RecoveryLevel = 0 | 1 | 2 | 3;
@@ -190,6 +190,12 @@ const SCHEMA_RE =
  * structural means "do not retry, escalate now".
  */
 export function classifyError(err: unknown): ErrorClass {
+  if (
+    err instanceof Error &&
+    (err as Error & { scope?: unknown }).scope === "request"
+  ) {
+    return "cancelled";
+  }
   const text = classifiableText(err);
   if (AUTH_RE.test(text)) return "structural";
   if (TRANSIENT_RE.test(text)) return "transient";
@@ -263,6 +269,14 @@ export function terseError(err: unknown, max = 160): string {
 /** Build the structured diagnosis for a failure. */
 export function diagnose(err: unknown, errorClass: ErrorClass): Diagnosis {
   switch (errorClass) {
+    case "cancelled":
+      return {
+        phi: terseError(err),
+        cause: "The enclosing chat request reached its wall-clock deadline.",
+        action: "escalate",
+        confidence: 1,
+        errorClass,
+      };
     case "transient":
       return {
         phi: terseError(err),
@@ -463,6 +477,30 @@ export class RecoveryProtocol {
           detail,
         });
 
+        // Request cancellation is not a defect in this tool or its provider,
+        // and no recovery level can extend the enclosing request. Return
+        // immediately without mutating the retry/patch ledger.
+        if (lastClass === "cancelled") {
+          const diagnosis = diagnose(lastErr, lastClass);
+          emit({
+            event: "request_cancelled_tool",
+            attempt: attempts,
+            diagnosis,
+            detail,
+          });
+          return {
+            ok: false,
+            output: this.#notice(tool, diagnosis, attempts),
+            label: tool,
+            attempts,
+            level: 0,
+            finalState: this.getState(tool, args),
+            diagnosis,
+            detail,
+            attemptLog,
+          };
+        }
+
         if (!willRetry) break;
         level = 1;
         this.#advance(key, "retried");
@@ -573,7 +611,9 @@ export class RecoveryProtocol {
   #notice(tool: string, d: Diagnosis, attempts: number): string {
     const where = this.#config.runId ? ` See run log ${this.#config.runId}.` : "";
     const guidance =
-      d.errorClass === "schema"
+      d.errorClass === "cancelled"
+        ? "Continue verification in a new request using the persisted engine state."
+        : d.errorClass === "schema"
         ? "Fix the argument shape and call it at most once more, or proceed without this tool."
         : d.errorClass === "transient"
           ? attempts > 1
@@ -582,7 +622,10 @@ export class RecoveryProtocol {
               // could double-apply a side effect. The model owns this decision.
               "Not retried automatically: repeating this call could duplicate its effect. Repeat it only if you are sure that is safe, otherwise proceed without it."
           : "This will not succeed on retry. Proceed without this tool and say so in your answer.";
-    const head = `[tool_failed] ${tool} — ${d.errorClass}, ${attempts} attempt(s), recovery exhausted through L2. `;
+    const head =
+      d.errorClass === "cancelled"
+        ? `[tool_cancelled] ${tool} — request deadline, ${attempts} attempt(s). `
+        : `[tool_failed] ${tool} — ${d.errorClass}, ${attempts} attempt(s), recovery exhausted through L2. `;
     const tail = ` ${guidance} Do not fabricate this tool's result.${where}`;
 
     // Give φ whatever budget is left after the parts the model actually acts

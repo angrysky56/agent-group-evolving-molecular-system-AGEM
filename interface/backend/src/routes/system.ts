@@ -156,7 +156,8 @@ systemRouter.post("/embeddings", async (req, res) => {
   }
 
   try {
-    let resolvedProvider = settings.getLLMConfig().provider;
+    let resolvedProvider =
+      settings.all.EMBEDDING_PROVIDER ?? settings.getLLMConfig().provider;
     if (model) {
       if (model.startsWith("ollama:")) resolvedProvider = "ollama";
       else if (model.startsWith("openrouter:")) resolvedProvider = "openrouter";
@@ -173,7 +174,7 @@ systemRouter.post("/embeddings", async (req, res) => {
 
     res.json({
       embedding,
-      model: model ?? settings.getLLMConfig().embedding_model,
+      model: model ?? settings.getLLMConfig(resolvedProvider).embedding_model,
       dimensions: embedding.length,
     });
   } catch (error) {

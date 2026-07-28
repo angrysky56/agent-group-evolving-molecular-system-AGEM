@@ -20,6 +20,8 @@ export interface SettingsState {
   anthropicMaxTokens: number;
   availableModels: ModelInfo[];
   modelsLoading: boolean;
+  /** True once the browser has attempted to adopt the server-owned config. */
+  initialized: boolean;
 
   setProvider: (provider: LLMProviderType) => void;
   setEmbeddingProvider: (provider: LLMProviderType) => void;
@@ -32,6 +34,8 @@ export interface SettingsState {
   setAvailableModels: (models: ModelInfo[]) => void;
   /** Fetch available models for the given (or current) provider. */
   fetchModels: (provider?: LLMProviderType, apiKey?: string) => Promise<void>;
+  /** Hydrate server-owned settings, then fetch the matching model fleet. */
+  initializeFromServer: () => Promise<void>;
   /**
    * Adopt the BACKEND's view of provider/model configuration.
    *
@@ -62,6 +66,7 @@ export const useSettingsStore = create<SettingsState>()(
       anthropicMaxTokens: 8_192,
       availableModels: [],
       modelsLoading: false,
+      initialized: false,
 
       setProvider: (provider) => set({ provider }),
       setEmbeddingProvider: (embeddingProvider) => set({ embeddingProvider }),
@@ -86,6 +91,34 @@ export const useSettingsStore = create<SettingsState>()(
           console.error("[settings] fetchModels failed:", err);
         } finally {
           set({ modelsLoading: false });
+        }
+      },
+
+      initializeFromServer: async () => {
+        set({ modelsLoading: true });
+        try {
+          const config = await getConfig();
+          set({
+            provider: config.provider,
+            embeddingProvider: config.embedding_provider ?? config.provider,
+            chatModel: config.model,
+            embeddingModel: config.embedding_model,
+            openRouterMaxTokens: config.openrouter_max_tokens,
+            anthropicMaxTokens: config.anthropic_max_tokens,
+          });
+          try {
+            const key = get().apiKey || undefined;
+            const models = await listModels(config.provider, key);
+            set({ availableModels: models });
+          } catch (err) {
+            // Model discovery is optional. Never roll back authoritative server
+            // configuration to persisted/default Ollama values when it fails.
+            console.error("[settings] model discovery failed:", err);
+          }
+        } catch (err) {
+          console.error("[settings] server configuration hydration failed:", err);
+        } finally {
+          set({ initialized: true, modelsLoading: false });
         }
       },
 

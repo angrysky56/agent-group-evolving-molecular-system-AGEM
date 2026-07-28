@@ -1304,11 +1304,35 @@ export class Orchestrator {
 
     if (nodesToEmbed.length === 0) return;
 
+    if (this.#embedder.embedBatch) {
+      signal?.throwIfAborted();
+      const vectors = await this.#embedder.embedBatch(nodesToEmbed, signal);
+      signal?.throwIfAborted();
+      if (vectors.length !== nodesToEmbed.length) {
+        throw new Error(
+          `Embedding batch returned ${vectors.length} vectors for ` +
+            `${nodesToEmbed.length} TNA nodes.`,
+        );
+      }
+      nodesToEmbed.forEach((nodeId, index) => {
+        const vector = vectors[index];
+        if (!vector || vector.length === 0) {
+          throw new Error(`Embedding batch returned an empty vector for '${nodeId}'.`);
+        }
+        this.#nodeEmbeddings.set(nodeId, vector);
+      });
+      console.log(
+        `[ORCH] Embedded ${this.#nodeEmbeddings.size} TNA nodes ` +
+          `(${nodesToEmbed.length} new, batched)`,
+      );
+      return;
+    }
+
     // Parallelize embedding calls (batches of 10 to avoid overwhelming the API)
     const batchSize = 10;
     for (let i = 0; i < nodesToEmbed.length; i += batchSize) {
       const batch = nodesToEmbed.slice(i, i + batchSize);
-      const results = await Promise.allSettled(
+      const results = await Promise.all(
         batch.map(async (nodeId) => {
           if (signal?.aborted) throw new Error("Aborted");
           const embedding = await this.#embedder.embed(nodeId, signal);
@@ -1316,9 +1340,7 @@ export class Orchestrator {
         }),
       );
       for (const result of results) {
-        if (result.status === "fulfilled") {
-          this.#nodeEmbeddings.set(result.value.nodeId, result.value.embedding);
-        }
+        this.#nodeEmbeddings.set(result.nodeId, result.embedding);
       }
     }
 

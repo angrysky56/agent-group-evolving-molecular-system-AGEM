@@ -203,7 +203,17 @@ const ConfigSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(20 * 60 * 1000),
+    .default(30 * 60 * 1000),
+  /**
+   * Do not begin typed-claim extraction unless this much request budget
+   * remains. Persisted engine state makes continuation safer than a partial
+   * extraction wave aborted at the request boundary.
+   */
+  CLAIM_EXTRACTION_MIN_REMAINING_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(8 * 60 * 1000),
 
   // Tool execution: bounded recovery + side-effect-aware dispatch
   /**

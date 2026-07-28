@@ -50,6 +50,19 @@ export interface ChatCompletionResult {
   };
 }
 
+/** The provider opened a stream but produced no bytes before its liveness limit. */
+export class ProviderReadTimeoutError extends Error {
+  readonly silenceMs: number;
+
+  constructor(silenceMs: number) {
+    super(
+      `OpenRouter produced no stream data for ${Math.round(silenceMs / 1000)} seconds.`,
+    );
+    this.name = "ProviderReadTimeoutError";
+    this.silenceMs = silenceMs;
+  }
+}
+
 /** Abstract LLM provider interface. */
 interface LLMProvider {
   readonly type: LLMProviderType;
@@ -488,23 +501,28 @@ class OpenRouterProvider implements LLMProvider {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const readPromise = reader.read();
-      const timeoutPromise = new Promise<{ value: undefined; done: true }>(
-        (resolve) => {
+      const timeoutPromise = new Promise<never>(
+        (_resolve, reject) => {
           timeoutId = setTimeout(() => {
             const silenceMs = Date.now() - lastDataTime;
             console.warn(
               `[LLM] OpenRouter read timeout after ${Math.round(silenceMs / 1000)}s silence — aborting stream`,
             );
             reader.cancel().catch(() => {});
-            resolve({ value: undefined, done: true });
+            reject(new ProviderReadTimeoutError(silenceMs));
           }, READ_TIMEOUT_MS);
         },
       );
 
-      const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+      let readResult: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        readResult = await Promise.race([readPromise, timeoutPromise]);
+      } finally {
+        // Never let an old liveness timer fire during a later stream read.
+        if (timeoutId !== null) clearTimeout(timeoutId);
+      }
 
-      // CRITICAL: clear the timeout so it doesn't fire later and kill a future read
-      if (timeoutId !== null) clearTimeout(timeoutId);
+      const { value, done } = readResult;
 
       if (done) break;
       lastDataTime = Date.now();

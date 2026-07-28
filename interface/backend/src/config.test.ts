@@ -55,16 +55,31 @@ describe("ConfigService — update and Zod schema re-validation", () => {
 
   it("provides a configurable positive request deadline", () => {
     const original = settings.all.CHAT_REQUEST_TIMEOUT_MS;
-    expect(original).toBe(20 * 60 * 1000);
+    const originalExtractionMinimum =
+      settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS;
+    expect(original).toBe(30 * 60 * 1000);
+    expect(originalExtractionMinimum).toBe(8 * 60 * 1000);
 
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 90_000 } as any)).toBe(
       true,
     );
     expect(settings.all.CHAT_REQUEST_TIMEOUT_MS).toBe(90_000);
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 0 } as any)).toBe(false);
+    expect(
+      settings.update({ CLAIM_EXTRACTION_MIN_REMAINING_MS: 120_000 } as any),
+    ).toBe(true);
+    expect(settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS).toBe(120_000);
+    expect(
+      settings.update({ CLAIM_EXTRACTION_MIN_REMAINING_MS: 0 } as any),
+    ).toBe(false);
 
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: original } as any)).toBe(
       true,
     );
+    expect(
+      settings.update({
+        CLAIM_EXTRACTION_MIN_REMAINING_MS: originalExtractionMinimum,
+      } as any),
+    ).toBe(true);
   });
 });

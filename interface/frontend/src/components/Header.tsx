@@ -2,10 +2,8 @@
  * Header — Top bar with model selector and action buttons.
  */
 
-import { useEffect } from "react";
 import { Settings, LayoutPanelLeft } from "lucide-react";
 import { useSettingsStore } from "../stores/settings";
-import * as api from "../api";
 
 interface Props {
   onOpenSettings: () => void;
@@ -22,20 +20,6 @@ export function Header({
   const chatModel = useSettingsStore((s) => s.chatModel);
   const setChatModel = useSettingsStore((s) => s.setChatModel);
   const availableModels = useSettingsStore((s) => s.availableModels);
-  const setAvailableModels = useSettingsStore((s) => s.setAvailableModels);
-  const apiKey = useSettingsStore((s) => s.apiKey);
-
-  useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const models = await api.listModels(provider, apiKey);
-        setAvailableModels(models);
-      } catch (err) {
-        console.error("Failed to fetch models:", err);
-      }
-    };
-    fetchModels();
-  }, [provider, apiKey, setAvailableModels]);
 
   return (
     <header className="header" id="header">

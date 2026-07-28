@@ -53,12 +53,10 @@ export function SettingsPanel({ onClose }: Props) {
 
   // Fetch on panel open
   useEffect(() => {
-    // Adopt the server's actual configuration BEFORE rendering any toggle as
-    // active. Without this the panel showed whatever was last cached in
-    // localStorage, so it could display "Ollama" while the server ran
-    // OpenRouter — and the next click wrote that stale view back to .env.
-    void settings.hydrateFromServer();
-    doFetch(settings.provider);
+    // main.tsx normally completes this before rendering. Retain a guarded
+    // recovery path for tests or alternate entry points that mount the panel
+    // directly, without racing a model fetch against stale Ollama defaults.
+    if (!settings.initialized) void settings.initializeFromServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

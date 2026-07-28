@@ -14,7 +14,8 @@
  * Design:
  *   - Accepts IEmbedder via constructor injection — never imports @huggingface/transformers.
  *   - Private Map<string, Float64Array> for O(1) lookup by entry ID.
- *   - All embedding vectors are EMBEDDING_DIM (384) dimensional Float64Array.
+ *   - Vectors use the injected provider's native dimension. One cache must not
+ *     mix dimensions; production enforces that invariant in ProviderEmbedder.
  *
  * Dependencies:
  *   - IEmbedder (injected): embedding computation (MockEmbedder in tests, model in prod)

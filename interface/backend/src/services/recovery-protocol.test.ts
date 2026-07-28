@@ -18,6 +18,7 @@ import {
   diagnose,
   terseError,
 } from "./recovery-protocol.js";
+import { RequestTimeoutError } from "./request-deadline.js";
 
 const noSleep = async (): Promise<void> => {};
 
@@ -41,6 +42,10 @@ describe("classifyError", () => {
     );
     expect(classifyError(new Error("429 Too Many Requests"))).toBe("transient");
     expect(classifyError(new Error("fetch failed"))).toBe("transient");
+  });
+
+  it("classifies an enclosing request deadline separately from provider timeouts", () => {
+    expect(classifyError(new RequestTimeoutError(1_000))).toBe("cancelled");
   });
 
   it("classifies bad argument shapes as schema", () => {
@@ -139,7 +144,7 @@ describe("RecoveryProtocol — level 1 (bounded retry)", () => {
     const p = new RecoveryProtocol({ retryBudget: 3, baseDelayMs: 0 });
     const controller = new AbortController();
     const run = vi.fn(async () => {
-      controller.abort(new Error("request timed out"));
+      controller.abort(new RequestTimeoutError(1_000));
       throw controller.signal.reason;
     });
 
@@ -151,6 +156,10 @@ describe("RecoveryProtocol — level 1 (bounded retry)", () => {
 
     expect(out.ok).toBe(false);
     expect(run).toHaveBeenCalledTimes(1);
+    expect(out.diagnosis?.errorClass).toBe("cancelled");
+    expect(out.level).toBe(0);
+    expect(out.finalState).toBe("pristine");
+    expect(out.output).toContain("[tool_cancelled]");
   });
 });
 

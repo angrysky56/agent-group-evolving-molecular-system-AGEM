@@ -35,9 +35,11 @@ import {
   ImmutableStore,
   EmbeddingCache,
   LCMGrep,
-  EMBEDDING_DIM,
 } from "#agem/lcm/index.js";
-import { ProviderEmbedder } from "./provider-embedder.js";
+import {
+  ProviderEmbedder,
+  type EmbeddingTelemetry,
+} from "./provider-embedder.js";
 import { ProviderCompressor } from "./provider-compressor.js";
 import { saveEngineState, loadEngineState } from "./state/index.js";
 import type { EngineSnapshot } from "./state/index.js";
@@ -64,6 +66,7 @@ export interface SectionedCycleSummary {
   iteration: number;
   soc: SOCSnapshot["latest"];
   elapsedMs: number;
+  phaseMs: Record<string, number>;
 }
 
 export interface SectionedRunResult {
@@ -78,6 +81,7 @@ export interface SectionedRunResult {
     totalMs: number;
     routingMode: "fixed-sequential";
     routingCalls: 0;
+    embedding: EmbeddingTelemetry;
   };
 }
 
@@ -689,6 +693,7 @@ class AgemBridge {
         iteration: result.state.iteration,
         soc: result.state.soc?.latest ?? null,
         elapsedMs: Date.now() - sectionStartedAt,
+        phaseMs: { ...this.#orchestrator.getLastPhaseTimings() },
       });
     }
 
@@ -709,6 +714,7 @@ class AgemBridge {
         totalMs: Date.now() - sectionedStartedAt,
         routingMode: "fixed-sequential",
         routingCalls: 0,
+        embedding: this.#embedder.getTelemetry(),
       },
     };
   }
