@@ -239,18 +239,20 @@ the resulting clean verdict could therefore be an artifact of the encoding.
    `critical` when two symbols above the similarity threshold appear in
    different blocks and never co-occur in any block — that is the exact
    signature of extractor drift, and it makes `resultIsVacuous` true.
-4. Prompt-side, extraction maintains a running predicate glossary across
-   concurrency waves and instructs later batches to reuse its role labels.
+4. Extraction now uses two passes. Pass one reads the entire corpus and proposes
+   one auditable closed vocabulary. Pass two maps every role by forced choice;
+   it cannot add symbols. Out-of-vocabulary output is rejected
+   deterministically, and explicitly unmappable claims make whole-corpus clean
+   verdicts inconclusive. Closed labels are not re-clustered downstream.
 
-**Acceptance result:** re-running the consciousness corpus either preserves an
-audited ontology merge or reports a predicate alias candidate. The recorded
-10-block replay returned `predicate_aliasing_suspected`; it did not silently
-report a complete clean result.
-
-The epiphenomenalism-vs-interactionism requirement is now enforced: the pair
-must either produce a genuine MUS under an audited `mental` alias or be
-explicitly reported as `predicate_aliasing_suspected`. A silent "consistent"
-is a test failure.
+**Acceptance result:** the earlier recorded 10-block replay returned
+`predicate_aliasing_suspected`, which was the correct refusal for the former
+open vocabulary. On the closed path, all accepted role labels must appear in the
+reported glossary, downstream alias embeddings are skipped, and any attempted
+new symbol or unmappable claim makes whole-corpus cleanliness inconclusive. The
+epiphenomenalism-vs-interactionism pair must therefore land on shared glossary
+labels or fail explicitly before a clean verdict; a silent "consistent" remains
+a test failure.
 
 ---
 

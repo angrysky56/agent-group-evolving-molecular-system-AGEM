@@ -11,9 +11,11 @@
  *   then 2 contradictions across three runs, and IIT/GWT flipped from
  *   contradictory to consistent because the exclusion silently vanished.
  *
- *   Here the model reads the SENTENCE and emits a typed claim. There is no
- *   reconstruction step to improvise in, and the schema rejects claims whose
- *   shape is wrong rather than accepting them and being wrong later.
+ *   Here pass one reads the whole corpus and closes the formal vocabulary;
+ *   pass two reads each SENTENCE and emits typed claims by forced choice. There
+ *   is no reconstruction step or permission to mint a surface-derived symbol,
+ *   and the schema rejects claims whose shape is wrong rather than accepting
+ *   them and being wrong later.
  *
  * THE INVARIANT
  *   Nothing enters the store that the schema will not accept. A dropped
@@ -63,9 +65,24 @@ export interface ExtractionOutcome {
   claimKey?: string;
   accepted: boolean;
   /** Pipeline stage that rejected the claim, for cause-specific reporting. */
-  rejectionKind?: "schema" | "attribution" | "storage";
+  rejectionKind?: "schema" | "attribution" | "vocabulary" | "storage";
   /** Constraint violation text when the schema refused the claim. */
   rejection?: string;
+}
+
+/** One corpus-scoped symbol selected before any claim extraction begins. */
+export interface ClosedGlossaryEntry {
+  /** Exact role label the claim pass must use. */
+  label: string;
+  /** Human-auditable meaning used by the claim pass for forced choice. */
+  definition: string;
+  /** Surface forms this entry intentionally collapses. */
+  sourceForms: string[];
+}
+
+export interface UnmappableClaim {
+  segmentId: string;
+  reason: string;
 }
 
 export interface ExtractionReport {
@@ -76,13 +93,21 @@ export interface ExtractionReport {
   outcomes: ExtractionOutcome[];
   /** Segments the model returned unparseable output for. */
   parseFailures: string[];
+  /** Immutable corpus-wide vocabulary used for every extraction batch. */
+  glossary: ClosedGlossaryEntry[];
+  /** Set when pass one could not establish a closed vocabulary. */
+  glossaryFailure?: string;
+  /** Explicit claims the model could not map without inventing a symbol. */
+  unmappableClaims: UnmappableClaim[];
   telemetry: ExtractionTelemetry;
 }
 
 export interface ExtractionTelemetry {
+  glossaryMs: number;
   proposalMs: number;
   persistenceMs: number;
   totalMs: number;
+  glossaryCalls: number;
   batchCalls: number;
   fallbackBatches: number;
   fallbackSegmentCalls: number;
@@ -90,6 +115,8 @@ export interface ExtractionTelemetry {
 
 export interface ExtractionOptions {
   signal?: AbortSignal;
+  /** Audited aliases and canonicals that pass one must honor. */
+  ontology?: Readonly<Record<string, string>>;
 }
 
 /** Stable assertion-holder identity. Holder spelling is display data, not identity. */
@@ -104,6 +131,134 @@ export function parseClaimArray(value: unknown): ExtractedClaim[] | null {
   if (!value || typeof value !== "object") return null;
   const claims = (value as { claims?: unknown }).claims;
   return Array.isArray(claims) ? (claims as ExtractedClaim[]) : null;
+}
+
+interface SegmentProposal {
+  claims: ExtractedClaim[];
+  unmappable: string[];
+}
+
+/** Parse the closed-pass envelope while retaining old array responses. */
+export function parseSegmentProposal(
+  value: unknown,
+  requireUnmappableField = false,
+): SegmentProposal | null {
+  const claims = parseClaimArray(value);
+  if (!claims) return null;
+  if (Array.isArray(value)) {
+    return requireUnmappableField ? null : { claims, unmappable: [] };
+  }
+
+  const raw = (value as { unmappable?: unknown }).unmappable;
+  if (raw === undefined) {
+    return requireUnmappableField ? null : { claims, unmappable: [] };
+  }
+  if (!Array.isArray(raw)) return null;
+  const unmappable: string[] = [];
+  for (const item of raw) {
+    const reason =
+      typeof item === "string"
+        ? item.trim()
+        : item && typeof item === "object"
+          ? String((item as { reason?: unknown }).reason ?? "").trim()
+          : "";
+    if (!reason) return null;
+    unmappable.push(reason);
+  }
+  return { claims, unmappable };
+}
+
+const GLOSSARY_LABEL = /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/;
+const formalSymbol = (value: string) =>
+  value
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+const PRONOUN_LABELS = new Set([
+  "he",
+  "her",
+  "hers",
+  "him",
+  "his",
+  "it",
+  "its",
+  "itself",
+  "she",
+  "that",
+  "their",
+  "theirs",
+  "them",
+  "themselves",
+  "they",
+  "this",
+  "those",
+]);
+
+/** Strictly parse pass one's auditable, immutable vocabulary. */
+export function parseClosedGlossary(value: unknown): ClosedGlossaryEntry[] | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = (value as { glossary?: unknown }).glossary;
+  if (!Array.isArray(raw)) return null;
+  const labels = new Set<string>();
+  const symbolKeys = new Set<string>();
+  const entries: ClosedGlossaryEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") return null;
+    const source = item as {
+      label?: unknown;
+      definition?: unknown;
+      sourceForms?: unknown;
+    };
+    const label = String(source.label ?? "").trim();
+    const definition = String(source.definition ?? "").trim();
+    const labelTokens = label.split(/[-_]+/);
+    const symbolKey = formalSymbol(label);
+    if (
+      !GLOSSARY_LABEL.test(label) ||
+      labelTokens.some((token) => PRONOUN_LABELS.has(token)) ||
+      !definition ||
+      labels.has(label) ||
+      symbolKeys.has(symbolKey)
+    ) {
+      return null;
+    }
+    if (source.sourceForms !== undefined && !Array.isArray(source.sourceForms)) {
+      return null;
+    }
+    const sourceForms = [
+      ...new Set(
+        (Array.isArray(source.sourceForms) ? source.sourceForms : [])
+          .filter((form): form is string => typeof form === "string")
+          .map((form) => form.trim())
+          .filter(Boolean),
+      ),
+    ].sort();
+    labels.add(label);
+    symbolKeys.add(symbolKey);
+    entries.push({ label, definition, sourceForms });
+  }
+  return entries.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Reject any claim that escaped pass two with a newly minted role label. */
+export function claimVocabularyIssue(
+  claim: ExtractedClaim,
+  glossary: readonly ClosedGlossaryEntry[],
+): string | null {
+  const allowed = new Set(glossary.map(({ label }) => label));
+  const outside = Object.values(claim.roles ?? {})
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map(String)
+    .map((value) => value.trim())
+    .filter((value) => value && !allowed.has(value));
+  return outside.length > 0
+    ? `closed vocabulary: role label(s) not in the corpus glossary: ${[
+        ...new Set(outside),
+      ]
+        .sort()
+        .join(", ")}`
+    : null;
 }
 
 /**
@@ -150,7 +305,7 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
   if (negatedRole) {
     const value = normalized.roles[negatedRole];
     if (typeof value === "string") {
-      const match = value.trim().match(/^(?:not|non)[-_\s]+(.+)$/i);
+      const match = value.trim().match(/^(?:no|not|non)[-_\s]+(.+)$/i);
       if (match?.[1]) {
         normalized.roles[negatedRole] = match[1];
         normalized.polarity = "denies";
@@ -330,9 +485,71 @@ export function claimSchemaIssue(claim: ExtractedClaim): string | null {
   return null;
 }
 
+function glossaryEntry(
+  value: string | ClosedGlossaryEntry,
+): ClosedGlossaryEntry {
+  return typeof value === "string"
+    ? { label: value, definition: value, sourceForms: [] }
+    : value;
+}
+
+/** Pass one: select the vocabulary with the entire corpus in view. */
+export function buildCorpusGlossaryPrompt(
+  segments: readonly { id: string; text: string }[],
+  ontology: Readonly<Record<string, string>> = {},
+): string {
+  const numbered = segments
+    .map(
+      (segment, index) =>
+        `[${index}] (segmentId=${segment.id}) ${segment.text}`,
+    )
+    .join("\n");
+  const audited = Object.entries(ontology)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([alias, canonical]) => `- ${alias} -> ${canonical}`)
+    .join("\n");
+  const ontologySection = audited
+    ? `\nAUDITED ALIAS MAP (mandatory; use its canonical values):\n${audited}\n`
+    : "";
+
+  return `Read the ENTIRE numbered corpus and propose the smallest adequate CLOSED
+formal vocabulary for extracting its explicit claims. Output JSON only.
+
+Return exactly:
+{"glossary":[{"label":"dominance","definition":"a decision rule preferring an act better in every state","sourceForms":["dominance principle","theory that holds dominance"]}]}
+
+Rules:
+- Each label is a lowercase hyphenated or underscored canonical symbol. It names
+  one concept, not a sentence fragment or lightly slugified noun phrase.
+- Collapse paraphrases, inflections, relative clauses, and coreferential
+  mentions onto one label. For example, "theory that holds dominance" and
+  "theory holding dominance" use the underlying property label "dominance".
+- Include every concept needed as a typed claim role, including named theories,
+  acts, properties, causes, and effects. Attribution holders are positionId
+  metadata and need not be duplicated merely for attribution.
+- Negation is not a concept. "no act is ratifiable", "not ratifiable", and
+  "unratifiable" all use the positive label "ratifiable"; the claim pass records
+  denial structurally.
+- Pronouns are never labels. Resolve them from the whole-corpus context into the
+  entry they refer to; "the act itself" uses the underlying "act" entry rather
+  than a new "act-itself" label.
+- In particular, never propose surface scaffolds such as
+  "theory-that-holds-dominance", "being-total-over-well-posed-problems", or
+  "act-itself". Use "dominance", "total-over-well-posed-problems", and "act".
+- sourceForms records materially different corpus phrasings intentionally
+  collapsed into the entry. For a pronoun or other ambiguous coreference, use
+  the form "segmentId=<id>: <surface form>" so pass two retains the resolved
+  referent even when it processes that segment in a batch. Do not invent
+  background concepts.
+${ontologySection}
+NUMBERED CORPUS:
+${numbered}`;
+}
+
 export function buildClaimExtractionPrompt(
   segment: string,
-  glossary: readonly string[] = [],
+  glossary: readonly (string | ClosedGlossaryEntry)[] = [],
+  closedVocabulary = false,
 ): string {
   const kinds = (Object.entries(ROLE_SPEC) as [ClaimKind, typeof ROLE_SPEC[ClaimKind]][])
     .map(([kind, spec]) => {
@@ -342,15 +559,30 @@ export function buildClaimExtractionPrompt(
     })
     .join("\n");
 
-  const glossarySection = glossary.length === 0
+  const entries = glossary.map(glossaryEntry);
+  const glossarySection = !closedVocabulary && entries.length === 0
     ? ""
-    : `\nRUNNING PREDICATE GLOSSARY (already used in this corpus):\n${[
-        ...new Set(glossary),
-      ]
-        .sort()
-        .slice(0, 120)
-        .map((label) => `- ${label}`)
-        .join("\n")}\nReuse a glossary label whenever it names the same concept. Coin a new label only for a genuinely different concept.\n`;
+    : `\nCLOSED CORPUS VOCABULARY (pass one; immutable):\n${entries
+        .map(
+          ({ label, definition, sourceForms }) =>
+            `- ${label}: ${definition}${
+              sourceForms.length > 0
+                ? ` [covers: ${sourceForms.join("; ")}]`
+                : ""
+            }`,
+        )
+        .join("\n")}
+Every role value MUST be one of the labels above, copied exactly. Forced choice
+means no new symbols are permitted. Resolve paraphrases, relativizers, and
+pronouns to the matching label. If an explicit claim cannot be represented with
+these labels, omit that claim and add {"reason":"..."} to "unmappable" instead
+of minting a label.\n`;
+  const emptyOutput = closedVocabulary
+    ? '{"claims":[],"unmappable":[]}'
+    : '{"claims":[]}';
+  const outputShape = closedVocabulary
+    ? '{"claims":[],"unmappable":[]} when there are no claims, or the same envelope with typed claim objects whose role values are copied exactly from the closed labels above. An unmappable item has shape {"reason":"why no closed label fits"}.'
+    : '{"claims":[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},{"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]}';
 
   return `Extract the explicit claims from ONE sentence. Output JSON only.
 
@@ -360,15 +592,16 @@ ${kinds}
 Rules:
 - Extract only what the sentence states. Do not infer, complete, or supply
   background knowledge. If the sentence makes no claim of these kinds, return
-  {"claims":[]}.
+  ${emptyOutput}.
 - Every role listed for a kind MUST be filled. A claim with a missing role is
   worse than no claim — it will be rejected, and silently dropping a role is how
   a contradiction gets reported as agreement.
-- Concept labels: short, lowercase, hyphenated, reused consistently
-  ("phenomenal-consciousness", "phi", "global-broadcast").
+- Concept labels are semantic concepts, not surface-form noun phrases. When a
+  closed vocabulary is supplied below, copy its labels exactly.
 - A "distinction" needs exactly two distinct values under "distinguished";
   supply them as an array.
-- Every claim MUST include a scope. Use {"scope":"corpus"} only when the
+- Infer attribution from ordinary prose; authors need not add extraction
+  boilerplate. Every claim MUST include a scope. Use {"scope":"corpus"} when the
   source itself directly asserts the proposition. Use {"scope":"position",
   "positionId":"..."} when the sentence reports what a theory, author, camp,
   or other attributed holder asserts. Copy a short stable holder label.
@@ -379,8 +612,7 @@ Rules:
 ${glossarySection}
 
 Output shape:
-{"claims":[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},
- {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]}
+${outputShape}
 
 Never emit an object named "extra". Put listed extra fields at the top level.
 Never put not-, no-, or non- into a role label. Use polarity:"denies" for a
@@ -580,19 +812,83 @@ export async function storeSegment(
   return !!res && isOkResponse(res);
 }
 
-/** Ask the model for claims in one segment. Returns null on unparseable output. */
-export async function proposeClaims(
-  segment: string,
-  glossary: readonly string[] = [],
+/** Pass one: propose the only labels pass two will be allowed to emit. */
+export async function proposeClosedGlossary(
+  segments: readonly { id: string; text: string }[],
+  ontology: Readonly<Record<string, string>> = {},
   signal?: AbortSignal,
-): Promise<ExtractedClaim[] | null> {
+): Promise<ClosedGlossaryEntry[] | null> {
   signal?.throwIfAborted();
   const provider = getActiveProvider();
   const res = await provider.chat({
     messages: [
       {
         role: "user",
-        content: buildClaimExtractionPrompt(segment, glossary),
+        content: buildCorpusGlossaryPrompt(segments, ontology),
+      },
+    ],
+    maxTokens: BATCH_MAX_TOKENS,
+    reasoning: { enabled: false },
+    responseFormat: { type: "json_object" },
+    temperature: 0,
+    signal,
+  });
+  if (res.finishReason === "length") return null;
+  try {
+    const glossary = parseClosedGlossary(JSON.parse(res.content) as unknown);
+    if (!glossary) return null;
+    const audited = new Map(
+      Object.entries(ontology).map(([alias, canonical]) => [
+        formalSymbol(alias),
+        formalSymbol(canonical),
+      ]),
+    );
+    return glossary.every(({ label }) => {
+      const labelSymbol = formalSymbol(label);
+      const requiredCanonical = audited.get(labelSymbol);
+      return !requiredCanonical || requiredCanonical === labelSymbol;
+    })
+      ? glossary
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask the model for claims in one segment. Returns null on unparseable output. */
+export async function proposeClaims(
+  segment: string,
+  glossary: readonly (string | ClosedGlossaryEntry)[] = [],
+  signal?: AbortSignal,
+  closedVocabulary = false,
+): Promise<ExtractedClaim[] | null> {
+  return (
+    await proposeSegmentClaims(
+      segment,
+      glossary,
+      signal,
+      closedVocabulary,
+    )
+  )?.claims ?? null;
+}
+
+async function proposeSegmentClaims(
+  segment: string,
+  glossary: readonly (string | ClosedGlossaryEntry)[] = [],
+  signal?: AbortSignal,
+  closedVocabulary = false,
+): Promise<SegmentProposal | null> {
+  signal?.throwIfAborted();
+  const provider = getActiveProvider();
+  const res = await provider.chat({
+    messages: [
+      {
+        role: "user",
+        content: buildClaimExtractionPrompt(
+          segment,
+          glossary,
+          closedVocabulary,
+        ),
       },
     ],
     maxTokens: 1024,
@@ -604,7 +900,7 @@ export async function proposeClaims(
   if (res.finishReason === "length") return null;
   try {
     const parsed = JSON.parse(res.content) as unknown;
-    return parseClaimArray(parsed);
+    return parseSegmentProposal(parsed, closedVocabulary);
   } catch {
     return null;
   }
@@ -635,16 +931,18 @@ const BATCH_MAX_TOKENS = settings.all.EXTRACTION_MAX_TOKENS;
 
 function buildBatchPrompt(
   segments: Array<{ id: string; text: string }>,
-  glossary: readonly string[],
+  glossary: readonly ClosedGlossaryEntry[],
 ): string {
-  const numbered = segments.map((s, i) => `[${i}] ${s.text}`).join("\n");
-  return `${buildClaimExtractionPrompt("(see the numbered sentences below)", glossary)}
+  const numbered = segments
+    .map((s, i) => `[${i}] (segmentId=${s.id}) ${s.text}`)
+    .join("\n");
+  return `${buildClaimExtractionPrompt("(see the numbered sentences below)", glossary, true)}
 
 You are given SEVERAL sentences. Treat each INDEPENDENTLY — do not carry a
 claim from one sentence into another, and do not merge them.
 
-Return a JSON object mapping each index to its claim array, e.g.
-{"0": [], "1": [{"kind":"exclusion","roles":{"excluder":"phi","excluded":"global-broadcast"},"scope":"position","positionId":"IIT"}]}
+Return a JSON object mapping each index to a claims/unmappable object, e.g.
+{"0":{"claims":[],"unmappable":[]},"1":{"claims":[],"unmappable":[{"reason":"no closed label represents the explicit claim"}]}}
 
 SENTENCES:
 ${numbered}`;
@@ -653,11 +951,11 @@ ${numbered}`;
 /** Extract claims for a batch. Returns a map from batch index to claims. */
 async function proposeClaimsBatch(
   segments: Array<{ id: string; text: string }>,
-  glossary: readonly string[],
+  glossary: readonly ClosedGlossaryEntry[],
   telemetry: ExtractionTelemetry,
   signal?: AbortSignal,
-): Promise<Map<number, ExtractedClaim[] | null>> {
-  const out = new Map<number, ExtractedClaim[] | null>();
+): Promise<Map<number, SegmentProposal | null>> {
+  const out = new Map<number, SegmentProposal | null>();
   const provider = getActiveProvider();
 
   /*
@@ -671,15 +969,16 @@ async function proposeClaimsBatch(
     // so four truncated batches cannot fan out into sixteen simultaneous calls.
     for (const index of indices) {
       telemetry.fallbackSegmentCalls++;
-      const claims = await proposeClaims(
+      const proposal = await proposeSegmentClaims(
         segments[index].text,
         glossary,
         signal,
+        true,
       ).catch((error) => {
           signal?.throwIfAborted();
           return null;
         });
-      out.set(index, claims);
+      out.set(index, proposal);
     }
     return out;
   };
@@ -719,9 +1018,9 @@ async function proposeClaimsBatch(
   const missing: number[] = [];
   for (let i = 0; i < segments.length; i++) {
     const v = parsed[String(i)];
-    const claims = parseClaimArray(v);
-    if (claims === null) missing.push(i);
-    else out.set(i, claims);
+    const proposal = parseSegmentProposal(v, true);
+    if (proposal === null) missing.push(i);
+    else out.set(i, proposal);
   }
   return missing.length > 0 ? fallbackIndices(missing) : out;
 }
@@ -746,10 +1045,14 @@ export async function extractIntoStore(
     claimsRejected: 0,
     outcomes: [],
     parseFailures: [],
+    glossary: [],
+    unmappableClaims: [],
     telemetry: {
+      glossaryMs: 0,
       proposalMs: 0,
       persistenceMs: 0,
       totalMs: 0,
+      glossaryCalls: 0,
       batchCalls: 0,
       fallbackBatches: 0,
       fallbackSegmentCalls: 0,
@@ -761,23 +1064,53 @@ export async function extractIntoStore(
     return report;
   }
 
+  const proposalStartedAt = performance.now();
+  if (segments.length > 0) {
+    const glossaryStartedAt = performance.now();
+    report.telemetry.glossaryCalls++;
+    try {
+      const glossary = await proposeClosedGlossary(
+        segments,
+        options.ontology,
+        options.signal,
+      );
+      if (!glossary) {
+        report.glossaryFailure =
+          "pass one returned an invalid or truncated corpus glossary";
+      } else {
+        report.glossary = glossary;
+      }
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      report.glossaryFailure = `pass one failed to establish a corpus glossary: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+    report.telemetry.glossaryMs = performance.now() - glossaryStartedAt;
+  }
+  if (report.glossaryFailure) {
+    report.telemetry.proposalMs = performance.now() - proposalStartedAt;
+    report.telemetry.totalMs = performance.now() - startedAt;
+    return report;
+  }
+
   // Split into batches, then run a bounded number of batches concurrently.
   const batches: Array<Array<{ id: string; text: string }>> = [];
   for (let i = 0; i < segments.length; i += BATCH_SIZE)
     batches.push(segments.slice(i, i + BATCH_SIZE));
 
-  const proposals: Array<{ seg: { id: string; text: string }; claims: ExtractedClaim[] | null }> = [];
-  const runningGlossary = new Set<string>();
-  const proposalStartedAt = performance.now();
+  const proposals: Array<{
+    seg: { id: string; text: string };
+    proposal: SegmentProposal | null;
+  }> = [];
   for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
     options.signal?.throwIfAborted();
     const wave = batches.slice(i, i + BATCH_CONCURRENCY);
-    const glossary = [...runningGlossary];
     const results = await Promise.all(
       wave.map((batch) =>
         proposeClaimsBatch(
           batch,
-          glossary,
+          report.glossary,
           report.telemetry,
           options.signal,
         ),
@@ -785,32 +1118,27 @@ export async function extractIntoStore(
     );
     wave.forEach((batch, w) => {
       batch.forEach((seg, idx) => {
-        const claims = results[w].get(idx) ?? null;
-        proposals.push({ seg, claims });
-        for (const claim of claims ?? []) {
-          for (const value of Object.values(claim?.roles ?? {})) {
-            for (const label of Array.isArray(value) ? value : [value]) {
-              if (String(label).trim()) runningGlossary.add(String(label).trim());
-            }
-          }
-        }
+        proposals.push({ seg, proposal: results[w].get(idx) ?? null });
       });
     });
   }
   report.telemetry.proposalMs = performance.now() - proposalStartedAt;
 
   const persistenceStartedAt = performance.now();
-  for (const { seg, claims } of proposals) {
+  for (const { seg, proposal } of proposals) {
     options.signal?.throwIfAborted();
     report.segmentsProcessed++;
     await storeSegment(seg.id, seg.text, corpusId);
 
-    if (claims === null) {
+    if (proposal === null) {
       report.parseFailures.push(seg.id);
       continue;
     }
+    for (const reason of proposal.unmappable) {
+      report.unmappableClaims.push({ segmentId: seg.id, reason });
+    }
 
-    for (const proposedClaim of claims) {
+    for (const proposedClaim of proposal.claims) {
       const claim = normalizeClaimExtras(proposedClaim);
       const schemaRejection = claimSchemaIssue(claim);
       if (schemaRejection) {
@@ -835,6 +1163,19 @@ export async function extractIntoStore(
           accepted: false,
           rejectionKind: "attribution",
           rejection: attributionRejection,
+        });
+        continue;
+      }
+      const vocabularyRejection = claimVocabularyIssue(claim, report.glossary);
+      if (vocabularyRejection) {
+        report.claimsProposed++;
+        report.claimsRejected++;
+        report.outcomes.push({
+          segmentId: seg.id,
+          claim,
+          accepted: false,
+          rejectionKind: "vocabulary",
+          rejection: vocabularyRejection,
         });
         continue;
       }

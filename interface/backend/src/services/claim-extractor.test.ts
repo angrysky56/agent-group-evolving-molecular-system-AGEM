@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalClaim,
   buildClaimExtractionPrompt,
+  buildCorpusGlossaryPrompt,
   claimIdentity,
   claimAttributionIssue,
   claimSchemaIssue,
+  claimVocabularyIssue,
   claimToPropositions,
   claimToTypeQL,
   extractIntoStore,
   normalizeClaimExtras,
   parseClaimArray,
+  parseClosedGlossary,
+  parseSegmentProposal,
   schemaClaimFact,
   type ExtractedClaim,
 } from "./claim-extractor.js";
@@ -179,6 +183,20 @@ describe("claim identity for finding evidence", () => {
     expect(claimSchemaIssue(normalized)).toBeNull();
   });
 
+  it("mechanically lifts nominalized no-negation into structural polarity", () => {
+    expect(
+      normalizeClaimExtras({
+        kind: "property-assertion",
+        roles: { subject: "act", property: "no-ratifiable" },
+        scope: "corpus",
+        polarity: "asserts",
+      }),
+    ).toMatchObject({
+      roles: { subject: "act", property: "ratifiable" },
+      polarity: "denies",
+    });
+  });
+
   it("uses predicate form throughout deterministic claim conversion", () => {
     const converted = claimToPropositions({
       kind: "entailment",
@@ -256,17 +274,140 @@ describe("claim identity for finding evidence", () => {
     ]);
   });
 
-  it("includes the running predicate glossary in later extraction prompts", () => {
-    const prompt = buildClaimExtractionPrompt("Minds cause physical events.", [
-      "mental-state",
-      "causes-physical",
-    ]);
-    expect(prompt).toContain("RUNNING PREDICATE GLOSSARY");
+  it("forces every role through one closed corpus glossary", () => {
+    const prompt = buildClaimExtractionPrompt(
+      "It causes physical events.",
+      [
+        {
+          label: "mental-state",
+          definition: "a mental state",
+          sourceForms: ["mind", "it"],
+        },
+        {
+          label: "physical-event",
+          definition: "a physical event",
+          sourceForms: ["physical events"],
+        },
+      ],
+      true,
+    );
+    expect(prompt).toContain("CLOSED CORPUS VOCABULARY");
     expect(prompt).toContain("mental-state");
-    expect(prompt).toContain("Reuse a glossary label");
+    expect(prompt).toContain("no new symbols are permitted");
+    expect(prompt).toContain('to "unmappable"');
+    expect(prompt).toContain("Resolve paraphrases, relativizers, and\npronouns");
     expect(prompt).toContain('"scope":"position"');
-    expect(prompt).toContain('"positionId":"HOT"');
+    expect(prompt).toContain('"positionId":"..."');
     expect(prompt).toContain("Never flatten rival positions");
+    expect(prompt).not.toContain('"identified":"meta-state"');
+  });
+
+  it("builds pass one from the whole corpus and honors audited canonicals", () => {
+    const prompt = buildCorpusGlossaryPrompt(
+      [
+        { id: "s1", text: "A theory that holds dominance two-boxes." },
+        { id: "s2", text: "The theory holding dominance is not adequate." },
+      ],
+      { "dominance-principle": "dominance" },
+    );
+
+    expect(prompt).toContain("ENTIRE numbered corpus");
+    expect(prompt).toContain(
+      "[0] (segmentId=s1) A theory that holds dominance two-boxes.",
+    );
+    expect(prompt).toContain(
+      "[1] (segmentId=s2) The theory holding dominance is not adequate.",
+    );
+    expect(prompt).toContain("dominance-principle -> dominance");
+    expect(prompt).toContain('"theory that holds dominance" and\n  "theory holding dominance"');
+    expect(prompt).toContain('"the act itself" uses the underlying "act"');
+    expect(prompt).toContain('"segmentId=<id>: <surface form>"');
+  });
+
+  it("parses an auditable glossary and rejects pronoun or duplicate labels", () => {
+    expect(
+      parseClosedGlossary({
+        glossary: [
+          {
+            label: "dominance",
+            definition: "the dominance property",
+            sourceForms: ["theory holding dominance", "dominance"],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        label: "dominance",
+        definition: "the dominance property",
+        sourceForms: ["dominance", "theory holding dominance"],
+      },
+    ]);
+    expect(
+      parseClosedGlossary({
+        glossary: [{ label: "act-itself", definition: "the act" }],
+      }),
+    ).toBeNull();
+    expect(
+      parseClosedGlossary({
+        glossary: [
+          { label: "dominance", definition: "one" },
+          { label: "dominance", definition: "two" },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseClosedGlossary({
+        glossary: [
+          { label: "newcomb-adequacy", definition: "one" },
+          { label: "newcomb_adequacy", definition: "two" },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it("retains explicit unmappable claims and rejects symbol minting", () => {
+    expect(
+      parseSegmentProposal({
+        claims: [],
+        unmappable: [{ reason: "No glossary label represents calibration." }],
+      }),
+    ).toEqual({
+      claims: [],
+      unmappable: ["No glossary label represents calibration."],
+    });
+    expect(parseSegmentProposal({ claims: [] }, true)).toBeNull();
+
+    const glossary = [
+      {
+        label: "dominance",
+        definition: "the dominance property",
+        sourceForms: ["theory that holds dominance"],
+      },
+    ];
+    expect(
+      claimVocabularyIssue(
+        {
+          kind: "entailment",
+          roles: {
+            antecedent: "theory-that-holds-dominance",
+            consequent: "dominance",
+          },
+          scope: "corpus",
+        },
+        glossary,
+      ),
+    ).toMatch(/theory-that-holds-dominance/);
+    expect(
+      claimVocabularyIssue(
+        {
+          kind: "property-assertion",
+          roles: { subject: "dominance", property: "dominance" },
+          scope: "corpus",
+          polarity: "asserts",
+        },
+        glossary,
+      ),
+    ).toBeNull();
   });
 
   it("rejects attribution flattening in the exact HOT/HOP survey sentence", () => {
@@ -340,8 +481,10 @@ describe("claim extraction lifecycle", () => {
     const report = await extractIntoStore([], "corpus");
 
     expect(report.telemetry).toMatchObject({
+      glossaryMs: 0,
       proposalMs: 0,
       persistenceMs: 0,
+      glossaryCalls: 0,
       batchCalls: 0,
       fallbackBatches: 0,
       fallbackSegmentCalls: 0,

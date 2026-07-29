@@ -1,15 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const chat = vi.fn();
+const { chat, storeWrite } = vi.hoisted(() => ({
+  chat: vi.fn(),
+  storeWrite: vi.fn(),
+}));
 
 vi.mock("./llm.js", () => ({
   getActiveProvider: () => ({ chat }),
 }));
 
-import { proposeClaims } from "./claim-extractor.js";
+vi.mock("./typedb-claims.js", () => ({
+  claimStore: {
+    available: true,
+    write: storeWrite,
+    status: () => ({ available: true }),
+  },
+}));
+
+import {
+  extractIntoStore,
+  proposeClaims,
+  proposeClosedGlossary,
+} from "./claim-extractor.js";
 
 describe("claim extraction generation profile", () => {
-  beforeEach(() => chat.mockReset());
+  beforeEach(() => {
+    chat.mockReset();
+    storeWrite.mockReset();
+    storeWrite.mockResolvedValue({});
+  });
 
   it("uses deterministic JSON generation without paid reasoning", async () => {
     chat.mockResolvedValue({
@@ -36,5 +55,164 @@ describe("claim extraction generation profile", () => {
     });
 
     await expect(proposeClaims("A sentence.")).resolves.toBeNull();
+  });
+
+  it("proposes the closed glossary in a separate whole-corpus pass", async () => {
+    chat.mockResolvedValue({
+      content: JSON.stringify({
+        glossary: [
+          {
+            label: "dominance",
+            definition: "the dominance property",
+            sourceForms: ["theory holding dominance"],
+          },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    await expect(
+      proposeClosedGlossary([
+        { id: "s1", text: "A theory holding dominance two-boxes." },
+        { id: "s2", text: "That theory is not Newcomb-adequate." },
+      ]),
+    ).resolves.toEqual([
+      {
+        label: "dominance",
+        definition: "the dominance property",
+        sourceForms: ["theory holding dominance"],
+      },
+    ]);
+    expect(chat).toHaveBeenCalledTimes(1);
+    const prompt = chat.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain(
+      "[0] (segmentId=s1) A theory holding dominance two-boxes.",
+    );
+    expect(prompt).toContain(
+      "[1] (segmentId=s2) That theory is not Newcomb-adequate.",
+    );
+  });
+
+  it("refuses a truncated glossary instead of opening the vocabulary", async () => {
+    chat.mockResolvedValue({
+      content: JSON.stringify({ glossary: [] }),
+      finishReason: "length",
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    await expect(
+      proposeClosedGlossary([{ id: "s1", text: "A sentence." }]),
+    ).resolves.toBeNull();
+  });
+
+  it("refuses a glossary that ignores an audited canonical", async () => {
+    chat.mockResolvedValue({
+      content: JSON.stringify({
+        glossary: [
+          {
+            label: "dominance-principle",
+            definition: "the dominance property",
+            sourceForms: [],
+          },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    await expect(
+      proposeClosedGlossary(
+        [{ id: "s1", text: "A theory holds the dominance principle." }],
+        { "dominance-principle": "dominance" },
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("stops the pipeline before claim extraction when pass one is invalid", async () => {
+    chat.mockResolvedValue({
+      content: JSON.stringify({ glossary: [] }),
+      finishReason: "length",
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    const report = await extractIntoStore(
+      [{ id: "s1", text: "A theory holds dominance." }],
+      "decision-theory",
+    );
+
+    expect(report.glossaryFailure).toMatch(/invalid|truncated/i);
+    expect(report.telemetry).toMatchObject({
+      glossaryCalls: 1,
+      batchCalls: 0,
+    });
+    expect(report.outcomes).toEqual([]);
+    expect(storeWrite).not.toHaveBeenCalled();
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an escaped symbol and retains an explicit unmappable claim", async () => {
+    chat
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          glossary: [
+            {
+              label: "dominance",
+              definition: "the dominance property",
+              sourceForms: ["theory that holds dominance"],
+            },
+          ],
+        }),
+        finishReason: "stop",
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          "0": {
+            claims: [
+              {
+                kind: "property-assertion",
+                roles: {
+                  subject: "theory-that-holds-dominance",
+                  property: "dominance",
+                },
+                scope: "corpus",
+                polarity: "asserts",
+              },
+            ],
+            unmappable: [
+              { reason: "No glossary entry represents calibration." },
+            ],
+          },
+        }),
+        finishReason: "stop",
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+
+    const report = await extractIntoStore(
+      [{ id: "s1", text: "A theory holding dominance is calibrated." }],
+      "decision-theory",
+    );
+
+    expect(report.glossary.map(({ label }) => label)).toEqual(["dominance"]);
+    expect(report.unmappableClaims).toEqual([
+      {
+        segmentId: "s1",
+        reason: "No glossary entry represents calibration.",
+      },
+    ]);
+    expect(report.outcomes).toEqual([
+      expect.objectContaining({
+        accepted: false,
+        rejectionKind: "vocabulary",
+        rejection: expect.stringContaining("theory-that-holds-dominance"),
+      }),
+    ]);
+    expect(report.claimsRejected).toBe(1);
+    expect(report.telemetry).toMatchObject({
+      glossaryCalls: 1,
+      batchCalls: 1,
+    });
+    expect(storeWrite).toHaveBeenCalledTimes(1);
   });
 });

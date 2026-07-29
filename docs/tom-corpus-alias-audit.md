@@ -75,7 +75,7 @@ Roughly a third of the symbol table is not a predicate.
 
 A sentential predicate is a fresh symbol per phrasing that can collide with
 nothing. It guarantees satisfiability. No alias map repairs this — it needs an
-extraction-side fix (the running glossary from P4 is the right lever).
+extraction-side fix (the closed corpus glossary from P4 is the right lever).
 
 ---
 
@@ -165,7 +165,7 @@ answer the original analysis reached by luck.
    That one *should* remain SAT, now with a non-vacuous model.
 3. Fix witnesses to derive per-block, then re-run. Blocks 2 and 8 should stop
    asserting the existence of epiphenomenalism.
-4. Re-extract blocks 7 and 9 with the running glossary. Until then, distinctions
+4. Re-extract blocks 7 and 9 with the closed corpus glossary. Until then, distinctions
    #8 and #9 have not been tested by anything.
 5. Only then attempt the attributed encoding, and treat that run as the first
    one whose verdict is about consciousness studies rather than about AGEM.

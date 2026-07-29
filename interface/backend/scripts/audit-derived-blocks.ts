@@ -2,9 +2,8 @@
  * audit-derived-blocks.ts — run the formalization checks over the blocks a real
  * run actually derived.
  *
- * The typed path builds one block per claim via claimToPropositions, and each
- * block carries its own existential witness. This reports how many of those
- * blocks can contradict anything at all.
+ * The typed path builds one block per assertion context from closed-vocabulary
+ * claims. This reports how many of those blocks can contradict anything at all.
  *
  *   npx tsx scripts/audit-derived-blocks.ts <runLogId>
  */
@@ -20,11 +19,9 @@ import {
 } from "../src/services/logicalCohomology.js";
 import {
   deriveClaimBlocks,
-  mapSegmentsToPositions,
   type ClaimCommunity,
 } from "../src/services/claim-blocks.js";
 import type { ExtractionOutcome } from "../src/services/claim-extractor.js";
-import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { ProviderEmbedder } from "../src/services/provider-embedder.js";
 
 const runLogId = process.argv[2];
@@ -141,20 +138,29 @@ async function main(): Promise<void> {
           await readFile(resolve(ontologyPath), "utf8"),
         ) as Record<string, string>)
       : {};
-    const text =
-      typeof extractionArgs?.text === "string" ? extractionArgs.text : "";
+    const extractionSummary =
+      extractionOutput?.extraction &&
+      typeof extractionOutput.extraction === "object"
+        ? (extractionOutput.extraction as Record<string, unknown>)
+        : {};
+    const closedVocabulary = Array.isArray(extractionSummary.glossary)
+      ? extractionSummary.glossary.flatMap((entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof (entry as { label?: unknown }).label === "string"
+            ? [(entry as { label: string }).label]
+            : [],
+        )
+      : [];
     const corpusId =
       typeof extractionArgs?.corpusId === "string"
         ? extractionArgs.corpusId
         : "corpus";
-    const segments = segmentText(text).map((segment, index) => ({
-      id: `${corpusId}-${index}`,
-      text: segment,
-    }));
     const derivation = await deriveClaimBlocks(outcomes, {
+      corpusId,
       communities,
       ontology,
-      positionBySegment: mapSegmentsToPositions(segments),
+      closedVocabulary,
       embedder: useEmbeddings ? new ProviderEmbedder() : undefined,
       sharedExistencePredicates,
     });

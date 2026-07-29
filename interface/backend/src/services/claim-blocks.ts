@@ -60,6 +60,8 @@ export interface DeriveClaimBlocksOptions {
   communities?: readonly ClaimCommunity[];
   /** Caller-audited alias -> canonical predicate symbol. */
   ontology?: Readonly<Record<string, string>>;
+  /** Pass-one labels that are already canonical and must not be re-clustered. */
+  closedVocabulary?: readonly string[];
   /** Neutral corpus entities whose existence every position accepts. */
   sharedExistencePredicates?: readonly string[];
   embedder?: IEmbedder;
@@ -223,6 +225,9 @@ async function resolvePredicates(
       symbol(canonical),
     ]),
   );
+  const closedVocabulary = new Set(
+    (options.closedVocabulary ?? []).map(labelKey),
+  );
   const ontologyCanonicalsByMorphology = new Map<string, Set<string>>();
   for (const canonical of ontology.values()) {
     const key = morphologyKey(canonical);
@@ -241,6 +246,16 @@ async function resolvePredicates(
         source: label,
         canonical: exact,
         method: "ontology",
+      });
+      continue;
+    }
+    if (closedVocabulary.has(labelKey(label))) {
+      const canonical = symbol(label);
+      canonicalByLabel.set(label, canonical);
+      mappings.set(label, {
+        source: label,
+        canonical,
+        method: "unchanged",
       });
       continue;
     }
@@ -304,7 +319,11 @@ async function resolvePredicates(
     }
   }
 
-  if (!options.embedder || unique.length < 2) {
+  if (
+    !options.embedder ||
+    unique.length < 2 ||
+    unique.every((label) => closedVocabulary.has(labelKey(label)))
+  ) {
     return { canonicalByLabel, mappings, suggestions: [] };
   }
 
@@ -322,7 +341,9 @@ async function resolvePredicates(
     (label) => mappings.get(label)?.method === "ontology",
   );
   const unmatched = unique.filter(
-    (label) => mappings.get(label)?.method === "unchanged",
+    (label) =>
+      mappings.get(label)?.method === "unchanged" &&
+      !closedVocabulary.has(labelKey(label)),
   );
   const suggestions = new Map<
     string,

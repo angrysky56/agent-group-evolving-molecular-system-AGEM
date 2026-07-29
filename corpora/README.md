@@ -70,34 +70,24 @@ string still creates one LCM entry and therefore does not cure a rank-1 stalk.
 Authored headings are preserved unless a fragment is genuinely tiny (under the
 32-token guard); per-section SOC remains one iteration per heading.
 
-## Authoring rule: never nominalize a negation
+## Corpus prose is not a serialization format
 
-The single most expensive defect found so far. A negation absorbed into a noun
-phrase becomes one opaque positive predicate with no logical relation to the term
-it negates — `analyzeFormalization`'s `pseudo_negation`, and an alias map cannot
-repair it, since a flat `{alias: canonical}` map cannot express "A is the negation
-of B."
+Write ordinary, attributable prose. Authors do not have to avoid nominalized
+negation, repeat one noun-phrase form, remove pronouns, or manually coordinate
+predicate spellings across positions. Those are extraction responsibilities.
 
-| Never write | Write instead |
-|---|---|
-| "dominance entails Newcomb-**inadequacy**" | "a theory holding dominance is **not** Newcomb-adequate" |
-| "**no act** is ratifiable" | "staying is **not** ratifiable and fleeing is **not** ratifiable" |
-| "a case where it gives **none**" | "CDT does **not** recommend any act" |
-| "smoking is causally **inert**" | "smoking does **not** cause cancer" |
-| "consciousness is **non-computable**" | "consciousness is **not computable**" |
-| "EDT's verdict is **unstable**" | "EDT's verdict is **not** ratifiable" |
-| "**no theory** satisfies all four" | "every theory **fails at least one** of the four" |
+`extract_and_verify_claims` reads the whole corpus once to propose a closed,
+auditable vocabulary, then extracts every typed claim by forced choice against
+that vocabulary. It must resolve coreference and paraphrase, represent negation
+structurally, and reject or flag an unmappable claim rather than create a new
+surface-derived symbol. For example, `no act is ratifiable` must map to denial of
+`ratifiable`; `theory that holds dominance` and `theory holding dominance` must
+share the `dominance` entry; and `the act itself` must resolve to `act`.
 
-Rule of thumb: the negated term must appear elsewhere in the corpus as a
-*positive* predicate in its own right, and the negation must attach to it with an
-explicit "not". If a property only ever appears negated, the prover has nothing
-to contradict.
-
-Audit before every run:
-
-```
-grep -n -iE '\bno [a-z]+ (is|are|can|has)|\bnone\b|\bnon-|\binert\b|\bun[a-z]+able\b' corpus.md
-```
+Attribution remains semantically irreducible: the pipeline must preserve who
+asserts what. The extractor infers that metadata from the prose and refuses a
+claim when it cannot establish an assertion holder; the author need not add
+machine-oriented attribution boilerplate.
 
 ## Cross-corpus ambition
 

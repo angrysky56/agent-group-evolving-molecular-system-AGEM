@@ -112,6 +112,44 @@ describe("cause-specific extraction verdicts", () => {
       });
   });
 
+  it("makes glossary, unmappable, and out-of-vocabulary failures explicit", () => {
+    const causes = extractionFailureCauses(
+      {
+        glossaryFailure: "invalid glossary",
+        unmappableClaims: [
+          { segmentId: "s1", reason: "no vocabulary entry for calibration" },
+        ],
+        outcomes: [
+          {
+            segmentId: "s2",
+            claim: {
+              kind: "entailment",
+              roles: {
+                antecedent: "theory-that-holds-dominance",
+                consequent: "dominance",
+              },
+              scope: "corpus",
+            },
+            accepted: false,
+            rejectionKind: "vocabulary",
+          },
+        ],
+        parseFailures: [],
+      },
+      { attributionIssues: [], rejected: [] },
+    );
+
+    expect(Object.fromEntries(causes.map((cause) => [cause.code, cause.count])))
+      .toEqual({
+        "glossary-failure": 1,
+        "unmappable-claims": 1,
+        "vocabulary-rejections": 1,
+      });
+    expect(inconclusiveExtractionVerdict(causes)).toMatch(
+      /closed corpus vocabulary/i,
+    );
+  });
+
   it("keeps partial contradictions checkable but refuses a partial clean verdict", () => {
     expect(
       applyExtractionCoverage(

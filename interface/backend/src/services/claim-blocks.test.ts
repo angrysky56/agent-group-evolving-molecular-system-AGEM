@@ -264,6 +264,60 @@ describe("deriveClaimBlocks", () => {
     });
   });
 
+  it("treats pass-one glossary labels as canonical and skips alias embeddings", async () => {
+    class MustNotEmbed implements IEmbedder {
+      async embed(): Promise<Float64Array> {
+        throw new Error("closed vocabulary must not be re-clustered");
+      }
+      async embedBatch(): Promise<Float64Array[]> {
+        throw new Error("closed vocabulary must not be re-clustered");
+      }
+    }
+
+    const result = await deriveClaimBlocks(
+      [
+        accepted("s1", "claim:dominance", {
+          kind: "property-assertion",
+          roles: { subject: "cdt", property: "dominance" },
+          scope: "position",
+          positionId: "CDT",
+          polarity: "asserts",
+        }),
+        accepted("s2", "claim:adequacy", {
+          kind: "entailment",
+          roles: {
+            antecedent: "dominance",
+            consequent: "newcomb-adequacy",
+          },
+          scope: "corpus",
+          polarity: "denies",
+        }),
+      ],
+      {
+        closedVocabulary: ["cdt", "dominance", "newcomb-adequacy"],
+        embedder: new MustNotEmbed(),
+      },
+    );
+
+    expect(result.predicateAliasSuggestions).toEqual([]);
+    expect(result.predicateMapping).toEqual(
+      expect.arrayContaining([
+        { source: "dominance", canonical: "dominance", method: "unchanged" },
+        {
+          source: "newcomb-adequacy",
+          canonical: "newcomb_adequacy",
+          method: "unchanged",
+        },
+      ]),
+    );
+    expect(result.blocks.flatMap(({ propositions }) => propositions)).toEqual(
+      expect.arrayContaining([
+        "dominance(entity_cdt)",
+        "all x (dominance(x) -> -newcomb_adequacy(x))",
+      ]),
+    );
+  });
+
   it("auto-applies inflectional aliases before semantic suggestion", async () => {
     class SameVectorEmbedder implements IEmbedder {
       async embed(): Promise<Float64Array> {

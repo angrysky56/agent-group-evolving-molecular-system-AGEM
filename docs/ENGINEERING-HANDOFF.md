@@ -56,7 +56,8 @@ each satisfiability check to mcp-logic (Prover9/Mace4) as an external process.
 
 ### 1.2 How blocks are formed today
 
-`claim-extractor.ts → claimToPropositions()` emits **one block per claim**:
+`claim-extractor.ts → deriveClaimBlocks() → claimToPropositions()` emits one
+block per assertion context (the corpus or an attributed position):
 
 ```
 causal(stereochemical-affinity -/->assignment)
@@ -64,9 +65,10 @@ causal(stereochemical-affinity -/->assignment)
     exists x (stereochemical_affinity(x))
 ```
 
-Pipeline: corpus text → segments → typed claims (kind + named roles, schema-
-validated into TypeDB) → one block per accepted claim → subset search.
-Predicate symbols are the claim's own role labels, slugified.
+Pipeline: corpus text → closed corpus vocabulary proposal → typed claims forced
+onto that vocabulary (kind + named roles, schema-validated into TypeDB) → one
+block per assertion context → subset search. Any claim that cannot map is
+reported instead of minting a surface-derived symbol.
 
 ### 1.3 The defect, measured
 
@@ -204,10 +206,12 @@ times before the block was dropped from the search.
 AGEM now catches this locally (`inconsistent_arity`). The upstream fix belongs
 in mcp-logic: validate the statement SET, not each statement in isolation.
 
-**4.2 Extraction produces junk predicates.** Seen in real output:
+**4.2 Extraction produced junk predicates (closed-vocabulary fix complete).** Seen in real output:
 `all x (this(x) -> contiguous_codon_domains(x))` — a pronoun promoted to a
-predicate — and `causes_makes_the_comparison_quantitative(x)`. Add a rejection
-or repair pass for pronoun subjects and malformed compound labels.
+predicate — and `causes_makes_the_comparison_quantitative(x)`. Pass one now
+resolves coreference over the whole corpus; pass two can use only its closed
+labels. Any escaped label is deterministically rejected, and unmappable claims
+are surfaced as an inconclusive extraction rather than silently accepted.
 
 **4.3 Output token cap is not exposed in the UI.** `OPENROUTER_MAX_TOKENS` is
 now 32768 in `.env` (was a hardcoded-feeling 16384 default). The configured

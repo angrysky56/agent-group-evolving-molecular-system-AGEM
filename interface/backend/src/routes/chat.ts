@@ -703,7 +703,7 @@ ${skillContent}`,
         function: {
           name: "extract_and_verify_claims",
           description:
-            "PREFERRED over evaluate_logical_consistency for contested corpora. Extracts typed, attributed claims and groups logic only by corpus assertion or named position; graph communities are diagnostic annotations and never logical blocks. Rival positions that cannot be jointly satisfied are reported as positions-incompatible, not as a contradictory corpus. Missing attribution is explicitly inconclusive and creates no automatic finding.",
+            "PREFERRED over evaluate_logical_consistency for contested corpora. First proposes one closed corpus-wide predicate glossary, then extracts typed, attributed claims by forced choice with no new symbols permitted; unmappable claims are reported and make a clean verdict inconclusive. Logic is grouped only by corpus assertion or named position; graph communities are diagnostic annotations and never logical blocks. Rival positions that cannot be jointly satisfied are reported as positions-incompatible, not as a contradictory corpus. Missing attribution is explicitly inconclusive and creates no automatic finding.",
           parameters: {
             type: "object",
             properties: {
@@ -1782,23 +1782,6 @@ ${skillContent}`,
                   id: `${corpusId}-${i}`,
                   text: t,
                 }));
-                const extraction = await extractIntoStore(segs, corpusId, {
-                  signal: requestDeadline.signal,
-                });
-                runLog.event("claim_extraction_telemetry", {
-                  corpusId,
-                  segments: segs.length,
-                  ...extraction.telemetry,
-                });
-
-                const graphCommunities =
-                  agemBridge.getGraphSummary().concept_graph?.communities.map(
-                    (community) => ({
-                      id: community.id,
-                      label: community.label,
-                      members: community.members,
-                    }),
-                  ) ?? [];
                 const rawOntology =
                   args.ontology &&
                   typeof args.ontology === "object" &&
@@ -1812,6 +1795,27 @@ ${skillContent}`,
                       : [],
                   ),
                 );
+                const extraction = await extractIntoStore(segs, corpusId, {
+                  signal: requestDeadline.signal,
+                  ontology,
+                });
+                runLog.event("claim_extraction_telemetry", {
+                  corpusId,
+                  segments: segs.length,
+                  glossarySize: extraction.glossary.length,
+                  glossaryFailure: extraction.glossaryFailure,
+                  unmappableClaims: extraction.unmappableClaims.length,
+                  ...extraction.telemetry,
+                });
+
+                const graphCommunities =
+                  agemBridge.getGraphSummary().concept_graph?.communities.map(
+                    (community) => ({
+                      id: community.id,
+                      label: community.label,
+                      members: community.members,
+                    }),
+                  ) ?? [];
                 const sharedExistencePredicates = Array.isArray(
                   args.sharedExistencePredicates,
                 )
@@ -1826,6 +1830,9 @@ ${skillContent}`,
                   corpusId,
                   communities: graphCommunities,
                   ontology,
+                  closedVocabulary: extraction.glossary.map(
+                    ({ label }) => label,
+                  ),
                   embedder: claimBlockEmbedder,
                   sharedExistencePredicates,
                   signal: requestDeadline.signal,
@@ -1833,6 +1840,8 @@ ${skillContent}`,
                 const distinct = derivation.blocks;
 
                 const extractionComplete =
+                  !extraction.glossaryFailure &&
+                  extraction.unmappableClaims.length === 0 &&
                   extraction.parseFailures.length === 0 &&
                   extraction.claimsRejected === 0 &&
                   derivation.attributionComplete &&
@@ -2068,6 +2077,9 @@ ${skillContent}`,
                         claimsProposed: extraction.claimsProposed,
                         claimsAccepted: extraction.claimsAccepted,
                         claimsRejected: extraction.claimsRejected,
+                        glossary: extraction.glossary,
+                        glossaryFailure: extraction.glossaryFailure,
+                        unmappableClaims: extraction.unmappableClaims,
                         parseFailures: extraction.parseFailures.length,
                         rejections: extraction.outcomes
                           .filter((o) => !o.accepted)

@@ -1,6 +1,9 @@
 import type { ExtractionReport } from "./claim-extractor.js";
 
 export type ExtractionFailureCode =
+  | "glossary-failure"
+  | "unmappable-claims"
+  | "vocabulary-rejections"
   | "schema-rejections"
   | "attribution-guard-rejections"
   | "storage-rejections"
@@ -26,11 +29,14 @@ interface DerivationFailures {
 
 /** Return only the failure channels that actually fired. */
 export function extractionFailureCauses(
-  extraction: Pick<ExtractionReport, "outcomes" | "parseFailures">,
+  extraction: Pick<ExtractionReport, "outcomes" | "parseFailures"> &
+    Partial<Pick<ExtractionReport, "glossaryFailure" | "unmappableClaims">>,
   derivation: DerivationFailures,
 ): ExtractionFailureCause[] {
   const rejected = extraction.outcomes.filter((outcome) => !outcome.accepted);
-  const count = (kind: "schema" | "attribution" | "storage") =>
+  const count = (
+    kind: "schema" | "attribution" | "vocabulary" | "storage",
+  ) =>
     rejected.filter((outcome) => (outcome.rejectionKind ?? "storage") === kind)
       .length;
   const attributionIssueKeys = new Set(
@@ -49,6 +55,21 @@ export function extractionFailureCauses(
   ).length;
 
   return [
+    {
+      code: "glossary-failure" as const,
+      count: extraction.glossaryFailure ? 1 : 0,
+      message: "corpus glossary pass(es) failed, so no closed vocabulary was established",
+    },
+    {
+      code: "unmappable-claims" as const,
+      count: extraction.unmappableClaims?.length ?? 0,
+      message: "explicit claim(s) could not map to the closed corpus vocabulary",
+    },
+    {
+      code: "vocabulary-rejections" as const,
+      count: count("vocabulary"),
+      message: "claim(s) attempted to mint role labels outside the closed corpus vocabulary",
+    },
     {
       code: "schema-rejections" as const,
       count: count("schema"),
@@ -95,7 +116,7 @@ export function inconclusiveExtractionVerdict(
     .join("; ");
   return (
     `INCONCLUSIVE EXTRACTION — ${detail || "the extraction was incomplete"}. ` +
-    "No logical verdict was computed and no finding may be stored."
+    "No whole-corpus logical verdict is established and no finding may be stored."
   );
 }
 
