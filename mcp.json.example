@@ -66,6 +66,15 @@
         "mcp<1.2.0",
         "docker-mcp"
       ]
+    },
+    "eml-mcp": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/astermind-elm-mcp",
+        "run",
+        "eml-mcp"
+      ]
     }
   }
 }
