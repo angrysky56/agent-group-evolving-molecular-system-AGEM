@@ -23,7 +23,7 @@
 orchestrated objective reduction of quantum states in microtubules, that this
 requires sustained quantum coherence in neuronal cytoskeletal structures on
 timescales relevant to neural processing (tens to hundreds of milliseconds), and
-that consciousness is therefore non-computable in the Turing sense.
+that consciousness is therefore **not computable** by a Turing machine.
 
 **The decoherence objection** (Tegmark) holds that decoherence times for
 microtubule-scale superpositions in a warm, wet, ionic brain are on the order of
@@ -99,6 +99,6 @@ the theories-of-mind corpus, holds that a mental kind can be realized in
 physically heterogeneous substrates. The substrate bridge denies this.
 
 **Computability.** The Church–Turing-adequacy position holds that any physically
-realizable process can be simulated to arbitrary accuracy by a Turing machine.
-Orch-OR's non-computability claim denies this for the specific case of objective
-reduction.
+realizable process **is computable** — simulable to arbitrary accuracy by a Turing
+machine. Orch-OR holds that objective reduction **is not computable**, and
+therefore denies Church–Turing adequacy for that process.

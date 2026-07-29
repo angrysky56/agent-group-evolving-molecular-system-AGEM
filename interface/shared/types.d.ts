@@ -118,11 +118,26 @@ export type CohomologySnapshot = (CohomologySnapshotBase & {
     remedy: string;
 }) | (CohomologySnapshotBase & {
     status: "computed";
+    /** Total dimensions of the degree-0 and degree-1 cochain spaces. */
+    c0_dimension: number;
+    c1_dimension: number;
     h0_dimension: number;
-    h1_dimension: number;
-    has_obstruction: boolean;
+    /** Dimension of cycle topology in embedding-derived restriction maps. */
+    cycle_topology_dimension: number;
+    /** Topological cycle signal only; never a content obstruction verdict. */
+    cycle_topology_present: boolean;
     coboundary_rank: number;
     tolerance: number;
+    /** H0 always means dim ker(d0), the global-section-space dimension. */
+    h0_meaning: "dimension-of-global-sections";
+    /** True only for a constant one-dimensional sheaf. */
+    h0_component_count_valid: boolean;
+    /** Model-facing interpretation guard; do not infer semantics from H0 alone. */
+    h0_interpretation: string;
+    /** Fixed semantics for the former H1 label on this embedding-derived sheaf. */
+    cycle_topology_interpretation: string;
+    /** Concrete instruction for reporting the number without narrativizing it. */
+    remedy: string;
 });
 /** SOC metrics snapshot with regime analysis. */
 export interface SOCSnapshot {

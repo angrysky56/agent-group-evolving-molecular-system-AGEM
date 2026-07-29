@@ -193,9 +193,9 @@ cannot.
   (detected via embedding similarity over their roots, or explicit user labels). This edge is
   the auditable equivalent of MEMO's **"converging clues" / "parallel properties"
   cross-document synthesis** — but as an explicit, inspectable morphism, not a hidden weight.
-- `CohomologyAnalyzer` then detects **H¹ obstructions across sub-graphs**, not just within one:
-  i.e. it flags when two memories disagree. That is a capability MEMO's opaque weights
-  _cannot_ provide and is squarely on-brand for AGEM.
+- Registry cohomology then measures **cycle topology across sub-graphs**. Because
+  the restriction maps are embedding-derived, this does not detect when memories
+  disagree; content conflict requires the attributed logical-claim pipeline.
 - All of this wires in `ComposeRootModule` (replacing the placeholder `buildFlatSheaf(2,1)`
   with a sheaf built from the registry), so LCM isolation is preserved.
 
@@ -207,7 +207,8 @@ cannot.
   never creates others (backward compatible).
 
 **Tests:** create 2 sub-graphs with overlapping entity, assert `route()` ranks the right one;
-assert a cross-edge with conflicting facts raises H¹; registry save/load round-trip.
+assert an added cross-edge can close a cycle and raise `cycle_topology_dimension`;
+registry save/load round-trip.
 
 **Effort:** L. **Risk:** med (sheaf wiring is currently a placeholder — see Risks).
 **Payoff:** the actual feature requested — many memories, composed and conflict-checked.

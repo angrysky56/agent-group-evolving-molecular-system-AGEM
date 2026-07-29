@@ -14,6 +14,7 @@ import {
   computeLogicalCohomology,
   configuredCohomologyOptions,
   analyzeFormalization,
+  normalizePropertyPredication,
   type SatOracle,
   type LogicalBlock,
 } from "./logicalCohomology.js";
@@ -115,6 +116,65 @@ describe("regression: the frustration must survive extra consistent blocks", () 
   it("leaves h1Note unset when there is nothing to explain", async () => {
     const r = await computeLogicalCohomology(TRIPLE, sat);
     expect(r.h1Note).toBeUndefined();
+  });
+});
+
+describe("predicate-form conversion and early arity validation", () => {
+  it("deterministically converts property reification to predication", () => {
+    expect(
+      normalizePropertyPredication(
+        "all x (holds(x, dominance) -> -newcomb_adequate(x))",
+      ),
+    ).toBe("all x (dominance(x) -> -newcomb_adequate(x))");
+    expect(normalizePropertyPredication("holds(fdt, lesion_adequate)"))
+      .toBe("lesion_adequate(fdt)");
+  });
+
+  it("applies the convention before the prover and records the repair", async () => {
+    const calls: string[][] = [];
+    const result = await computeLogicalCohomology(
+      [
+        { name: "FDT", propositions: ["holds(fdt, lesion_adequate)"] },
+        { name: "Constraint", propositions: ["-lesion_adequate(fdt)"] },
+      ],
+      async (formulas) => {
+        calls.push(formulas);
+        return {
+          consistent:
+            !formulas.includes("lesion_adequate(fdt)") ||
+            !formulas.includes("-lesion_adequate(fdt)"),
+        };
+      },
+      { abortOnCriticalFormalization: true },
+    );
+
+    expect(calls.flat().some((formula) => formula.includes("holds("))).toBe(false);
+    expect(result.formalizationRepairs).toEqual([
+      expect.stringMatching(/holds\(fdt, lesion_adequate\).*lesion_adequate\(fdt\)/),
+    ]);
+    expect(result.hasContradiction).toBe(true);
+  });
+
+  it("finds arity collisions across blocks, including reified constants", () => {
+    const warnings = analyzeFormalization([
+      { name: "FDT", propositions: ["holds(fdt, lesion_adequate)"] },
+      {
+        name: "Rule",
+        propositions: [
+          "all x (lesion_verdict(x, refrain) -> -lesion_adequate(x))",
+        ],
+      },
+    ]);
+
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        code: "inconsistent_arity",
+        severity: "critical",
+        detail: expect.arrayContaining([
+          expect.stringMatching(/lesion_adequate.*arity 0 and 1.*FDT.*Rule/i),
+        ]),
+      }),
+    );
   });
 });
 
@@ -336,6 +396,40 @@ describe("formalization defects — vacuous consistency", () => {
     );
     expect(r.hasContradiction).toBe(false);
     expect(r.resultIsVacuous).toBe(true);
+  });
+
+  it("aborts critical formalizations before spending a prover call", async () => {
+    let calls = 0;
+    const r = await computeLogicalCohomology(
+      REAL_RUN,
+      async () => {
+        calls++;
+        return { consistent: true };
+      },
+      { abortOnCriticalFormalization: true },
+    );
+
+    expect(calls).toBe(0);
+    expect(r.checksPerformed).toBe(0);
+    expect(r.preflightAborted).toBe(true);
+    expect(r.resultIsVacuous).toBe(true);
+    expect(r.truncationNote).toMatch(/before the first prover call/i);
+  });
+
+  it("allows a clean formalization through the preflight gate", async () => {
+    let calls = 0;
+    const r = await computeLogicalCohomology(
+      TRIPLE,
+      async (formulas) => {
+        calls++;
+        return sat(formulas);
+      },
+      { abortOnCriticalFormalization: true },
+    );
+
+    expect(calls).toBeGreaterThan(0);
+    expect(r.preflightAborted).toBe(false);
+    expect(r.hasContradiction).toBe(true);
   });
 
   it("does not flag a proper encoding", () => {

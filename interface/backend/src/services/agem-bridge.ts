@@ -304,11 +304,6 @@ class AgemBridge {
     }
 
     const cohomology = this.getCohomology();
-    const sheafEnergy =
-      cohomology.status === "computed"
-        ? cohomology.h1_dimension
-        : undefined;
-
     // Community count from last Louvain run
     let communities = 0;
     try {
@@ -320,7 +315,6 @@ class AgemBridge {
 
     return {
       agent_count: 0, // VdW agents are internal; no external pool yet
-      ...(sheafEnergy === undefined ? {} : { sheaf_energy: sheafEnergy }),
       gap_count: gapCount,
       iteration: orch.getIterationCount(),
       communities,
@@ -542,7 +536,7 @@ class AgemBridge {
           `- Graph Edges: ${state.graph_summary?.edge_count ?? 0}`,
           `- Communities: ${state.communities}`,
           state.cohomology?.status === "computed"
-            ? `- Sheaf H¹ (obstruction): ${state.cohomology.h1_dimension}`
+            ? `- Registry cycle-topology dimension: ${state.cohomology.cycle_topology_dimension} (not a content obstruction)`
             : `- Sheaf cohomology: not computed — ${state.cohomology?.notComputed ?? "registry topology unavailable"}`,
           state.cohomology?.status === "not-computed"
             ? `- Remedy: ${state.cohomology.remedy}`

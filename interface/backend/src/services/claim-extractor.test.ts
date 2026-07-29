@@ -4,6 +4,8 @@ import {
   buildClaimExtractionPrompt,
   claimIdentity,
   claimAttributionIssue,
+  claimSchemaIssue,
+  claimToPropositions,
   claimToTypeQL,
   extractIntoStore,
   schemaClaimFact,
@@ -107,6 +109,53 @@ describe("claim identity for finding evidence", () => {
         scope: "corpus",
       }),
     ).toBeNull();
+  });
+
+  it("rejects malformed role cardinality before generating a TypeDB write", () => {
+    const malformed: ExtractedClaim = {
+      kind: "dissociation",
+      roles: { dissociable: "influence-over-termites" },
+      scope: "corpus",
+    };
+
+    expect(claimSchemaIssue(malformed)).toMatch(
+      /dissociation.*dissociable.*at least 2.*found 1/i,
+    );
+    expect(claimToTypeQL(malformed, "segment-7")).toBeNull();
+    expect(schemaClaimFact(malformed)).toBeNull();
+  });
+
+  it("rejects duplicate and unexpected role players before persistence", () => {
+    expect(
+      claimSchemaIssue({
+        kind: "distinction",
+        roles: { distinguished: ["same", "same"] },
+        scope: "corpus",
+      }),
+    ).toMatch(/at least 2 distinct values.*found 1/i);
+    expect(
+      claimSchemaIssue({
+        kind: "entailment",
+        roles: { antecedent: "a", consequent: "b", extra: "c" },
+        scope: "corpus",
+      }),
+    ).toMatch(/unexpected role.*extra/i);
+  });
+
+  it("uses predicate form throughout deterministic claim conversion", () => {
+    const converted = claimToPropositions({
+      kind: "entailment",
+      roles: {
+        antecedent: "dominance",
+        consequent: "newcomb-adequate",
+      },
+      scope: "corpus",
+    });
+
+    expect(converted?.propositions).toContain(
+      "all x (dominance(x) -> newcomb_adequate(x))",
+    );
+    expect(converted?.propositions.join(" ")).not.toContain("holds(");
   });
 
   it("loads the claim schema before the finding schema", () => {

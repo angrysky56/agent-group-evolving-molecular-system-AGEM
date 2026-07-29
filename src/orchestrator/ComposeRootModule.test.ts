@@ -537,7 +537,7 @@ describe("Orchestrator (ComposeRootModule)", () => {
       expect(cohomologyCount).toBe(0);
     });
 
-    it("defers section-level sheaf builds and emits one corpus-level verdict on demand", async () => {
+    it("defers section-level sheaf builds and computes topology without emitting a semantic verdict", async () => {
       const embedder = createMockEmbedder();
       const orchestrator = new Orchestrator(embedder);
       let cohomologyCount = 0;
@@ -560,7 +560,27 @@ describe("Orchestrator (ComposeRootModule)", () => {
       expect(orchestrator.sheafBuiltFromRegistry).toBe(false);
       expect(await orchestrator.rebuildAndAnalyzeRegistrySheaf()).not.toBeNull();
       expect(orchestrator.sheafBuiltFromRegistry).toBe(true);
-      expect(cohomologyCount).toBe(1);
+      expect(cohomologyCount).toBe(0);
+    });
+
+    it("does not turn embedding-derived cycle topology into OBSTRUCTED state", async () => {
+      const embedder = createMockEmbedder();
+      const orchestrator = new Orchestrator(embedder);
+      const { buildFlatSheaf } =
+        await import("../sheaf/helpers/flatSheafFactory.js");
+      let obstructionEvents = 0;
+      orchestrator.eventBus.subscribe("sheaf:h1-obstruction-detected", () => {
+        obstructionEvents++;
+      });
+      (orchestrator as any).sheaf = buildFlatSheaf(3, 3, "triangle");
+      (orchestrator as any).sheafBuiltFromRegistry = true;
+
+      const result = orchestrator.analyzeRegistrySheaf();
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+
+      expect(result?.h1Dimension).toBe(3);
+      expect(orchestrator.getState()).toBe(OrchestratorState.NORMAL);
+      expect(obstructionEvents).toBe(0);
     });
 
     it("marks a failed registry rebuild as unavailable instead of retaining stale status", async () => {

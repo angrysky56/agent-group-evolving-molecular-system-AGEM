@@ -61,6 +61,8 @@ export interface ExtractionOutcome {
   /** Stable structural identity used for exact cross-run overlap. */
   claimKey?: string;
   accepted: boolean;
+  /** Pipeline stage that rejected the claim, for cause-specific reporting. */
+  rejectionKind?: "schema" | "attribution" | "storage";
   /** Constraint violation text when the schema refused the claim. */
   rejection?: string;
 }
@@ -163,6 +165,81 @@ const ROLE_SPEC: Record<ClaimKind, { roles: string[]; extras?: string[]; gloss: 
   },
 };
 
+/**
+ * Validate the exact relation shape before any TypeDB write is attempted.
+ *
+ * TypeDB cardinality errors are useful as a last line of defence, but they are
+ * too late to diagnose an extraction run: concepts and source segments may
+ * already have been written, and the database error does not identify the
+ * model-produced claim cleanly. This mirrors the role cardinalities in
+ * schema/claims.tql and returns a stable, reportable reason.
+ */
+export function claimSchemaIssue(claim: ExtractedClaim): string | null {
+  const spec = ROLE_SPEC[claim?.kind];
+  if (!spec) return `unknown claim kind '${String(claim?.kind)}'`;
+  if (!claim.roles || typeof claim.roles !== "object" || Array.isArray(claim.roles)) {
+    return `claim kind '${claim.kind}' has no role map`;
+  }
+
+  const requiredCounts = new Map<string, number>();
+  for (const role of spec.roles) {
+    requiredCounts.set(role, (requiredCounts.get(role) ?? 0) + 1);
+  }
+  const unexpected = Object.keys(claim.roles).filter(
+    (role) => !requiredCounts.has(role),
+  );
+  if (unexpected.length > 0) {
+    return (
+      `claim kind '${claim.kind}' has unexpected role(s): ` +
+      unexpected.sort().join(", ")
+    );
+  }
+
+  for (const [role, requiredCount] of requiredCounts) {
+    const raw = claim.roles[role];
+    const values = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const distinctCount = new Set(values).size;
+    const cardinalityValid =
+      requiredCount > 1
+        ? distinctCount >= requiredCount
+        : values.length === 1 && distinctCount === 1;
+    if (!cardinalityValid) {
+      return (
+        `schema cardinality: ${claim.kind} role '${role}' requires ` +
+        `${requiredCount > 1 ? `at least ${requiredCount} distinct values` : "exactly 1 value"}; ` +
+        `found ${distinctCount}`
+      );
+    }
+  }
+
+  if (
+    claim.kind === "causal-claim" &&
+    claim.polarity !== "asserts" &&
+    claim.polarity !== "denies"
+  ) {
+    return "schema cardinality: causal-claim requires polarity 'asserts' or 'denies'";
+  }
+  if (
+    claim.modality !== undefined &&
+    !["epistemic", "modal", "functional", "metaphysical"].includes(
+      claim.modality,
+    )
+  ) {
+    return `schema value: unsupported modality '${String(claim.modality)}'`;
+  }
+  if (
+    claim.differenceKind !== undefined &&
+    claim.differenceKind !== "in-kind" &&
+    claim.differenceKind !== "in-degree"
+  ) {
+    return `schema value: unsupported differenceKind '${String(claim.differenceKind)}'`;
+  }
+  return null;
+}
+
 export function buildClaimExtractionPrompt(
   segment: string,
   glossary: readonly string[] = [],
@@ -256,7 +333,7 @@ export function canonicalClaim(claim: ExtractedClaim): string {
  */
 export function schemaClaimFact(claim: ExtractedClaim): string | null {
   const spec = ROLE_SPEC[claim?.kind];
-  if (!spec || !claim.roles || typeof claim.roles !== "object") return null;
+  if (!spec || claimSchemaIssue(claim)) return null;
   if (claim.scope !== "corpus" && claim.scope !== "position") return null;
   const positionId = claim.positionId?.trim();
   if (claim.scope === "position" && !positionId) return null;
@@ -274,7 +351,6 @@ export function schemaClaimFact(claim: ExtractedClaim): string | null {
       .filter((value): value is string => typeof value === "string")
       .map((value) => value.trim())
       .filter(Boolean);
-    if (new Set(values).size < minimumCount) return null;
     const canonicalValues = minimumCount > 1 ? [...values].sort() : values;
     roleParts.push(
       `${role}=${
@@ -284,10 +360,6 @@ export function schemaClaimFact(claim: ExtractedClaim): string | null {
       }`,
     );
   }
-
-  // Polarity is a mandatory part of the causal-claim schema, not an optional
-  // narrative detail. A missing sign changes the proposition being preserved.
-  if (claim.kind === "causal-claim" && !claim.polarity) return null;
 
   const extras = [
     `scope=${JSON.stringify(claim.scope)}`,
@@ -336,7 +408,7 @@ export function claimToTypeQL(
   claimKey: string;
 } | null {
   const spec = ROLE_SPEC[claim.kind];
-  if (!spec) return null;
+  if (!spec || claimSchemaIssue(claim)) return null;
   const positionId = claim.positionId?.trim();
   if (claim.scope !== "corpus" && claim.scope !== "position") return null;
   if (claim.scope === "position" && !positionId) return null;
@@ -599,7 +671,7 @@ export async function extractIntoStore(
         const claims = results[w].get(idx) ?? null;
         proposals.push({ seg, claims });
         for (const claim of claims ?? []) {
-          for (const value of Object.values(claim.roles)) {
+          for (const value of Object.values(claim?.roles ?? {})) {
             for (const label of Array.isArray(value) ? value : [value]) {
               if (String(label).trim()) runningGlossary.add(String(label).trim());
             }
@@ -622,6 +694,19 @@ export async function extractIntoStore(
     }
 
     for (const claim of claims) {
+      const schemaRejection = claimSchemaIssue(claim);
+      if (schemaRejection) {
+        report.claimsProposed++;
+        report.claimsRejected++;
+        report.outcomes.push({
+          segmentId: seg.id,
+          claim,
+          accepted: false,
+          rejectionKind: "schema",
+          rejection: schemaRejection,
+        });
+        continue;
+      }
       const attributionRejection = claimAttributionIssue(claim, seg.text);
       if (attributionRejection) {
         report.claimsProposed++;
@@ -630,6 +715,7 @@ export async function extractIntoStore(
           segmentId: seg.id,
           claim,
           accepted: false,
+          rejectionKind: "attribution",
           rejection: attributionRejection,
         });
         continue;
@@ -642,7 +728,8 @@ export async function extractIntoStore(
           segmentId: seg.id,
           claim,
           accepted: false,
-          rejection: `unknown claim kind '${claim.kind}'`,
+          rejectionKind: "schema",
+          rejection: "claim conversion failed after schema validation",
         });
         continue;
       }
@@ -677,6 +764,7 @@ export async function extractIntoStore(
         claimId: query.claimId,
         claimKey: query.claimKey,
         accepted,
+        rejectionKind: accepted ? undefined : "storage",
         rejection: accepted
           ? undefined
           : !positionAccepted
@@ -716,6 +804,7 @@ export function claimToPropositions(claim: ExtractedClaim): {
   name: string;
   propositions: string[];
 } | null {
+  if (claimSchemaIssue(claim) || claimAttributionIssue(claim)) return null;
   const pred = (label: string) => label.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
   const r = claim.roles as Record<string, string | string[]>;
   const one = (k: string): string | undefined => {

@@ -70,6 +70,35 @@ string still creates one LCM entry and therefore does not cure a rank-1 stalk.
 Authored headings are preserved unless a fragment is genuinely tiny (under the
 32-token guard); per-section SOC remains one iteration per heading.
 
+## Authoring rule: never nominalize a negation
+
+The single most expensive defect found so far. A negation absorbed into a noun
+phrase becomes one opaque positive predicate with no logical relation to the term
+it negates — `analyzeFormalization`'s `pseudo_negation`, and an alias map cannot
+repair it, since a flat `{alias: canonical}` map cannot express "A is the negation
+of B."
+
+| Never write | Write instead |
+|---|---|
+| "dominance entails Newcomb-**inadequacy**" | "a theory holding dominance is **not** Newcomb-adequate" |
+| "**no act** is ratifiable" | "staying is **not** ratifiable and fleeing is **not** ratifiable" |
+| "a case where it gives **none**" | "CDT does **not** recommend any act" |
+| "smoking is causally **inert**" | "smoking does **not** cause cancer" |
+| "consciousness is **non-computable**" | "consciousness is **not computable**" |
+| "EDT's verdict is **unstable**" | "EDT's verdict is **not** ratifiable" |
+| "**no theory** satisfies all four" | "every theory **fails at least one** of the four" |
+
+Rule of thumb: the negated term must appear elsewhere in the corpus as a
+*positive* predicate in its own right, and the negation must attach to it with an
+explicit "not". If a property only ever appears negated, the prover has nothing
+to contradict.
+
+Audit before every run:
+
+```
+grep -n -iE '\bno [a-z]+ (is|are|can|has)|\bnone\b|\bnon-|\binert\b|\bun[a-z]+able\b' corpus.md
+```
+
 ## Cross-corpus ambition
 
 Once two or more are mapped, the question no literature review can ask: **do the

@@ -17,7 +17,7 @@ describe("registryCohomologySnapshot", () => {
       notComputed: expect.stringMatching(/not built/i),
     });
     expect("h0_dimension" in result).toBe(false);
-    expect("h1_dimension" in result).toBe(false);
+    expect("cycle_topology_dimension" in result).toBe(false);
   });
 
   it("reports a failed registry build instead of exposing stale sheaf numbers", () => {
@@ -70,7 +70,7 @@ describe("registryCohomologySnapshot", () => {
       sheaf_edges: 0,
       notComputed: expect.stringMatching(/no edges/i),
     });
-    expect("h1_dimension" in result).toBe(false);
+    expect("cycle_topology_dimension" in result).toBe(false);
   });
 
   it("emits numeric invariants only for a non-degenerate sheaf", () => {
@@ -83,7 +83,58 @@ describe("registryCohomologySnapshot", () => {
     expect(result.status).toBe("computed");
     if (result.status !== "computed") throw new Error("expected computed result");
     expect(result.h0_dimension).toBeTypeOf("number");
-    expect(result.h1_dimension).toBeTypeOf("number");
+    expect(result.cycle_topology_dimension).toBeTypeOf("number");
+    expect("h1_dimension" in result).toBe(false);
+    expect("has_obstruction" in result).toBe(false);
+    expect(result.h0_meaning).toBe("dimension-of-global-sections");
+    expect(result.h0_component_count_valid).toBe(true);
+  });
+
+  it("blocks component-count stories for a multi-dimensional stalk sheaf", () => {
+    const result = registryCohomologySnapshot(
+      buildFlatSheaf(2, 3, "path"),
+      true,
+      true,
+    );
+
+    expect(result.status).toBe("computed");
+    if (result.status !== "computed") throw new Error("expected computed result");
+    expect(result).toMatchObject({
+      c0_dimension: 6,
+      c1_dimension: 3,
+      coboundary_rank: 3,
+      h0_dimension: 3,
+      h0_component_count_valid: false,
+      h0_interpretation: expect.stringMatching(
+        /not a count of theories.*semantic clusters.*graph components/i,
+      ),
+      remedy: expect.stringMatching(
+        /c0_dimension - coboundary_rank = h0_dimension.*do not assign a semantic story/i,
+      ),
+    });
+  });
+
+  it("labels registry H1 as cycle topology rather than obstruction", () => {
+    const result = registryCohomologySnapshot(
+      buildFlatSheaf(3, 3, "triangle"),
+      true,
+      true,
+    );
+
+    expect(result.status).toBe("computed");
+    if (result.status !== "computed") throw new Error("expected computed result");
+    expect(result).toMatchObject({
+      c0_dimension: 9,
+      c1_dimension: 9,
+      coboundary_rank: 6,
+      cycle_topology_dimension: 3,
+      cycle_topology_present: true,
+      cycle_topology_interpretation: expect.stringMatching(
+        /additional similarity-threshold edge.*full agreement.*does not track.*logical obstruction/i,
+      ),
+    });
+    expect("has_obstruction" in result).toBe(false);
+    expect("h1_dimension" in result).toBe(false);
   });
 
   it("omits numeric invariants while a sectioned run defers corpus analysis", () => {

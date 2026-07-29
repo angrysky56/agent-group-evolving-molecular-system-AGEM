@@ -40,7 +40,7 @@ const ACTIONS = [
   {
     icon: GitBranch,
     label: "Cohomology",
-    desc: "Analyze the named-subgraph registry sheaf. H⁰/H¹ are computed only when at least two subgraphs share an edge; they describe restriction-map topology, not logical consistency or theory disagreement.",
+    desc: "Analyze the named-subgraph registry sheaf. H⁰ and embedding-derived cycle topology are computed only when at least two subgraphs share an edge. Registry cycles are not logical obstructions or theory disagreement.",
     prompt: "Use the get_cohomology tool to analyze the current sheaf cohomology state.",
     color: "var(--accent-secondary)",
   },

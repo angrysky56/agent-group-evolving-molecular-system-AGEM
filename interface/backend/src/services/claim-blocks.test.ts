@@ -185,6 +185,108 @@ describe("deriveClaimBlocks", () => {
     });
   });
 
+  it("auto-applies inflectional aliases before semantic suggestion", async () => {
+    class SameVectorEmbedder implements IEmbedder {
+      async embed(): Promise<Float64Array> {
+        return new Float64Array([1, 0]);
+      }
+      async embedBatch(texts: string[]): Promise<Float64Array[]> {
+        return Promise.all(texts.map(() => this.embed()));
+      }
+    }
+
+    const result = await deriveClaimBlocks(
+      [
+        accepted("s1", "claim:lesion-adjective", {
+          kind: "exclusion",
+          roles: { excluder: "lesion-adequate", excluded: "cdt" },
+        }),
+        accepted("s2", "claim:lesion-noun", {
+          kind: "exclusion",
+          roles: { excluder: "lesion-adequacy", excluded: "edt" },
+        }),
+        accepted("s3", "claim:newcomb-adjective", {
+          kind: "exclusion",
+          roles: { excluder: "newcomb-adequate", excluded: "cdt" },
+        }),
+        accepted("s4", "claim:newcomb-noun", {
+          kind: "exclusion",
+          roles: { excluder: "newcomb-adequacy", excluded: "edt" },
+        }),
+        accepted("s5", "claim:recommend-present", {
+          kind: "exclusion",
+          roles: { excluder: "recommends-refraining", excluded: "smoking" },
+        }),
+        accepted("s6", "claim:recommend-gerund", {
+          kind: "exclusion",
+          roles: { excluder: "recommending-refraining", excluded: "smoking" },
+        }),
+        accepted("s7", "claim:semantic-left", {
+          kind: "exclusion",
+          roles: { excluder: "mental", excluded: "physical" },
+        }),
+        accepted("s8", "claim:semantic-right", {
+          kind: "exclusion",
+          roles: { excluder: "mental-states", excluded: "physical" },
+        }),
+      ],
+      {
+        ontology: {
+          does_well_in_newcomb: "newcomb_adequacy",
+          smokes_in_lesion: "lesion_adequacy",
+        },
+        embedder: new SameVectorEmbedder(),
+        similarityThreshold: 0.9,
+      },
+    );
+
+    const mapping = Object.fromEntries(
+      result.predicateMapping.map(({ source, canonical, method }) => [
+        source,
+        { canonical, method },
+      ]),
+    );
+    expect(mapping["lesion-adequate"]).toEqual({
+      canonical: "lesion_adequacy",
+      method: "morphology",
+    });
+    expect(mapping["lesion-adequacy"].canonical).toBe("lesion_adequacy");
+    expect(mapping["newcomb-adequate"]).toEqual({
+      canonical: "newcomb_adequacy",
+      method: "morphology",
+    });
+    expect(mapping["newcomb-adequacy"].canonical).toBe("newcomb_adequacy");
+    expect(mapping["recommending-refraining"]).toEqual({
+      canonical: "recommends_refraining",
+      method: "morphology",
+    });
+
+    // Different token structure is semantic, not inflectional: report it for
+    // audit even when embeddings are identical, and never silently merge it.
+    expect(mapping.mental.canonical).toBe("mental");
+    expect(mapping["mental-states"].canonical).toBe("mental_states");
+    expect(result.predicateAliasSuggestions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "mental-states",
+          target: "mental",
+        }),
+      ]),
+    );
+    const inflectionalPairs = new Set([
+      ["lesion-adequate", "lesion-adequacy"].sort().join("|"),
+      ["newcomb-adequate", "newcomb-adequacy"].sort().join("|"),
+      ["recommends-refraining", "recommending-refraining"]
+        .sort()
+        .join("|"),
+    ]);
+    expect(
+      result.predicateAliasSuggestions.some(({ source, target }) =>
+        inflectionalPairs.has([source, target].sort().join("|")),
+      ),
+    ).toBe(false);
+  });
+
   it("rejects pronoun subjects and repairs clause-shaped predicate labels", async () => {
     const result = await deriveClaimBlocks([
       accepted("s1", "claim:pronoun", {

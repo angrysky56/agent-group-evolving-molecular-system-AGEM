@@ -29,6 +29,7 @@ import { Matrix as MlMatrix, SingularValueDecomposition } from "ml-matrix";
 import {
   CellularSheaf,
   CohomologyAnalyzer,
+  computeCohomology,
   buildFlatSheaf,
 } from "../sheaf/index.js";
 
@@ -855,8 +856,9 @@ export class Orchestrator {
             `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis: ` +
               `h0=${cohomologyResult.h0Dimension}, h1=${cohomologyResult.h1Dimension}`,
           );
-          // Events 'sheaf:consensus-reached' or 'sheaf:h1-obstruction-detected' fire here
-          // (and are forwarded to eventBus via #wireEventBus handlers above)
+          // Registry topology is reported numerically only. It deliberately
+          // emits no consensus/obstruction event because its maps are derived
+          // from embedding similarity rather than content agreement.
         } else {
           console.log(
             `[ORCH] Iteration ${this.#iterationCounter}: Sheaf analysis not computed ` +
@@ -1195,10 +1197,13 @@ export class Orchestrator {
     ) {
       return null;
     }
-    const result = this.cohomologyAnalyzer.analyze(
-      this.sheaf,
-      this.#iterationCounter,
-    );
+    /*
+     * Registry restriction maps are derived from embedding similarity. Their
+     * H1 is cycle topology, not a content obstruction, so do not route it
+     * through CohomologyAnalyzer's obstruction/consensus event semantics or
+     * the operational-state/spawner machinery wired to those events.
+     */
+    const result = computeCohomology(this.sheaf);
     (this as any).sheafAnalyzedFromRegistry = true;
     return result;
   }

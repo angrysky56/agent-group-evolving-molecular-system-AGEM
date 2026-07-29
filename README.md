@@ -69,7 +69,7 @@ AGEM exposes its own capabilities as tools any connected LLM agent calls directl
 
 - **`run_agem_cycle`** — ingest text into the accumulating concept graph and run a full analysis pass. A cycle only advances the graph if fed _new, substantive_ content.
 - **`get_graph_topology`** — concept communities and inter-community bridges (the primary inspection tool).
-- **`get_cohomology`** — geometric sheaf H⁰/H¹ (connectivity; see the honesty note above).
+- **`get_cohomology`** — embedding-derived registry topology: H⁰ global-section dimension plus `cycle_topology_dimension`; registry cycles are not content obstructions or disagreement.
 - **`evaluate_logical_consistency`** — **logic-based H⁰/H¹** contradiction detection (the distinctive capability).
 - **`extract_and_verify_claims`** — typed claim extraction plus deterministic formalization and verification.
 - **`list_finding_conflicts` / `resolve_finding_conflict`** — inspect and explicitly resolve structural supersedes candidates.

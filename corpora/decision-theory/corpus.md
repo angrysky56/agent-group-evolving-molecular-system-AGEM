@@ -25,9 +25,9 @@ causes it.
 **Functional Decision Theory (FDT)** evaluates not the act but the *decision
 procedure*. It asks which output of your algorithm produces the best outcome,
 given that every instance of that algorithm — including any accurate model of you
-inside a predictor — produces the same output. FDT denies that acts are the
-objects of evaluation, and therefore denies dominance-over-acts while asserting
-an analogue over policies.
+inside a predictor — produces the same output. FDT does not treat acts as the
+objects of evaluation, and therefore does not hold dominance, while asserting an
+analogue of it over policies.
 
 ## Section 2 — Newcomb's problem, and what dominance entails there
 
@@ -57,11 +57,12 @@ Newcomb-adequate.
 
 ## Section 3 — The smoking lesion, and what evidential responsiveness entails there
 
-A genetic lesion causes both a desire to smoke and cancer. Smoking itself is
-causally inert with respect to cancer.
+A genetic lesion causes both a desire to smoke and cancer. Smoking itself does
+not cause cancer.
 
 **The correlation structure is confounded, not causal.** Smoking is evidence of
-the lesion, and the lesion is evidence of cancer, but smoking causes no cancer.
+the lesion, and the lesion is evidence of cancer, but smoking does not cause
+cancer.
 
 Therefore **any theory holding evidential responsiveness recommends refraining**,
 because refraining is evidence against the lesion. EDT holds evidential
@@ -95,10 +96,12 @@ Newcomb-adequacy are incompatible.**
 From Section 3: any theory holding evidential responsiveness is not lesion-adequate, so
 **evidential responsiveness and lesion-adequacy are incompatible.**
 
-Therefore **no theory satisfies all four.** This is not merely a fact about the
-three named theories; it follows from the payoff structure of the two problems
-together with the definitions of the four properties. Any three of the four are
-jointly satisfiable:
+Therefore **every theory fails at least one of the four properties**: a theory
+that holds dominance is not Newcomb-adequate, and a theory that holds evidential
+responsiveness is not lesion-adequate. This is not merely a fact about the three
+named theories; it follows from the payoff structure of the two problems together
+with the definitions of the four properties. Any three of the four are jointly
+satisfiable:
 
 - dominance + lesion-adequacy, dropping evidential responsiveness, gives CDT.
 - evidential responsiveness + Newcomb-adequacy, dropping dominance, gives EDT.
@@ -115,22 +118,23 @@ or flee to Aleppo. Whichever you choose, on learning your own choice you wish yo
 had chosen otherwise.
 
 An act is **ratifiable** if, conditional on having decided to perform it, it
-remains the recommended act. In Death in Damascus **no act is ratifiable**: each
-option is one the theory itself, once settled upon, disprefers. CDT yields no
-ratifiable act here. This is not a case where CDT gives the wrong answer; it is a
-case where it gives none.
+remains the recommended act. In Death in Damascus **staying is not ratifiable and
+fleeing is not ratifiable**: each option is one the theory itself, once settled
+upon, disprefers. Staying and fleeing are the only available acts. So in Death in
+Damascus **CDT does not recommend any act.** CDT is not incorrect here; CDT is
+not total here — it returns no recommendation at all.
 
-Death in Damascus is a well-posed decision problem. Therefore **there exists a
-well-posed problem with no ratifiable act**, and therefore **a theory that
-requires ratifiability of every recommendation is not total over well-posed
-problems.** Ratifiability cannot be required in general.
+Death in Damascus is a well-posed decision problem in which **no available act is
+ratifiable**. Therefore **a theory that requires every recommendation to be
+ratifiable is not total over well-posed problems.** So a theory cannot both
+require ratifiability and be total over well-posed problems.
 
 ## Section 6 — Transparent Newcomb and Parfit's hitchhiker
 
 **Transparent Newcomb.** As Newcomb, but box B is transparent and you see it full.
-CDT two-boxes. EDT's verdict is unstable, because the observation screens off the
-evidential link that drove its Newcomb answer. FDT one-boxes: seeing B full is
-already conditional on being the kind of agent who one-boxes.
+CDT two-boxes. EDT's verdict here is not ratifiable, because the observation
+screens off the evidential link that drove its Newcomb answer. FDT one-boxes:
+seeing B full is already conditional on being the kind of agent who one-boxes.
 
 **Parfit's hitchhiker.** A driver rescues you from the desert only if he predicts
 you will pay $100 once safely in town. Once in town, payment causes nothing
@@ -148,13 +152,13 @@ termites) or (you will pay me) is true."
 
 Paying is evidence against termites. **Evidential responsiveness therefore
 recommends paying**, and EDT pays. This is widely held to be wrong: the letter
-gives you no power over the termites.
+does not give you any influence over the termites.
 
-Refusing requires abandoning act-conditional evaluation — evaluating the act by
-what it is evidence for. So **refusing XOR blackmail is incompatible with holding
-both evidential responsiveness and act-conditional evaluation.** CDT refuses,
-holding neither. FDT refuses, holding evidential responsiveness in a form
-restricted to logically-dependent outcomes.
+Refusing requires not holding act-conditional evaluation — evaluating the act by
+what it is evidence for. So **a theory that refuses XOR blackmail does not hold
+both evidential responsiveness and act-conditional evaluation.** CDT refuses and
+holds neither of the two. FDT refuses and holds evidential responsiveness in a
+form restricted to logically-dependent outcomes.
 
 ## Section 8 — Twin prisoner's dilemma and counterfactual mugging
 

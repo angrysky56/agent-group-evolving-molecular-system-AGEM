@@ -1,4 +1,5 @@
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
+import natural from "natural";
 import {
   claimToPropositions,
   type ExtractedClaim,
@@ -16,7 +17,7 @@ export interface ClaimCommunity {
 export interface PredicateMapping {
   source: string;
   canonical: string;
-  method: "ontology" | "repair" | "unchanged";
+  method: "ontology" | "morphology" | "repair" | "unchanged";
 }
 
 export interface DerivedClaimBlock {
@@ -94,6 +95,30 @@ function labelKey(value: string): string {
 
 function labelTokens(value: string): Set<string> {
   return new Set(symbol(value).split("_").filter(Boolean));
+}
+
+/**
+ * Deterministic morphology key for predicate identity.
+ *
+ * Porter handles ordinary inflection (recommend/recommends/recommending,
+ * theory/theories). It deliberately does not collapse the regular adjective /
+ * abstract-noun alternation in adequate/adequacy, accurate/accuracy, etc., so
+ * normalize that surface alternation before stemming. Tokens are never added,
+ * removed, or compared semantically: `mental` and `mental_states` therefore
+ * remain distinct and can only be suggested by the audited semantic path.
+ */
+function morphologyKey(value: string): string {
+  return symbol(value)
+    .split("_")
+    .filter(Boolean)
+    .map((token) => {
+      const normalized =
+        token.endsWith("acy") && token.length > 4
+          ? `${token.slice(0, -2)}te`
+          : token;
+      return natural.PorterStemmer.stem(normalized);
+    })
+    .join("_");
 }
 
 function roleLabels(claim: ExtractedClaim): string[] {
@@ -191,6 +216,13 @@ async function resolvePredicates(
       symbol(canonical),
     ]),
   );
+  const ontologyCanonicalsByMorphology = new Map<string, Set<string>>();
+  for (const canonical of ontology.values()) {
+    const key = morphologyKey(canonical);
+    const values = ontologyCanonicalsByMorphology.get(key) ?? new Set<string>();
+    values.add(canonical);
+    ontologyCanonicalsByMorphology.set(key, values);
+  }
   const unique = [...new Set(labels)].sort((a, b) => a.localeCompare(b));
   const canonicalByLabel = new Map<string, string>();
   const mappings = new Map<string, PredicateMapping>();
@@ -218,13 +250,51 @@ async function resolvePredicates(
 
   for (const label of unique) {
     if (canonicalByLabel.has(label)) continue;
-    const canonical = symbol(label);
-    canonicalByLabel.set(label, canonical);
-    mappings.set(label, {
-      source: label,
-      canonical,
-      method: "unchanged",
-    });
+    const canonicalCandidates = ontologyCanonicalsByMorphology.get(
+      morphologyKey(label),
+    );
+    if (canonicalCandidates?.size === 1) {
+      const canonical = [...canonicalCandidates][0]!;
+      canonicalByLabel.set(label, canonical);
+      mappings.set(label, {
+        source: label,
+        canonical,
+        method: canonical === symbol(label) ? "unchanged" : "morphology",
+      });
+    }
+  }
+
+  /*
+   * Collapse remaining surface forms only when their token-by-token Porter
+   * keys match. The representative is deterministic (shortest normalized
+   * symbol, then lexical order); ontology canonical values above take
+   * precedence when available.
+   */
+  const unresolvedByMorphology = new Map<string, string[]>();
+  for (const label of unique) {
+    if (canonicalByLabel.has(label)) continue;
+    const key = morphologyKey(label);
+    const group = unresolvedByMorphology.get(key) ?? [];
+    group.push(label);
+    unresolvedByMorphology.set(key, group);
+  }
+  for (const group of unresolvedByMorphology.values()) {
+    const representative = [...group].sort(
+      (a, b) => symbol(a).length - symbol(b).length || a.localeCompare(b),
+    )[0]!;
+    const canonical = symbol(representative);
+    const collapsesForms = group.some((label) => symbol(label) !== canonical);
+    for (const label of group) {
+      canonicalByLabel.set(label, canonical);
+      mappings.set(label, {
+        source: label,
+        canonical,
+        method:
+          collapsesForms && symbol(label) !== canonical
+            ? "morphology"
+            : "unchanged",
+      });
+    }
   }
 
   if (!options.embedder || unique.length < 2) {

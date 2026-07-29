@@ -5,12 +5,9 @@
  *
  * The Coevolution block in run 2026-07-27T20-52-14 used
  * `biosynthetic_precursor` with one argument and with two. Prover9 rejects the
- * block outright, so it never entered the search — but mcp-logic's
- * check_well_formed returned valid:true for BOTH formulas (verified against the
- * live server), because it validates each formula in isolation. The engine's
- * only feedback was "Syntax error or invalid input", naming nothing, so the
- * model asked the validator, was told the logic was fine, and retried the
- * identical block three times.
+ * block outright, so it never entered the search. The engine now performs its
+ * own local and cross-block set validation before calling mcp-logic, naming the
+ * exact symbol and assertion contexts without spending prover budget.
  */
 
 import { describe, it, expect } from "vitest";
@@ -33,7 +30,7 @@ const arityWarnings = (blocks: LogicalBlock[]) =>
   analyzeFormalization(blocks).filter((w) => w.code === "inconsistent_arity");
 
 describe("analyzeFormalization — inconsistent arity", () => {
-  it("catches the symbol check_well_formed passed", () => {
+  it("catches the symbol during local conversion preflight", () => {
     const [warning] = arityWarnings([coevolution]);
     expect(warning).toBeDefined();
     expect(warning.severity).toBe("critical");
@@ -46,11 +43,9 @@ describe("analyzeFormalization — inconsistent arity", () => {
     expect(warning.message).toContain("Coevolution with Biosynthesis core");
   });
 
-  it("says explicitly that check_well_formed will not catch it", () => {
-    // Without this the model re-validates, gets a green light, and retries the
-    // same block — which is exactly what happened.
+  it("says explicitly that no prover budget was spent", () => {
     const [warning] = arityWarnings([coevolution]);
-    expect(warning.message).toContain("check_well_formed");
+    expect(warning.message).toMatch(/preflight.*before any prover budget/i);
   });
 
   it("stays silent when every symbol has a fixed arity", () => {
@@ -95,5 +90,18 @@ describe("analyzeFormalization — inconsistent arity", () => {
     expect(warnings.map((w) => w.message).join(" ")).toContain(
       "Second bad block",
     );
+  });
+
+  it("also catches a collision that exists only across blocks", () => {
+    const warnings = arityWarnings([
+      { name: "Attribution", propositions: ["holds(fdt, lesion_adequate)"] },
+      { name: "Rule", propositions: ["-lesion_adequate(fdt)"] },
+    ]);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toMatch(/across assertion blocks/i);
+    expect(warnings[0].detail).toEqual([
+      expect.stringMatching(/lesion_adequate.*arity 0 and 1.*Attribution.*Rule/i),
+    ]);
   });
 });

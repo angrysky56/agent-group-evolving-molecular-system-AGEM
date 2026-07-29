@@ -11,7 +11,7 @@ import {
   Zap,
   Shield,
   TrendingUp,
-  AlertTriangle,
+  GitBranch,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -42,8 +42,8 @@ export function SystemVitals() {
   const cdp = socHistory.length > 0
     ? socHistory[socHistory.length - 1]!.cdp
     : null;
-  const h1 = state?.cohomology?.status === "computed"
-    ? state.cohomology.h1_dimension
+  const cycleTopology = state?.cohomology?.status === "computed"
+    ? state.cohomology.cycle_topology_dimension
     : 0;
 
   return (
@@ -93,11 +93,11 @@ export function SystemVitals() {
         </div>
       )}
 
-      {h1 > 0 && (
-        <div className="vitals__item vitals__item--alert" title={`Sheaf Cohomology Obstruction (H¹): Dimension ${h1}. A non-zero value indicates structural conflict or disagreement between agent views.`}>
-          <AlertTriangle size={12} color="var(--warning)" />
-          <span className="vitals__label">H¹ Conflict</span>
-          <span className="vitals__value" style={{ color: "var(--warning)" }}>{h1}</span>
+      {cycleTopology > 0 && (
+        <div className="vitals__item" title={`Embedding-derived registry cycle-topology dimension: ${cycleTopology}. This can increase when a similarity-threshold edge closes a cycle; it is not a content conflict or disagreement signal.`}>
+          <GitBranch size={12} color="var(--info)" />
+          <span className="vitals__label">Registry cycles</span>
+          <span className="vitals__value" style={{ color: "var(--info)" }}>{cycleTopology}</span>
         </div>
       )}
 

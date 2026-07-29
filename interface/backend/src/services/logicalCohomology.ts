@@ -87,12 +87,16 @@ export interface LogicalCohomologyResult {
    * the claims — see `resultIsVacuous`.
    */
   formalizationWarnings: FormalizationWarning[];
+  /** Deterministic syntax-only rewrites applied before validation/proving. */
+  formalizationRepairs?: string[];
   /**
    * True when a critical formalization defect invalidates the overall verdict.
    * A found MUS remains evidence, but alias/arity defects can hide additional
    * MUSes; without a MUS, do not report a clean bill of health.
    */
   resultIsVacuous: boolean;
+  /** True when static defects stopped the run before the first prover call. */
+  preflightAborted: boolean;
 
   h0: number;
   /**
@@ -292,6 +296,42 @@ function hasNegation(formula: string): boolean {
 }
 
 /**
+ * Canonicalise attributed property assertions as predicates.
+ *
+ * `holds(fdt, lesion_adequate)` reifies `lesion_adequate` as a constant (arity
+ * zero), which collides with `lesion_adequate(x)` in Prover9's shared symbol
+ * namespace. Assertion context already lives in the containing claim block, so
+ * the wrapper is redundant. This rewrite is purely syntactic and never merges
+ * meanings: `holds(entity, property)` becomes `property(entity)`.
+ */
+export function normalizePropertyPredication(formula: string): string {
+  return formula.replace(
+    /\bholds\(\s*([a-z_][A-Za-z0-9_]*)\s*,\s*([a-z_][A-Za-z0-9_]*)\s*\)/g,
+    (_match, entity: string, property: string) => `${property}(${entity})`,
+  );
+}
+
+function normalizePropertyPredicationBlocks(blocks: LogicalBlock[]): {
+  blocks: LogicalBlock[];
+  repairs: string[];
+} {
+  const repairs: string[] = [];
+  return {
+    blocks: blocks.map((block) => ({
+      ...block,
+      propositions: block.propositions.map((formula) => {
+        const normalized = normalizePropertyPredication(formula);
+        if (normalized !== formula) {
+          repairs.push(`${block.name}: ${formula} => ${normalized}`);
+        }
+        return normalized;
+      }),
+    })),
+    repairs,
+  };
+}
+
+/**
  * analyzeFormalization — catch encodings that cannot express a contradiction.
  *
  * Motivated by a real run: every block was submitted with negation expressed as
@@ -313,52 +353,100 @@ export function analyzeFormalization(
   if (allFormulas.length === 0) return warnings;
 
   /*
-   * A symbol used with two different argument counts is not valid first-order
-   * logic, and Prover9 rejects the whole block.
+   * A symbol used with two different argument counts anywhere in the submitted
+   * set is not valid first-order logic, and Prover9 rejects the whole set.
    *
-   * This is checked here because nothing else catches it. mcp-logic's
-   * check_well_formed validates each formula IN ISOLATION, so it returns
-   * valid:true for both `exists x (biosynthetic_precursor(x))` and
-   * `exists x (biosynthetic_precursor(glutamate, glutamine))` — verified
-   * against the live server. The pair is still rejected together, and the only
-   * feedback was the note "Syntax error or invalid input", naming nothing.
-   *
-   * Observed consequence: a run wrote that exact pair, asked check_well_formed,
-   * was told the formulas were fine, and retried the identical block three
-   * times before giving up with the block dropped from the search. Naming the
-   * symbol and its conflicting arities turns that dead end into a one-line fix.
-   */
-  for (const block of blocks) {
-    const arities = new Map<string, Set<number>>();
-    for (const formula of block.propositions) {
-      for (const [, symbol, args] of formula.matchAll(
-        /\b([a-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g,
-      )) {
-        if (QUANTIFIER_WORDS.has(symbol)) continue;
-        const arity = args.trim() === "" ? 0 : args.split(",").length;
-        if (!arities.has(symbol)) arities.set(symbol, new Set());
-        arities.get(symbol)!.add(arity);
+   * This local set-level check runs before the remote validator or prover. It
+   * includes constants used as arguments (arity zero), which is what exposes a
+   * property reified inside `holds(x, property)` and predicated elsewhere.
+  */
+  {
+    const collectArities = (block: LogicalBlock) => {
+      const arities = new Map<string, Set<number>>();
+      for (const formula of block.propositions) {
+        const boundVariables = new Set(
+          [...formula.matchAll(/\b(?:all|exists)\s+([a-zA-Z_][\w]*)/g)].map(
+            (match) => match[1],
+          ),
+        );
+        for (const [, symbol, args] of formula.matchAll(
+          /\b([a-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g,
+        )) {
+          if (QUANTIFIER_WORDS.has(symbol)) continue;
+          const arity = args.trim() === "" ? 0 : args.split(",").length;
+          if (!arities.has(symbol)) arities.set(symbol, new Set());
+          arities.get(symbol)!.add(arity);
+          for (const argument of args.split(",").map((value) => value.trim())) {
+            if (
+              /^[a-z_][A-Za-z0-9_]*$/.test(argument) &&
+              !boundVariables.has(argument)
+            ) {
+              if (!arities.has(argument)) arities.set(argument, new Set());
+              arities.get(argument)!.add(0);
+            }
+          }
+        }
+      }
+      return arities;
+    };
+    const usages = blocks.map((block) => ({
+      block,
+      arities: collectArities(block),
+    }));
+    const locallyClashing = new Set<string>();
+    for (const { block, arities } of usages) {
+      const clashes = [...arities.entries()].filter(([, set]) => set.size > 1);
+      if (clashes.length === 0) continue;
+      for (const [symbol] of clashes) locallyClashing.add(symbol);
+      warnings.push({
+        code: "inconsistent_arity",
+        severity: "critical",
+        message:
+          `Block "${block.name}" uses ${clashes.length} symbol(s) with more than ` +
+          "one argument count. That is not well-formed first-order logic and the " +
+          "prover rejects the submitted set. The conversion preflight stopped this " +
+          "before any prover budget was spent. Give each " +
+          "symbol a single fixed arity — if you need both a type and a relation, " +
+          "name them differently (e.g. 'amino_acid(x)' and " +
+          "'precursor_of(glutamate, glutamine)').",
+        detail: clashes.map(
+          ([symbol, set]) =>
+            `${symbol} used with arity ${[...set].sort().join(" and ")} in ${block.name}`,
+        ),
+      });
+    }
+
+    const setArities = new Map<string, Set<number>>();
+    const locations = new Map<string, Set<string>>();
+    for (const { block, arities } of usages) {
+      for (const [symbol, counts] of arities) {
+        const combined = setArities.get(symbol) ?? new Set<number>();
+        for (const count of counts) combined.add(count);
+        setArities.set(symbol, combined);
+        const blocksForSymbol = locations.get(symbol) ?? new Set<string>();
+        blocksForSymbol.add(block.name);
+        locations.set(symbol, blocksForSymbol);
       }
     }
-    const clashes = [...arities.entries()].filter(([, set]) => set.size > 1);
-    if (clashes.length === 0) continue;
-    warnings.push({
-      code: "inconsistent_arity",
-      severity: "critical",
-      message:
-        `Block "${block.name}" uses ${clashes.length} symbol(s) with more than ` +
-        "one argument count. That is not well-formed first-order logic and the " +
-        "prover rejects the entire block, so it contributes nothing to the " +
-        "search. Note that check_well_formed will NOT catch this: it validates " +
-        "each formula separately, and each one is individually fine. Give each " +
-        "symbol a single fixed arity — if you need both a type and a relation, " +
-        "name them differently (e.g. 'amino_acid(x)' and " +
-        "'precursor_of(glutamate, glutamine)').",
-      detail: clashes.map(
-        ([symbol, set]) =>
-          `${symbol} used with arity ${[...set].sort().join(" and ")}`,
-      ),
-    });
+    const crossBlockClashes = [...setArities.entries()].filter(
+      ([symbol, counts]) => counts.size > 1 && !locallyClashing.has(symbol),
+    );
+    if (crossBlockClashes.length > 0) {
+      warnings.push({
+        code: "inconsistent_arity",
+        severity: "critical",
+        message:
+          `Across assertion blocks, ${crossBlockClashes.length} symbol(s) use more than ` +
+          "one argument count. Each block may be valid alone, but Prover9 uses one " +
+          "global symbol namespace and rejects their union. The conversion preflight " +
+          "stopped this before any prover budget was spent.",
+        detail: crossBlockClashes.map(
+          ([symbol, counts]) =>
+            `${symbol} used with arity ${[...counts].sort().join(" and ")} in ` +
+            `${[...(locations.get(symbol) ?? [])].sort().join(", ")}`,
+        ),
+      });
+    }
   }
 
   /*
@@ -612,6 +700,44 @@ export function analyzeFormalization(
   return warnings;
 }
 
+function formalizationWarningsWithSuggestions(
+  blocks: LogicalBlock[],
+  suggestions: readonly PredicateAliasSuggestion[],
+): FormalizationWarning[] {
+  const warnings = analyzeFormalization(blocks);
+  if (suggestions.length === 0) return warnings;
+
+  const details = suggestions.map(
+    (suggestion) =>
+      `${suggestion.source} -> ${suggestion.target} ` +
+      `(cosine ${suggestion.similarity.toFixed(3)}; proposed canonical ` +
+      `${suggestion.proposedCanonical})`,
+  );
+  const severity = suggestions.some(
+    (suggestion) => suggestion.severity === "critical",
+  )
+    ? "critical"
+    : "warning";
+  const existing = warnings.find(
+    (warning) => warning.code === "predicate_aliasing_suspected",
+  );
+  if (existing) {
+    if (severity === "critical") existing.severity = "critical";
+    existing.detail = [...new Set([...(existing.detail ?? []), ...details])];
+  } else {
+    warnings.push({
+      code: "predicate_aliasing_suspected",
+      severity,
+      message:
+        "Embedding similarity suggests predicate aliases, but none were " +
+        "applied automatically. Review the candidates and supply an audited " +
+        "ontology map before treating the consistency result as complete.",
+      detail: details,
+    });
+  }
+  return warnings;
+}
+
 export interface LogicalCohomologyOptions {
   /**
    * Highest subset size to test. 3 reproduces the old triples-only behaviour;
@@ -654,6 +780,11 @@ export interface LogicalCohomologyOptions {
   predicateAliases?: Readonly<Record<string, string>>;
   /** Embedding candidates surfaced for audit but not applied to formulas. */
   predicateAliasSuggestions?: readonly PredicateAliasSuggestion[];
+  /**
+   * User-facing pipeline gate: stop before the first expensive prover call
+   * when static analysis finds a critical encoding defect.
+   */
+  abortOnCriticalFormalization?: boolean;
 }
 
 export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
@@ -668,6 +799,7 @@ export const DEFAULT_COHOMOLOGY_OPTIONS: Required<LogicalCohomologyOptions> = {
   forceExhaustive: false,
   predicateAliases: {},
   predicateAliasSuggestions: [],
+  abortOnCriticalFormalization: false,
 };
 
 /** Keep operator defaults distinct from a caller-requested hard arity cap. */
@@ -935,7 +1067,52 @@ export async function computeLogicalCohomology(
   sat: SatOracle,
   options: LogicalCohomologyOptions = {},
 ): Promise<LogicalCohomologyResult> {
+  const normalized = normalizePropertyPredicationBlocks(blocks);
+  blocks = normalized.blocks;
   const opts = { ...DEFAULT_COHOMOLOGY_OPTIONS, ...options };
+  const preflightWarnings = formalizationWarningsWithSuggestions(
+    blocks,
+    opts.predicateAliasSuggestions,
+  );
+  if (
+    opts.abortOnCriticalFormalization &&
+    preflightWarnings.some((warning) => warning.severity === "critical")
+  ) {
+    const truncationNote =
+      "Formalization preflight aborted before the first prover call because " +
+      "one or more critical encoding defects make the result vacuous. Repair " +
+      "formalizationWarnings and re-run; no satisfiability budget was spent.";
+    return {
+      hasContradiction: false,
+      frustrations: [],
+      frustrationsComplete: false,
+      frustrationSearchNote: truncationNote,
+      formalizationWarnings: preflightWarnings,
+      formalizationRepairs: normalized.repairs,
+      resultIsVacuous: true,
+      preflightAborted: true,
+      h0: 0,
+      h1: 0,
+      hasObstruction: false,
+      vertices: [],
+      signatureComponents: [],
+      predicateAliases: { ...opts.predicateAliases },
+      predicateAliasSuggestions: [...opts.predicateAliasSuggestions],
+      internallyInconsistent: [],
+      uncheckedBlocks: blocks.map((block) => block.name),
+      consistentPairs: [],
+      frustratedTriples: [],
+      searchedToArity: 0,
+      searchTruncated: true,
+      checksPerformed: 0,
+      homologyDerivedAnalytically: false,
+      rankD1: 0,
+      rankD2: 0,
+      checkFailures: [],
+      checkLog: [],
+      truncationNote,
+    };
+  }
   const checkFailures: string[] = [];
   const internallyInconsistent: string[] = [];
   const uncheckedBlocks: string[] = [];
@@ -1420,37 +1597,7 @@ export async function computeLogicalCohomology(
   }
 
   const hasContradiction = frustrations.length > 0;
-  const formalizationWarnings = analyzeFormalization(blocks);
-  if (opts.predicateAliasSuggestions.length > 0) {
-    const details = opts.predicateAliasSuggestions.map(
-      (suggestion) =>
-        `${suggestion.source} -> ${suggestion.target} ` +
-        `(cosine ${suggestion.similarity.toFixed(3)}; proposed canonical ` +
-        `${suggestion.proposedCanonical})`,
-    );
-    const severity = opts.predicateAliasSuggestions.some(
-      (suggestion) => suggestion.severity === "critical",
-    )
-      ? "critical"
-      : "warning";
-    const existing = formalizationWarnings.find(
-      (warning) => warning.code === "predicate_aliasing_suspected",
-    );
-    if (existing) {
-      if (severity === "critical") existing.severity = "critical";
-      existing.detail = [...new Set([...(existing.detail ?? []), ...details])];
-    } else {
-      formalizationWarnings.push({
-        code: "predicate_aliasing_suspected",
-        severity,
-        message:
-          "Embedding similarity suggests predicate aliases, but none were " +
-          "applied automatically. Review the candidates and supply an audited " +
-          "ontology map before treating the consistency result as complete.",
-        detail: details,
-      });
-    }
-  }
+  const formalizationWarnings = [...preflightWarnings];
   const signatureComponents = signatureComponentsOf(vertices, propsOf);
 
   /*
@@ -1539,7 +1686,9 @@ export async function computeLogicalCohomology(
       !searchTruncated && checkFailures.length === 0,
     frustrationSearchNote,
     formalizationWarnings,
+    formalizationRepairs: normalized.repairs,
     resultIsVacuous,
+    preflightAborted: false,
     h0, h1, hasObstruction: h1 > 0, h1Note,
     vertices,
     signatureComponents,

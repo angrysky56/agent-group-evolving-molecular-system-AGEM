@@ -21,6 +21,7 @@ import {
   computeLogicalCohomology,
   configuredCohomologyOptions,
   makeMcpLogicOracle,
+  normalizePropertyPredication,
   summarizeCheckLog,
   type LogicalCohomologyOptions,
 } from "../services/logicalCohomology.js";
@@ -33,6 +34,10 @@ import {
   classifyClaimVerdict,
   deriveClaimBlocks,
 } from "../services/claim-blocks.js";
+import {
+  extractionFailureCauses,
+  inconclusiveExtractionVerdict,
+} from "../services/extraction-verdict.js";
 import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
@@ -174,7 +179,30 @@ function normalizeMcpToolArgs(
         delete args.goal;
         normalized = true;
       }
+      // Fall through to the shared formula normalization below.
+    case "mcp-logic/check_well_formed":
+    case "mcp-logic/find_counterexample": {
+      for (const field of ["statements", "premises"] as const) {
+        if (!Array.isArray(args[field])) continue;
+        const formulas = (args[field] as unknown[]).map((value) =>
+          typeof value === "string"
+            ? normalizePropertyPredication(value)
+            : value,
+        );
+        if (JSON.stringify(formulas) !== JSON.stringify(args[field])) {
+          args[field] = formulas;
+          normalized = true;
+        }
+      }
+      if (typeof args.conclusion === "string") {
+        const conclusion = normalizePropertyPredication(args.conclusion);
+        if (conclusion !== args.conclusion) {
+          args.conclusion = conclusion;
+          normalized = true;
+        }
+      }
       break;
+    }
   }
 
   if (normalized) {
@@ -384,7 +412,7 @@ chatRouter.post("/completions", async (req, res) => {
 Each cycle, the engine ingests text into a concept graph, detects communities, and computes metrics. Read these honestly — do not over-claim what they mean:
 
 - **get_graph_topology** — the concept communities and the bridges between them. This is your richest signal: which ideas cluster, which clusters connect, where the structure is.
-- **get_cohomology** — cohomology of the LCM subgraph-registry sheaf, NOT the concept graph. First read \`status\`: when it is \`not-computed\`, numeric H⁰/H¹ fields are deliberately absent. When computed, H⁰ is a vector-space dimension rather than a count of semantic clusters, and H¹ is a topological invariant of registry restriction maps rather than a logical contradiction verdict.
+- **get_cohomology** — cohomology of the LCM subgraph-registry sheaf, NOT the concept graph. First read \`status\`: when it is \`not-computed\`, numeric topology fields are deliberately absent. When computed, H⁰ is a vector-space dimension rather than a count of semantic clusters. The former registry H¹ label is exposed only as \`cycle_topology_dimension\` / \`cycle_topology_present\`: it is created by embedding-similarity edges, exists on cycles even under full agreement, and is never a content obstruction or logical verdict.
 - **get_soc_metrics** — VNE/EE/CDP and regime (nascent/stable/critical). A rough measure of how much the graph is still developing. Useful for pacing, not for truth.
 - **detect_gaps / generate_catalyst_questions** — structural gaps between clusters and questions that would bridge them. Good for deciding what to explore next.
 
@@ -394,7 +422,7 @@ Each cycle, the engine ingests text into a concept graph, detects communities, a
 2. **A cycle only advances the graph if you feed it NEW, substantive content.** Running another cycle with no new text — or with a thin scrap, or by re-pasting the same material — does not progress the reasoning; it just piles duplicate co-occurrences on and degrades modularity. So run a second/third cycle ONLY when you genuinely have new material to add: your own synthesis so far, the answers to the catalyst questions, the next step of the argument, additional source text. To make the graph follow the reasoning forward, ingest the reasoning forward.
 3. If you have nothing substantively new to add, do NOT run another cycle — instead inspect and reason over what is already there (steps 4–6).
 4. Inspect with **get_graph_topology** (primary), then **get_cohomology** and **get_soc_metrics** as needed.
-5. For a contested corpus, prefer **extract_and_verify_claims**, which preserves attributed positions. Use **evaluate_logical_consistency** only for already-audited hand-authored assertion contexts. Never use graph communities themselves as logical blocks.
+5. For a contested corpus, prefer **extract_and_verify_claims**, which preserves attributed positions. Use **evaluate_logical_consistency** only for already-audited hand-authored assertion contexts. Its result establishes consequences of the supplied formulas only; it is not evidence that the corpus entails those formulas and must never be described as confirmation of a corpus finding. Never use graph communities themselves as logical blocks.
 6. Use **detect_gaps / generate_catalyst_questions** to decide what to probe next; if you pursue a question, feeding your exploration of it back into the relevant named subgraph via run_agem_cycle is exactly the kind of new material that makes another cycle worthwhile.
 7. Write your answer from the actual tool outputs. Never describe a cycle, metric, agent, or proof you did not actually run — if a tool failed, say so and proceed without it.
 
@@ -424,7 +452,7 @@ Required procedure for contested topics:
    A contradiction is normally expressed by one block asserting P and another asserting -P, or by a conditional in one block whose antecedent the others satisfy — so if the text contains a conditional ("X only if Y", "if X then not Y"), ENCODE IT AS A CONDITIONAL. Dropping it usually destroys the tension.
    **EVERY BLOCK OF UNIVERSALS NEEDS AN EXISTENTIAL WITNESS.** "all x (capability(x) -> travels(x))" is TRUE when nothing is a capability, so a set of pure "all x (...)" formulas is satisfied by the empty world and can never contradict. Whenever you write "all x (P(x) -> ...)" and P is supposed to be non-empty, also assert "exists x (P(x))". This has produced a real false "no contradiction" on a corpus that contained two.
 3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed). A model of the full set certifies every subset at once; an unsatisfiable full set triggers complete, monotone MUS enumeration unless a caller cap, budget, or undetermined oracle result prevents completion. A **minimal unsatisfiable set** is a set of blocks that cannot all be true together, but every proper subset of which can.
-4. On the typed path, read \`verdictKind\`: \`position-contradiction\` and \`corpus-contradiction\` are contradictions in one assertion context; \`positions-incompatible\` means rival positions cannot jointly hold and does NOT make a survey corpus contradictory. On the hand-authored path, read \`frustrations\`. Do NOT use H¹ as a verdict.
+4. On the typed path, read \`verdictKind\`: \`position-contradiction\` and \`corpus-contradiction\` are contradictions in one assertion context; \`positions-incompatible\` means rival positions cannot jointly hold and does NOT make a survey corpus contradictory. On the hand-authored path, read \`frustrations\`, but report them only as consequences of analyst-supplied premises. They carry no evidential weight about what the source corpus says unless a separate attributed extraction validates those premises. Do NOT use H¹ as a verdict.
 5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing. **Read "truncationNote"** — it says WHICH cap stopped the search. If it names a budget limit, "checksRequiredForNextLevel" is the exact 'maxChecks' that settles the question: call the tool again passing that value. Truncation is a setting, not a capability ceiling — never report it as "the tool cannot search further".
 6. Report the frustrated sets whenever "hasContradiction" is true, and check "frustrationsComplete" plus "checkFailures". A found MUS remains evidence when enumeration is incomplete, but it is not proof that no additional MUS exists.
 7. **If "resultIsVacuous" is true, the overall verdict is invalid.** With no contradiction, the encoding made "consistent" a foregone conclusion. If contradictions were found, the listed clashes remain evidence, but critical alias/arity defects can hide additional ones. Read "formalizationWarnings", fix the formulas, and call the tool again. Never report a clean consistency or complete contradiction inventory from a vacuous result.
@@ -444,7 +472,11 @@ SYNTAX RULES (these are where calls fail — follow exactly):
 - "premises" is an ARRAY of strings, ONE formula per array element. NEVER put multiple statements in one string, and NEVER use newline characters inside a formula — a literal \\n will fail. Split into separate array elements instead.
 - Operators are ASCII: -> (implies), <-> (iff), & (and), | (or), ~ (not).
 - Quantifiers MUST be parenthesized: "all x (man(x) -> mortal(x))", "exists y (knows(y, socrates))".
-- One predicate per fact; lowercase predicate and constant names.
+- One predicate per fact; lowercase predicate and constant names. Properties
+  are always predicates: write "lesion_adequate(fdt)", never
+  "holds(fdt, lesion_adequate)". Attributed blocks already carry the holder;
+  reifying the property inside holds is redundant and creates an arity-0/arity-1
+  collision when that property is predicated elsewhere.
 - If a call returns a validation error, fix the shape (usually: split newlines into array elements, or rename "goal"→"conclusion") and retry ONCE. Never fabricate a result.
 
 # Utility servers (only if a task explicitly needs them)
@@ -502,7 +534,7 @@ ${skillContent}`,
         function: {
           name: "get_agem_state",
           description:
-            "Retrieves the current AGEM engine state: iteration count, operational mode, graph size, SOC state, cohomology status, and gap count. H¹ is absent unless registry cohomology was actually computed.",
+            "Retrieves the current AGEM engine state: iteration count, operational mode, graph size, SOC state, registry-topology status, and gap count. Embedding-derived registry cycles do not drive OBSTRUCTED state.",
           parameters: {
             type: "object",
             properties: {},
@@ -567,7 +599,7 @@ ${skillContent}`,
         function: {
           name: "get_cohomology",
           description:
-            "Analyse the LCM subgraph-registry sheaf. Returns H⁰/H¹ only with at least two vertices and an edge; otherwise returns status='not-computed' with a reason and remedy and omits numeric invariants. This is not the concept co-occurrence graph or a logical verdict.",
+            "Analyse the embedding-derived LCM subgraph-registry sheaf. Returns numeric topology only with at least two vertices and an edge; otherwise returns status='not-computed' with a reason and remedy. On computed results, obey h0_component_count_valid and h0_interpretation. cycle_topology_dimension is c1_dimension-coboundary_rank: a threshold-edge cycle signal that can be positive under full agreement, never a content obstruction or logical verdict. This sheaf does not drive OBSTRUCTED state.",
           parameters: {
             type: "object",
             properties: {},
@@ -580,7 +612,7 @@ ${skillContent}`,
         function: {
           name: "evaluate_logical_consistency",
           description:
-            "Hand-authored logical consistency over already-audited assertion-context blocks. The real result is hasContradiction plus minimal unsatisfiable sets in frustrations; H¹ is only a lossy topological summary and is never the verdict. Prefer extract_and_verify_claims for raw contested corpora because it preserves attribution. Formula syntax: lowercase predicates over constants, '-' for negation, '->' implies, parenthesised quantifiers; one formula per array element, never newlines inside a formula.",
+            "Hand-authored logical consistency over already-audited assertion-context blocks. It proves consequences of the supplied formulas only and is not evidence that a source corpus entails those formulas. The real formula-level result is hasContradiction plus minimal unsatisfiable sets in frustrations; H¹ is only a lossy topological summary and is never the verdict. Prefer extract_and_verify_claims for raw contested corpora because it preserves attribution. Formula syntax: lowercase predicates over constants, '-' for negation, '->' implies, parenthesised quantifiers; property(entity), never holds(entity, property); one formula per array element, never newlines inside a formula.",
           parameters: {
             type: "object",
             properties: {
@@ -1560,6 +1592,7 @@ ${skillContent}`,
                 // Let a caller raise the caps deliberately. Undefined must not
                 // be spread over the defaults, so only set what was supplied.
                 const cohomologyOpts: LogicalCohomologyOptions = {};
+                cohomologyOpts.abortOnCriticalFormalization = true;
                 if (Number.isFinite(Number(args.maxArity)))
                   cohomologyOpts.maxArity = Number(args.maxArity);
                 if (Number.isFinite(Number(args.maxChecks)))
@@ -1572,7 +1605,7 @@ ${skillContent}`,
                 // Lead with the verdict the model should actually act on.
                 // H¹ is pinned at 0 for most realistic block counts, so
                 // putting it first invited exactly the wrong reading.
-                const verdict = result.resultIsVacuous
+                const formulaVerdict = result.resultIsVacuous
                   ? (result.hasContradiction
                       ? `CONTRADICTION(S) FOUND, BUT FORMALIZATION INCOMPLETE — the listed clashes are valid evidence, but critical symbol defects can hide additional contradictions. `
                       : `INVALID FORMALIZATION — the consistency result is VACUOUS and must not be reported as a finding. `) +
@@ -1621,7 +1654,10 @@ ${skillContent}`,
                 const submitted = blocks.length;
                 const evaluated = result.vertices.length;
                 const coverage =
-                  evaluated === submitted
+                  result.preflightAborted
+                    ? `COVERAGE: 0 of ${submitted} submitted blocks were sent to the prover. ` +
+                      "Critical formalization defects triggered the preflight gate; no prover budget was spent."
+                  : evaluated === submitted
                     ? `Coverage: all ${submitted} submitted blocks were evaluated.`
                     : `COVERAGE: only ${evaluated} of ${submitted} submitted blocks were ` +
                       `evaluated. Excluded — ` +
@@ -1657,13 +1693,22 @@ ${skillContent}`,
                   totalChecks: checkLog.length,
                   checkLog,
                 });
+                const provenanceWarning =
+                  "These formulas were supplied by the analyst/model. The prover " +
+                  "establishes only their formal consequences; this result does " +
+                  "not establish that the source corpus contains, entails, or " +
+                  "supports the premises. Use extract_and_verify_claims for " +
+                  "corpus-level evidence.";
                 output = JSON.stringify(
                   {
                     runLogId: runLog.runId,
                     coverage,
                     blocksSubmitted: submitted,
                     blocksEvaluated: evaluated,
-                    verdict,
+                    formalizationOrigin: "hand-authored",
+                    corpusEvidentialStatus: "not-established",
+                    provenanceWarning,
+                    verdict: `HAND-AUTHORED FORMALIZATION ONLY — ${formulaVerdict}`,
                     ...cohomology,
                     ...summarizeCheckLog(checkLog, {
                       runLogId: runLog.runId,
@@ -1753,7 +1798,8 @@ ${skillContent}`,
                 const extractionComplete =
                   extraction.parseFailures.length === 0 &&
                   extraction.claimsRejected === 0 &&
-                  derivation.attributionComplete;
+                  derivation.attributionComplete &&
+                  derivation.rejected.length === 0;
 
                 /*
                  * CAP THE BLOCK COUNT. Unlike the hand-curated path, extraction
@@ -1780,18 +1826,22 @@ ${skillContent}`,
                   : undefined;
 
                 if (!extractionComplete) {
+                  const inconclusiveCauses = extractionFailureCauses(
+                    extraction,
+                    derivation,
+                  );
                   output = JSON.stringify({
                     runLogId: runLog.runId,
                     extraction,
                     attributionComplete: derivation.attributionComplete,
                     attributionIssues: derivation.attributionIssues,
+                    inconclusiveCauses,
                     semanticsValidated: false,
                     verdictKind: "inconclusive",
                     hasContradiction: false,
                     supportingClaimKeys: [],
                     supportingClaimRefs: [],
-                    verdict:
-                      "INCONCLUSIVE EXTRACTION — one or more claims lacked valid attribution, were rejected, or came from an unparseable segment. No logical verdict was computed and no finding may be stored.",
+                    verdict: inconclusiveExtractionVerdict(inconclusiveCauses),
                   });
                 } else if (blocks.length === 0) {
                   output = JSON.stringify({
@@ -1835,6 +1885,7 @@ ${skillContent}`,
                       predicateAliases,
                       predicateAliasSuggestions:
                         derivation.predicateAliasSuggestions,
+                      abortOnCriticalFormalization: true,
                     },
                   );
                   const classified = classifyClaimVerdict(derivation, result);
@@ -1900,6 +1951,9 @@ ${skillContent}`,
                   });
                   const evaluated = evaluatedBlocks.length;
                   const coverageDetails = [
+                    result.preflightAborted
+                      ? `${blocks.length} block(s) held at the critical formalization preflight gate; zero prover calls made`
+                      : "",
                     capped
                       ? `${distinct.length - BLOCK_CAP} block(s) excluded by LOGIC_MAX_BLOCKS`
                       : "",
@@ -1909,7 +1963,7 @@ ${skillContent}`,
                     result.checkFailures.length
                       ? `${result.checkFailures.length} check failure(s)`
                       : "",
-                    result.uncheckedBlocks.length
+                    !result.preflightAborted && result.uncheckedBlocks.length
                       ? `${result.uncheckedBlocks.length} unchecked after the call budget ended`
                       : "",
                   ].filter(Boolean);
