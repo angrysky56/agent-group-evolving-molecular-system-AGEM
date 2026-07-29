@@ -24,11 +24,16 @@ correlation without causation is decision-relevant.
 ## The impossibility
 
 No theory satisfies all four of **dominance**, **evidential responsiveness**,
-**Newcomb-adequacy**, **lesion-adequacy**. Any three are jointly satisfiable:
+**Newcomb-adequacy**, **lesion-adequacy**. The minimal conflicts are the two
+pairs **dominance + Newcomb-adequacy** and **evidential responsiveness +
+lesion-adequacy**. Therefore no three of the four are jointly satisfiable.
 
-- dominance + lesion + (drop evidential) = CDT
-- evidential + Newcomb + (drop dominance) = EDT
-- Newcomb + lesion + (drop the act-evaluation framework) = FDT
+The maximal satisfiable pairs are:
+
+- dominance + evidential responsiveness
+- dominance + lesion-adequacy (CDT)
+- evidential responsiveness + Newcomb-adequacy (EDT)
+- Newcomb-adequacy + lesion-adequacy (FDT)
 
 FDT's escape is the interesting one and the reason to run this corpus: it does not
 weaken a desideratum, it changes the object of evaluation from acts to policies.
@@ -37,7 +42,7 @@ in `openQuestions.fdt_minimal_sacrifice`.
 
 ## Scoring
 
-**Pass** = all three `mustFind` reproduced, all four `mustNotFind` reported
+**Pass** = all four `mustFind` reproduced, all four `mustNotFind` reported
 consistent.
 
 `ratifiability_impossible` is arity 2 and nearly trivial. If AGEM misses it, the

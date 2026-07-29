@@ -36,6 +36,7 @@ export type ClaimKind =
   | "identity-claim"
   | "exclusion"
   | "causal-claim"
+  | "property-assertion"
   | "entailment";
 
 export type ClaimScope = "corpus" | "position";
@@ -91,11 +92,24 @@ export interface ExtractionOptions {
   signal?: AbortSignal;
 }
 
+/** Remove model-added metadata that the selected relation kind does not own. */
+export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
+  const normalized = { ...claim };
+  if (
+    normalized.kind !== "causal-claim" &&
+    normalized.kind !== "property-assertion"
+  ) {
+    delete normalized.polarity;
+  }
+  if (normalized.kind !== "distinction") delete normalized.differenceKind;
+  return normalized;
+}
+
 const ATTRIBUTED_ASSERTION_CUE =
   /\b(?:theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
 /** A corpus-level rule about arbitrary positions is not attribution to one holder. */
 const GENERIC_POSITION_RULE_CUE =
-  /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\s+(?:that|which|who)\b/i;
+  /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\b/i;
 
 /**
  * Deterministic guard against model-elected attribution flattening. The model
@@ -159,6 +173,11 @@ const ROLE_SPEC: Record<ClaimKind, { roles: string[]; extras?: string[]; gloss: 
     extras: ["polarity"],
     gloss: "A causes B. polarity is REQUIRED: 'asserts' if the text claims the causation holds, 'denies' if it claims it does not. An unsigned causal claim is meaningless.",
   },
+  "property-assertion": {
+    roles: ["subject", "property"],
+    extras: ["polarity"],
+    gloss: "A named theory, entity, or position has property B. Use this for 'CDT holds dominance' or 'FDT is lesion-adequate'; do NOT reverse it into an entailment from the property to the theory. polarity is REQUIRED.",
+  },
   entailment: {
     roles: ["antecedent", "consequent"],
     gloss: "A implies B, directionally. Do not use for mutual implication; that is two claims.",
@@ -216,11 +235,12 @@ export function claimSchemaIssue(claim: ExtractedClaim): string | null {
   }
 
   if (
-    claim.kind === "causal-claim" &&
+    (claim.kind === "causal-claim" ||
+      claim.kind === "property-assertion") &&
     claim.polarity !== "asserts" &&
     claim.polarity !== "denies"
   ) {
-    return "schema cardinality: causal-claim requires polarity 'asserts' or 'denies'";
+    return `schema cardinality: ${claim.kind} requires polarity 'asserts' or 'denies'`;
   }
   if (
     claim.modality !== undefined &&
@@ -291,6 +311,10 @@ Output shape:
 [{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},
  {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]
 
+Never emit an extra field unless it is listed for that claim kind. In
+particular, only causal-claim and property-assertion own polarity, and only
+distinction owns differenceKind.
+
 SENTENCE:
 ${segment}`;
 }
@@ -302,8 +326,9 @@ function esc(s: string): string {
 
 /** Canonicalise a claim without source provenance so equivalent runs overlap. */
 export function canonicalClaim(claim: ExtractedClaim): string {
+  const normalized = normalizeClaimExtras(claim);
   const roles = Object.fromEntries(
-    Object.entries(claim.roles)
+    Object.entries(normalized.roles)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([role, value]) => [
         role,
@@ -311,14 +336,16 @@ export function canonicalClaim(claim: ExtractedClaim): string {
       ]),
   );
   return JSON.stringify({
-    kind: claim.kind,
+    kind: normalized.kind,
     roles,
-    scope: claim.scope ?? null,
+    scope: normalized.scope ?? null,
     positionId:
-      claim.scope === "position" ? claim.positionId?.trim() || null : null,
-    modality: claim.modality ?? null,
-    polarity: claim.polarity ?? null,
-    differenceKind: claim.differenceKind ?? null,
+      normalized.scope === "position"
+        ? normalized.positionId?.trim() || null
+        : null,
+    modality: normalized.modality ?? null,
+    polarity: normalized.polarity ?? null,
+    differenceKind: normalized.differenceKind ?? null,
   });
 }
 
@@ -332,6 +359,7 @@ export function canonicalClaim(claim: ExtractedClaim): string {
  * returned fact byte-for-byte.
  */
 export function schemaClaimFact(claim: ExtractedClaim): string | null {
+  claim = normalizeClaimExtras(claim);
   const spec = ROLE_SPEC[claim?.kind];
   if (!spec || claimSchemaIssue(claim)) return null;
   if (claim.scope !== "corpus" && claim.scope !== "position") return null;
@@ -407,6 +435,7 @@ export function claimToTypeQL(
   claimId: string;
   claimKey: string;
 } | null {
+  claim = normalizeClaimExtras(claim);
   const spec = ROLE_SPEC[claim.kind];
   if (!spec || claimSchemaIssue(claim)) return null;
   const positionId = claim.positionId?.trim();
@@ -693,7 +722,8 @@ export async function extractIntoStore(
       continue;
     }
 
-    for (const claim of claims) {
+    for (const proposedClaim of claims) {
+      const claim = normalizeClaimExtras(proposedClaim);
       const schemaRejection = claimSchemaIssue(claim);
       if (schemaRejection) {
         report.claimsProposed++;
@@ -804,6 +834,7 @@ export function claimToPropositions(claim: ExtractedClaim): {
   name: string;
   propositions: string[];
 } | null {
+  claim = normalizeClaimExtras(claim);
   if (claimSchemaIssue(claim) || claimAttributionIssue(claim)) return null;
   const pred = (label: string) => label.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
   const r = claim.roles as Record<string, string | string[]>;
@@ -850,6 +881,15 @@ export function claimToPropositions(claim: ExtractedClaim): {
           `all x (${pred(a)}(x) -> ${sign}causes_${pred(b)}(x))`,
           `exists x (${pred(a)}(x))`,
         ],
+      };
+    }
+    case "property-assertion": {
+      const subject = one("subject"), property = one("property");
+      if (!subject || !property || !claim.polarity) return null;
+      const sign = claim.polarity === "denies" ? "-" : "";
+      return {
+        name: `property(${subject},${sign}${property})`,
+        propositions: [`${sign}${pred(property)}(${pred(subject)})`],
       };
     }
     case "entailment": {

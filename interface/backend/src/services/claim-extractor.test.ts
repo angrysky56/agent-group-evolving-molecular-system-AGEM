@@ -142,6 +142,21 @@ describe("claim identity for finding evidence", () => {
     ).toMatch(/unexpected role.*extra/i);
   });
 
+  it("does not persist or identify extras that are unsupported by a claim kind", () => {
+    const clean: ExtractedClaim = {
+      kind: "exclusion",
+      roles: { excluder: "fdt", excluded: "dominance" },
+      scope: "corpus",
+    };
+    const noisy = { ...clean, polarity: "denies" as const };
+
+    expect(claimToTypeQL(noisy, "segment-8")?.claim).not.toContain(
+      "has polarity",
+    );
+    expect(canonicalClaim(noisy)).toBe(canonicalClaim(clean));
+    expect(schemaClaimFact(noisy)).toBe(schemaClaimFact(clean));
+  });
+
   it("uses predicate form throughout deterministic claim conversion", () => {
     const converted = claimToPropositions({
       kind: "entailment",
@@ -156,6 +171,23 @@ describe("claim identity for finding evidence", () => {
       "all x (dominance(x) -> newcomb_adequate(x))",
     );
     expect(converted?.propositions.join(" ")).not.toContain("holds(");
+  });
+
+  it("represents a theory holding a property as predication, not reverse entailment", () => {
+    const claim = {
+      kind: "property-assertion",
+      roles: { subject: "CDT", property: "dominance" },
+      scope: "position",
+      positionId: "CDT",
+      polarity: "asserts",
+    } as ExtractedClaim;
+
+    expect(claimToPropositions(claim)?.propositions).toEqual([
+      "dominance(cdt)",
+    ]);
+    expect(claimToTypeQL(claim, "segment-9")?.claim).toContain(
+      "$claim isa property-assertion",
+    );
   });
 
   it("loads the claim schema before the finding schema", () => {
@@ -215,6 +247,22 @@ describe("claim identity for finding evidence", () => {
     };
 
     expect(claimAttributionIssue(rule, source)).toBeNull();
+  });
+
+  it("does not mistake the decision-theory universal rule for named attribution", () => {
+    expect(
+      claimAttributionIssue(
+        {
+          kind: "exclusion",
+          roles: {
+            excluder: "theory-holding-dominance",
+            excluded: "newcomb-adequacy",
+          },
+          scope: "corpus",
+        },
+        "Therefore every theory fails at least one property: a theory that holds dominance is not Newcomb-adequate.",
+      ),
+    ).toBeNull();
   });
 });
 

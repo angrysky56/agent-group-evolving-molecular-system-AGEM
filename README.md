@@ -347,7 +347,7 @@ Tool-execution settings:
 
 | Variable                         | Default | Description                                                                                                 |
 | -------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `CHAT_MAX_TURNS`                 | `30`    | Hard cap on tool turns per request.                                                                         |
+| `CHAT_MAX_TURNS`                 | `48`    | Hard cap on tool turns; a separate tools-disabled final response follows exhaustion.                        |
 | `TOOL_RETRY_BUDGET`              | `2`     | L1 retries for **transient** faults on **idempotent** calls only. `0` escalates every failure to the model. |
 | `TOOL_MAX_CONCURRENCY`           | `4`     | Max simultaneous read-only tool calls. Mutating tools are always serial regardless of this value.           |
 | `CHAT_ENFORCE_WORKFLOW_CONTRACT` | `true`  | Require ingest → inspect → verify-if-multi-position before a run may finish.                                |

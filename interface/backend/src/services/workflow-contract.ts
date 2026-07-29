@@ -139,8 +139,6 @@ const INGEST_TOOLS = ["run_agem_cycle", "run_agem_cycles_sectioned"] as const;
 const LOGIC_TOOLS = new Set([
   "evaluate_logical_consistency",
   "extract_and_verify_claims",
-  "mcp-logic/prove",
-  "mcp-logic/find_counterexample",
 ]);
 
 /**
@@ -160,6 +158,27 @@ const LOGIC_TOOLS = new Set([
  * encodings of one corpus have produced different verdicts across runs.
  */
 const TYPED_CLAIM_TOOL = "extract_and_verify_claims";
+
+/** Tool surface for a contract-recovery turn; unrelated tools cannot help. */
+export function toolNamesForUnmetWorkflow(
+  unmetIds: readonly string[],
+): Set<string> {
+  const names = new Set<string>();
+  for (const id of unmetIds) {
+    if (id === "ingest") {
+      names.add("run_agem_cycle");
+      names.add("run_agem_cycles_sectioned");
+    } else if (id === "inspect") {
+      names.add("get_graph_topology");
+    } else if (id === "verify") {
+      names.add("evaluate_logical_consistency");
+      names.add(TYPED_CLAIM_TOOL);
+    } else if (id === "derive") {
+      names.add(TYPED_CLAIM_TOOL);
+    }
+  }
+  return names;
+}
 
 export class WorkflowContract {
   readonly #counts = new Map<string, number>();

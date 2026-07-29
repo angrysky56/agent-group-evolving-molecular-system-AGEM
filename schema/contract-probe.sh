@@ -85,6 +85,22 @@ match
 insert
   $_ isa causal-claim, links (cause: $cs, effect: $bc, source: $s);'
 
+run "well-formed property assertion" "ACCEPTED" '
+match
+  $cs isa concept, has label "consciousness";
+  $phi isa concept, has label "phi";
+  $s isa segment, has segment-id "tom-3-1";
+insert
+  $_ isa property-assertion, links (subject: $cs, property: $phi, source: $s), has polarity "asserts";'
+
+run "property assertion with no polarity" "REJECTED" '
+match
+  $cs isa concept, has label "consciousness";
+  $phi isa concept, has label "phi";
+  $s isa segment, has segment-id "tom-3-1";
+insert
+  $_ isa property-assertion, links (subject: $cs, property: $phi, source: $s);'
+
 if [ "$failures" -gt 0 ]; then
   echo ""
   echo "$failures CONTRACT FAILURE(S)"

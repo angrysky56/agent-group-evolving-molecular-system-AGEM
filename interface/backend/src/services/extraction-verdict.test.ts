@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyExtractionCoverage,
   extractionFailureCauses,
   inconclusiveExtractionVerdict,
 } from "./extraction-verdict.js";
@@ -64,7 +65,18 @@ describe("cause-specific extraction verdicts", () => {
       },
       {
         attributionIssues: [],
-        rejected: [{ segmentId: "s4", reason: "conversion failed" }],
+        rejected: [
+          {
+            segmentId: "s4",
+            reason: "conversion failed",
+            rejectionKind: "conversion",
+          },
+          {
+            segmentId: "s5",
+            reason: "pronoun subject 'this' has no stable referent",
+            rejectionKind: "quality",
+          },
+        ],
       },
     );
 
@@ -74,6 +86,28 @@ describe("cause-specific extraction verdicts", () => {
         "storage-rejections": 1,
         "parse-failures": 1,
         "conversion-rejections": 1,
+        "quality-rejections": 1,
       });
+  });
+
+  it("keeps partial contradictions checkable but refuses a partial clean verdict", () => {
+    expect(
+      applyExtractionCoverage(
+        { verdictKind: "no-contradiction", semanticsValidated: true },
+        { corpusComplete: false, capped: false },
+      ),
+    ).toEqual({
+      verdictKind: "inconclusive",
+      semanticsValidated: false,
+    });
+    expect(
+      applyExtractionCoverage(
+        { verdictKind: "corpus-contradiction", semanticsValidated: true },
+        { corpusComplete: false, capped: false },
+      ),
+    ).toEqual({
+      verdictKind: "corpus-contradiction",
+      semanticsValidated: true,
+    });
   });
 });

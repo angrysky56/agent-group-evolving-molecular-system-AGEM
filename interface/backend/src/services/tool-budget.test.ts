@@ -29,4 +29,17 @@ describe("tool request-budget admission", () => {
       }).allowed,
     ).toBe(true);
   });
+
+  it("uses a measured extraction duration plus a final-response reserve for retries", () => {
+    expect(
+      assessToolBudget("extract_and_verify_claims", 194_293, {
+        extractionMinimumMs: 480_000,
+        previousDurationMs: 121_000,
+        finalizationReserveMs: 30_000,
+      }),
+    ).toMatchObject({
+      allowed: true,
+      requiredMs: 181_250,
+    });
+  });
 });

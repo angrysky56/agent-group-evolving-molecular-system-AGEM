@@ -196,14 +196,14 @@ const ConfigSchema = z.object({
   MAX_ITERATIONS: z.coerce.number().default(50),
   /** Maximum reasoning steps per VdW agent before self-termination. Default: 50 */
   VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
-  /** Maximum tool execution turns in a chat session before forcing completion. Default: 30 */
-  CHAT_MAX_TURNS: z.coerce.number().default(30),
+  /** Maximum tool execution turns before a separate tools-disabled final response. */
+  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(48),
   /** Hard wall-clock deadline for one chat request, including in-flight tools. */
   CHAT_REQUEST_TIMEOUT_MS: z.coerce
     .number()
     .int()
     .positive()
-    .default(30 * 60 * 1000),
+    .default(45 * 60 * 1000),
   /**
    * Do not begin typed-claim extraction unless this much request budget
    * remains. Persisted engine state makes continuation safer than a partial

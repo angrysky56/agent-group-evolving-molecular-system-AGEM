@@ -32,10 +32,10 @@ export function captureFindingFromTool(
   output: string,
   context: FindingCaptureContext,
 ): FindingInput | null {
-  if (
-    toolName !== "evaluate_logical_consistency" &&
-    toolName !== "extract_and_verify_claims"
-  ) {
+  // Hand-authored formulas are useful diagnostics, but they are the model's
+  // premises rather than provenance-bearing corpus evidence. Only the typed
+  // extraction path can create durable findings automatically.
+  if (toolName !== "extract_and_verify_claims") {
     return null;
   }
 

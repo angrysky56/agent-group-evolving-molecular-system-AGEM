@@ -158,6 +158,21 @@ describe("vonNeumannEntropy — SOC-01 correctness gates", () => {
 // ---------------------------------------------------------------------------
 
 describe("embeddingEntropy — SOC-02 correctness gates", () => {
+  it("uses the sample-space spectrum when embeddings are much wider than the sample", () => {
+    const embeddings = Array.from({ length: 4 }, (_, row) => {
+      const vector = new Float64Array(2048);
+      vector[row] = 1;
+      vector[2047 - row] = 0.5;
+      return vector;
+    });
+    const startedAt = performance.now();
+
+    const result = embeddingEntropy(embeddings);
+
+    expect(result).toBeCloseTo(Math.log(4), 5);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+
   /**
    * T-EE-01: Identical embeddings yield entropy near zero.
    * ROADMAP SC-2 first edge case.

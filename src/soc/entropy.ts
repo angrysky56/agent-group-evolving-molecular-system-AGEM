@@ -161,15 +161,17 @@ export function vonNeumannEntropy(
 /**
  * embeddingEntropy — semantic diversity of node embedding vectors.
  *
- * Constructs the embedding covariance matrix Σ = (1/n) E^T E where E is the
- * n×d matrix of embedding vectors (rows = nodes, cols = dimensions), then
- * computes the Von Neumann entropy of the normalized eigenspectrum of Σ.
+ * Computes the non-zero eigenspectrum of Σ = (1/n) E^T E where E is the n×d
+ * matrix of embedding vectors (rows = nodes, cols = dimensions). When n < d,
+ * the smaller Gram matrix (1/n) E E^T has exactly the same non-zero
+ * eigenvalues, so using it preserves the metric without paying for a d×d
+ * matrix and eigendecomposition.
  *
  * Algorithm:
  *   a. If embeddings.length <= 1, return 0.
  *   b. Get n = embeddings.length, d = embeddings[0].length.
- *   c. Build covariance Σ = (1/n) * Σ_k (emb_k ⊗ emb_k^T) — d×d matrix.
- *   d. Eigendecompose Σ via EigenvalueDecomposition. Extract realEigenvalues.
+ *   c. Build the smaller of covariance (d×d) and sample Gram (n×n).
+ *   d. Eigendecompose that matrix. Extract realEigenvalues.
  *   e. Clamp negative eigenvalues to 0 (numerical artifact guard — RESEARCH.md Pitfall 5).
  *   f. Normalize: p_i = max(0, λ_i) / Σ_j max(0, λ_j). If sum=0, return 0.
  *   g. Entropy: S = -Σ p_i * ln(p_i) for p_i > 1e-12.
@@ -181,10 +183,9 @@ export function vonNeumannEntropy(
  *   - Empty: returns 0 (handled by early return at step a)
  *
  * Performance note:
- *   Building Σ is O(n * d^2). For d=384 and n=200 nodes, this is ~28M operations.
- *   Eigendecomposition of Σ is O(d^3) ≈ 56M operations for d=384.
- *   Acceptable for Phase 4. Phase 6 can add random projection if n or d grows large.
- *   See RESEARCH.md §Pattern 2 performance note.
+ *   The selected representation costs O(n*d*min(n,d)) to construct and
+ *   O(min(n,d)^3) to diagonalize. This matters for provider embeddings such as
+ *   2048 dimensions over a graph with only tens or hundreds of nodes.
  *
  * @param embeddings - Array of embedding vectors (Float64Array[]).
  *                     All vectors must have the same dimension.
@@ -199,25 +200,44 @@ export function embeddingEntropy(embeddings: Float64Array[]): number {
 
   if (d === 0) return 0;
 
-  // Step c: Build covariance matrix Σ = (1/n) * E^T * E (d x d)
-  // Σ[i][j] = (1/n) * Σ_k emb_k[i] * emb_k[j]
-  const Sigma = new MlMatrix(d, d);
-  for (const emb of embeddings) {
+  let spectrumMatrix: MlMatrix;
+  if (n < d) {
+    // E E^T / n. Its non-zero eigenvalues equal those of E^T E / n.
+    spectrumMatrix = new MlMatrix(n, n);
+    for (let i = 0; i < n; i++) {
+      for (let j = i; j < n; j++) {
+        let dot = 0;
+        for (let k = 0; k < d; k++) {
+          dot += (embeddings[i]![k] ?? 0) * (embeddings[j]![k] ?? 0);
+        }
+        const scaled = dot / n;
+        spectrumMatrix.set(i, j, scaled);
+        if (i !== j) spectrumMatrix.set(j, i, scaled);
+      }
+    }
+  } else {
+    // E^T E / n.
+    spectrumMatrix = new MlMatrix(d, d);
+    for (const emb of embeddings) {
+      for (let i = 0; i < d; i++) {
+        for (let j = 0; j < d; j++) {
+          spectrumMatrix.set(
+            i,
+            j,
+            spectrumMatrix.get(i, j) + (emb[i] ?? 0) * (emb[j] ?? 0),
+          );
+        }
+      }
+    }
     for (let i = 0; i < d; i++) {
       for (let j = 0; j < d; j++) {
-        Sigma.set(i, j, Sigma.get(i, j) + (emb[i] ?? 0) * (emb[j] ?? 0));
+        spectrumMatrix.set(i, j, spectrumMatrix.get(i, j) / n);
       }
     }
   }
-  // Scale by 1/n
-  for (let i = 0; i < d; i++) {
-    for (let j = 0; j < d; j++) {
-      Sigma.set(i, j, Sigma.get(i, j) / n);
-    }
-  }
 
-  // Step d: Eigendecompose Σ using ml-matrix EigenvalueDecomposition
-  const eig = new EigenvalueDecomposition(Sigma);
+  // Step d: Eigendecompose using ml-matrix EigenvalueDecomposition.
+  const eig = new EigenvalueDecomposition(spectrumMatrix);
   const rawEigenvalues: number[] = eig.realEigenvalues;
 
   // Step e: Clamp negative eigenvalues to 0 (numerical artifacts from floating point)

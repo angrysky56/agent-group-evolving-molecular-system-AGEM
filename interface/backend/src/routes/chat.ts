@@ -35,6 +35,7 @@ import {
   deriveClaimBlocks,
 } from "../services/claim-blocks.js";
 import {
+  applyExtractionCoverage,
   extractionFailureCauses,
   inconclusiveExtractionVerdict,
 } from "../services/extraction-verdict.js";
@@ -60,6 +61,7 @@ import {
 } from "../services/tool-dispatch.js";
 import {
   createWorkflowContract,
+  toolNamesForUnmetWorkflow,
   workflowToolOutcomeFromOutput,
 } from "../services/workflow-contract.js";
 import {
@@ -68,7 +70,12 @@ import {
 } from "../services/request-deadline.js";
 import { assessToolBudget } from "../services/tool-budget.js";
 import {
+  explicitlyRequestedMcpServers,
+  unwrapNestedToolArguments,
+} from "../services/mcp-tool-activation.js";
+import {
   finalizeRunOutcome,
+  sanitizeToolsDisabledFinal,
   type RunTerminalStatus,
 } from "../services/run-termination.js";
 import {
@@ -100,7 +107,9 @@ function normalizeMcpToolArgs(
   const s = server.replace(/^:/, ""); // strip leading colon if present
   const key = `${s}/${tool}`;
   const original = JSON.stringify(args);
-  let normalized = false;
+  const unwrapped = unwrapNestedToolArguments(args);
+  let normalized = unwrapped !== args;
+  args = unwrapped;
 
   switch (key) {
     // hipai-montague
@@ -1122,58 +1131,22 @@ ${skillContent}`,
     // Scan current prompt and conversation history for mentions of connected servers
     const allTextToScan = [
       message,
-      ...messages.slice(-6).map((m: any) => {
+      ...messages
+        .filter((m: any) => m.role === "user")
+        .slice(-6)
+        .map((m: any) => {
         let text = m.content || "";
         if (m.tool_calls) {
           text += " " + JSON.stringify(m.tool_calls);
         }
         return text;
-      })
+        })
     ].join(" ").toLowerCase();
 
     const serverNames = mcpManager.getServerNames();
-    const activeServers = new Set<string>();
-
-    // Mapping of friendly keywords to server names
-    const keywordMap: Record<string, string> = {
-      "logic": "mcp-logic",
-      "prover": "mcp-logic",
-      "mace4": "mcp-logic",
-      "hipai": "hipai-montague",
-      "montague": "hipai-montague",
-      "belief": "hipai-montague",
-      "paraclete": "hipai-montague",
-      "reasoning": "advanced-reasoning",
-      "memory": "advanced-reasoning",
-      "ethics": "conscience-servitor",
-      "ethical": "conscience-servitor",
-      "conscience": "conscience-servitor",
-      "triage": "conscience-servitor",
-      "sheaf": "sheaf-consistency-enforcer",
-      "consistency": "sheaf-consistency-enforcer",
-      "enforcer": "sheaf-consistency-enforcer",
-      "compass": "aseke-compass",
-      "panksepp": "aseke-compass",
-      "behavior": "aseke-compass",
-      "diagram": "cognitive-diagram-nav",
-      "nav": "cognitive-diagram-nav",
-      "verifier": "verifier-graph",
-      "provenance": "verifier-graph"
-    };
-
-    // Match exact server names in prompt/history
-    for (const sName of serverNames) {
-      if (allTextToScan.includes(sName.toLowerCase())) {
-        activeServers.add(sName);
-      }
-    }
-
-    // Match keywords in prompt/history
-    for (const [kw, sName] of Object.entries(keywordMap)) {
-      if (allTextToScan.includes(kw) && serverNames.includes(sName)) {
-        activeServers.add(sName);
-      }
-    }
+    const activeServers = new Set(
+      explicitlyRequestedMcpServers(allTextToScan, serverNames),
+    );
 
     // Filter tools for the active servers and map them
     const activeMcpTools: any[] = [];
@@ -1215,6 +1188,11 @@ ${skillContent}`,
     const maxTurns = settings.all.CHAT_MAX_TURNS;
     let lastResult: any = null;
     const allTurnToolResults: any[] = [];
+    const successfulToolDurations = new Map<string, number>();
+    let deferredTool:
+      | { name: string; remainingMs: number; requiredMs: number }
+      | undefined;
+    let finalResponsePending = false;
 
     // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
     // every tool call in this run, so the retry budget is per-run, not per-call.
@@ -1250,12 +1228,15 @@ ${skillContent}`,
       );
 
       let result: any;
+      const inputMessageCount = historyMessages.length;
+      let compressedMessageCount = inputMessageCount;
       try {
         requestDeadline.signal.throwIfAborted();
         const compressResult = await compress(historyMessages as any[], {
           model: String(model),
           timeout: Math.min(30_000, Math.max(1, requestDeadline.remainingMs())),
         });
+        compressedMessageCount = compressResult.messages.length;
         requestDeadline.signal.throwIfAborted();
 
         result = await llmProvider.chat({
@@ -1287,6 +1268,50 @@ ${skillContent}`,
         throw error;
       }
       lastResult = result;
+      runLog.turn(turnCount, {
+        content: String(result.content ?? ""),
+        thinking:
+          typeof result.thinking === "string" ? result.thinking : undefined,
+        finishReason:
+          typeof result.finishReason === "string"
+            ? result.finishReason
+            : undefined,
+        toolNames: Array.isArray(result.tool_calls)
+          ? result.tool_calls.map((call: any) =>
+              String(call?.function?.name ?? "unknown"),
+            )
+          : [],
+        inputMessageCount,
+        compressedMessageCount,
+        usage: result.usage,
+      });
+
+      if (finalResponsePending) {
+        const fallbackContent = [
+          `PARTIAL / DEFERRED — ${deferredTool?.name ?? "required verification"} could not be completed within the request budget.`,
+          deferredTool
+            ? `The tool needed ${Math.ceil(deferredTool.requiredMs / 1000)}s of safe budget, with ${Math.floor(deferredTool.remainingMs / 1000)}s remaining.`
+            : "Required verification remains incomplete.",
+          "The persisted engine state can be continued in a new request.",
+        ].join("\n\n");
+        const sanitizedFinal = sanitizeToolsDisabledFinal(
+          result,
+          fallbackContent,
+        );
+        if (sanitizedFinal.ignoredToolCalls > 0) {
+          sendEvent("clear_stream", {});
+          runLog.event("final_tool_calls_ignored", {
+            count: sanitizedFinal.ignoredToolCalls,
+          });
+        }
+        result.content = sanitizedFinal.content;
+        result.tool_calls = [];
+        if (sanitizedFinal.usedFallback) {
+          runLog.event("final_response_fallback", {
+            reason: "empty-tools-disabled-response",
+          });
+        }
+      }
 
       // If the model returned tool calls, check if the streamed text was just raw JSON
       // (nemotron bug) vs legitimate text. Only clear if it looks like raw tool-call JSON.
@@ -1824,15 +1849,17 @@ ${skillContent}`,
                     `${distinct.length - BLOCK_CAP} were NOT ruled out. Narrow the corpus ` +
                     `or raise the cap deliberately.`
                   : undefined;
+                const inconclusiveCauses = extractionFailureCauses(
+                  extraction,
+                  derivation,
+                );
 
-                if (!extractionComplete) {
-                  const inconclusiveCauses = extractionFailureCauses(
-                    extraction,
-                    derivation,
-                  );
+                if (blocks.length === 0) {
                   output = JSON.stringify({
                     runLogId: runLog.runId,
                     extraction,
+                    corpusCompletenessValidated: extractionComplete,
+                    verdictScope: "accepted-claims",
                     attributionComplete: derivation.attributionComplete,
                     attributionIssues: derivation.attributionIssues,
                     inconclusiveCauses,
@@ -1842,19 +1869,6 @@ ${skillContent}`,
                     supportingClaimKeys: [],
                     supportingClaimRefs: [],
                     verdict: inconclusiveExtractionVerdict(inconclusiveCauses),
-                  });
-                } else if (blocks.length === 0) {
-                  output = JSON.stringify({
-                    runLogId: runLog.runId,
-                    extraction,
-                    attributionComplete: true,
-                    semanticsValidated: false,
-                    verdictKind: "inconclusive",
-                    hasContradiction: false,
-                    supportingClaimKeys: [],
-                    supportingClaimRefs: [],
-                    verdict:
-                      "No attributed claim blocks were extracted. This is inconclusive about the corpus and creates no finding.",
                   });
                 } else {
                   const oracle = makeMcpLogicOracle((server, tool, a) =>
@@ -1889,12 +1903,10 @@ ${skillContent}`,
                     },
                   );
                   const classified = classifyClaimVerdict(derivation, result);
-                  // A clean result over a capped prefix is not a clean corpus
-                  // result. Preserve it as an inconclusive run-memory record.
-                  const semantic =
-                    capped && classified.verdictKind === "no-contradiction"
-                      ? { ...classified, verdictKind: "inconclusive" as const }
-                      : classified;
+                  const semantic = applyExtractionCoverage(classified, {
+                    corpusComplete: extractionComplete,
+                    capped,
+                  });
                   const evaluatedNames = new Set([
                     ...result.vertices,
                     ...result.internallyInconsistent,
@@ -1999,13 +2011,18 @@ ${skillContent}`,
                           : semantic.verdictKind === "mixed"
                             ? `MIXED LOGICAL RESULTS — multiple semantic conflict kinds were found (${semanticSets}). Manual interpretation is required; no automatic finding will be stored.`
                             : semantic.verdictKind === "inconclusive"
-                              ? `INCONCLUSIVE — attribution or formalization validation failed, a check was undetermined, or the search was truncated. ${result.truncationNote ?? "Review formalizationWarnings."}`
+                              ? `INCONCLUSIVE — attribution, extraction completeness, or formalization validation failed; a check was undetermined; or the search was truncated. ${result.truncationNote ?? (inconclusiveCauses.length > 0 ? inconclusiveExtractionVerdict(inconclusiveCauses) : "Review formalizationWarnings.")}`
                               : `No contradiction within ${evaluated} evaluated assertion context(s) up to arity ${result.searchedToArity}.`;
                   output = JSON.stringify(
                     {
                       runLogId: runLog.runId,
                       capNote,
                       coverage,
+                      corpusCompletenessValidated: extractionComplete,
+                      verdictScope: extractionComplete
+                        ? "whole-corpus"
+                        : "accepted-claims",
+                      inconclusiveCauses,
                       distinctClaimsExtracted: new Set(
                         extraction.outcomes
                           .filter((outcome) => outcome.accepted)
@@ -2476,9 +2493,16 @@ ${skillContent}`,
               {
                 extractionMinimumMs:
                   settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS,
+                previousDurationMs: successfulToolDurations.get(fnName),
+                finalizationReserveMs: 30_000,
               },
             );
             if (!budgetDecision.allowed) {
+              deferredTool = {
+                name: fnName,
+                remainingMs: budgetDecision.remainingMs,
+                requiredMs: budgetDecision.requiredMs,
+              };
               const output = JSON.stringify(
                 {
                   status: budgetDecision.status,
@@ -2719,6 +2743,7 @@ ${skillContent}`,
 
             // Only successful calls count toward the output contract.
             if (outcome.ok) {
+              successfulToolDurations.set(fnName, elapsedMs);
               workflowContract.record(
                 fnName,
                 outcome.label,
@@ -2800,17 +2825,41 @@ ${skillContent}`,
             });
           }
         }
+        if (deferredTool && turnCount < maxTurns) {
+          finalResponsePending = true;
+          tools = [];
+          terminalStatus = "contract-unmet";
+          sendEvent("final_start", { status: terminalStatus });
+          historyMessages.push({
+            role: "user",
+            content: [
+              `${deferredTool.name} was deferred because the request budget could not safely fund it.`,
+              "Do not call or request more tools. Write the final user-facing response now.",
+              "Explicitly label the result PARTIAL / DEFERRED, name the unmet verification, and explain that persisted engine state can be continued in a new request.",
+            ].join("\n"),
+          });
+          runLog.event("finalization_required", {
+            reason: "tool-deferred",
+            tool: deferredTool.name,
+            remainingMs: deferredTool.remainingMs,
+            requiredMs: deferredTool.requiredMs,
+          });
+        }
       } else {
+        if (finalResponsePending) {
+          finalResponsePending = false;
+          isDone = true;
+          continue;
+        }
         // No tool calls — the model believes it is finished. Validate that
         // against the output contract rather than against a turn count: a run
         // that completed the workflow in three turns is done, and one that
         // burned six turns without ingesting anything is not.
         const contractNudge = workflowContract.nudge();
         if (contractNudge) {
-          const unmet = workflowContract
-            .evaluate()
-            .unmet.map((i) => i.id)
-            .join(", ");
+          const unmetItems = workflowContract.evaluate().unmet;
+          const unmetIds = unmetItems.map((item) => item.id);
+          const unmet = unmetIds.join(", ");
           console.log(
             `[Chat] Contract unmet at turn ${turnCount}/${maxTurns} (${unmet}) — nudging`,
           );
@@ -2820,6 +2869,14 @@ ${skillContent}`,
             contract: workflowContract.summary(),
           });
           historyMessages.push({ role: "user", content: contractNudge });
+          const allowedNames = toolNamesForUnmetWorkflow(unmetIds);
+          tools = tools.filter((tool) =>
+            allowedNames.has(String(tool?.function?.name ?? "")),
+          );
+          runLog.event("contract_tool_surface", {
+            turn: turnCount,
+            allowedTools: [...allowedNames],
+          });
         } else {
           // Contract satisfied, nudge budget spent, or the same gap was
           // already raised once — either way, stop. Bounded by construction.
@@ -2830,9 +2887,107 @@ ${skillContent}`,
 
     if (turnCount >= maxTurns && !isDone) {
       console.warn(`[Chat] Hit max turns (${maxTurns}) — forcing completion`);
-      sendEvent("system", {
-        content: "\n[Max tool iterations reached. Finalizing response.]\n",
+      terminalStatus = "max-turns";
+      const contractAtLimit = workflowContract.summary();
+      runLog.event("max_turns", {
+        turn: turnCount,
+        maxTurns,
+        contract: contractAtLimit,
       });
+      sendEvent("final_start", { status: terminalStatus });
+
+      const unmet = Array.isArray(contractAtLimit.items)
+        ? contractAtLimit.items
+            .filter(
+              (item: any) => item?.applicable === true && item?.satisfied !== true,
+            )
+            .map((item: any) => String(item.id))
+        : [];
+      const finalInstruction = [
+        "The tool-execution budget is exhausted. Do not call or request any more tools.",
+        "Write the final user-facing response now from the evidence already in the conversation.",
+        "Explicitly label the result PARTIAL / MAX-TURNS and do not claim the workflow completed.",
+        unmet.length > 0
+          ? `Unmet workflow requirements: ${unmet.join(", ")}.`
+          : "The workflow contract has no recorded unmet item, but the tool loop still exhausted its cap.",
+        "Distinguish verified findings from unresolved work and give the safest next action.",
+      ].join("\n");
+      historyMessages.push({ role: "user", content: finalInstruction });
+
+      const fallbackContent = [
+        "PARTIAL / MAX-TURNS — the tool-execution budget was exhausted before the workflow completed.",
+        unmet.length > 0
+          ? `Unmet workflow requirements: ${unmet.join(", ")}.`
+          : "The final workflow state could not be completed within this request.",
+        "The persisted engine state can be continued in a new request.",
+      ].join("\n\n");
+
+      try {
+        if (requestDeadline.remainingMs() <= 5_000) {
+          historyMessages.push({ role: "assistant", content: fallbackContent });
+          runLog.event("final_response_fallback", {
+            reason: "insufficient-request-budget",
+            remainingMs: requestDeadline.remainingMs(),
+          });
+        } else {
+          const compressed = await compress(historyMessages as any[], {
+            model: String(model),
+            timeout: Math.min(
+              30_000,
+              Math.max(1, requestDeadline.remainingMs()),
+            ),
+          });
+          const finalResult = await llmProvider.chat({
+            messages: compressed.messages as any[],
+            model,
+            // Deliberately omit tools: this call is the reserved final response,
+            // not an extension of the tool loop.
+            apiKey,
+            onToken: (t) => sendEvent("token", { content: t }),
+            onThinking: (t) => {
+              if (t) sendEvent("thinking", { content: t });
+            },
+            onUsage: (u) => sendEvent("usage", u),
+            signal: requestDeadline.signal,
+          });
+          lastResult = finalResult;
+          const finalContent = String(finalResult.content ?? "").trim();
+          runLog.turn(turnCount + 1, {
+            content: finalContent || fallbackContent,
+            thinking:
+              typeof finalResult.thinking === "string"
+                ? finalResult.thinking
+                : undefined,
+            finishReason:
+              typeof finalResult.finishReason === "string"
+                ? finalResult.finishReason
+                : undefined,
+            toolNames: [],
+            inputMessageCount: historyMessages.length,
+            compressedMessageCount: compressed.messages.length,
+            usage: finalResult.usage,
+          });
+          historyMessages.push({
+            role: "assistant",
+            content: finalContent || fallbackContent,
+          });
+          runLog.event("final_response", {
+            status: terminalStatus,
+            contentChars: finalContent.length,
+            usedFallback: finalContent.length === 0,
+            toolCallsIgnored: finalResult.tool_calls?.length ?? 0,
+          });
+        }
+      } catch (error) {
+        if (requestDeadline.timedOut) {
+          markRequestTimedOut(turnCount);
+        } else {
+          historyMessages.push({ role: "assistant", content: fallbackContent });
+          runLog.event("final_response_fallback", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
 
     // Attach metadata to the final assistant message
@@ -2853,11 +3008,20 @@ ${skillContent}`,
       };
     }
 
+    if (requestDeadline.timedOut) markRequestTimedOut(turnCount);
+    // No asynchronous work remains after this boundary. Stop the timer so a
+    // request that met its deadline cannot flip status between logging and SSE.
+    requestDeadline.dispose();
+    const termination = finalizeRunOutcome(
+      terminalStatus,
+      workflowContract.summary(),
+    );
+
     // Recalled findings only earn a citation when the final answer contains the
     // exact injected marker. This is the second half of retention accounting.
     let citedFindingIds: string[] = [];
     if (
-      terminalStatus === "completed" &&
+      termination.status === "completed" &&
       finalAssistantMessage?.content &&
       recalledFindingIds.length > 0
     ) {
@@ -2876,25 +3040,16 @@ ${skillContent}`,
       }
     }
 
-    if (requestDeadline.timedOut) markRequestTimedOut(turnCount);
-    // No asynchronous work remains after this boundary. Stop the timer so a
-    // request that met its deadline cannot flip status between logging and SSE.
-    requestDeadline.dispose();
-    const termination = finalizeRunOutcome(
-      terminalStatus,
-      workflowContract.summary(),
-    );
-
     const elapsed = Math.round((Date.now() - requestStartTime) / 1000);
     console.log(
-      `[Chat] Request ${terminalStatus}: ${turnCount} turns, ${elapsed}s elapsed`,
+      `[Chat] Request ${termination.status}: ${turnCount} turns, ${elapsed}s elapsed`,
     );
     runLog.end({
       turns: turnCount,
       elapsedSeconds: elapsed,
       recalledFindingIds,
       citedFindingIds,
-      status: terminalStatus,
+      status: termination.status,
       contract: termination.contract,
       recoveryLedger: recovery.snapshot(),
     });
@@ -2914,7 +3069,7 @@ ${skillContent}`,
       sendEvent("done", {
         session_id: sessionId,
         message: finalAssistantMessage,
-        status: terminalStatus,
+        status: termination.status,
       });
     }
   } catch (error) {

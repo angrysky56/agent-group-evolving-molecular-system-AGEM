@@ -13,7 +13,7 @@ const context = {
 };
 
 describe("automatic finding capture", () => {
-  it("captures a hand-authored conclusive verdict with structural formula keys", () => {
+  it("does not store hand-authored formalizations as corpus findings", () => {
     const captured = captureFindingFromTool(
       "evaluate_logical_consistency",
       {
@@ -34,14 +34,7 @@ describe("automatic finding capture", () => {
       context,
     );
 
-    expect(captured).toMatchObject({
-      method: "hand-authored",
-      outcome: "contradiction",
-      corpusId: "corpus-for-provenance",
-      verdict: "CONTRADICTION FOUND",
-    });
-    expect(captured?.supportingClaims).toHaveLength(2);
-    expect(captured?.supportingClaims.every((key) => key.startsWith("fol:"))).toBe(true);
+    expect(captured).toBeNull();
   });
 
   it("marks truncated clean searches inconclusive and preserves the caveat", () => {
@@ -58,8 +51,7 @@ describe("automatic finding capture", () => {
       }),
       context,
     );
-    expect(captured?.outcome).toBe("inconclusive");
-    expect(captured?.notRuledOut).toContain("Arity 4 was not searched.");
+    expect(captured).toBeNull();
   });
 
   it("captures derived claim keys and concrete evidence references", () => {

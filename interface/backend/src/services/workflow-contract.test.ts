@@ -7,7 +7,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createWorkflowContract } from "./workflow-contract.js";
+import {
+  createWorkflowContract,
+  toolNamesForUnmetWorkflow,
+} from "./workflow-contract.js";
 
 const uncontested = () => false;
 const contested = () => true;
@@ -137,13 +140,16 @@ describe("WorkflowContract — contested corpora", () => {
     );
   });
 
-  it("accepts verification via either MCP calling convention", () => {
+  it("does not treat one-off MCP proofs as corpus-level verification", () => {
     for (const label of ["mcp-logic/prove", "mcp-logic/find_counterexample"]) {
       const c = createWorkflowContract({ isContested: contested });
       c.record("run_agem_cycle");
       c.record("get_graph_topology");
       c.record("call_mcp_tool", label);
-      expect(c.evaluate().satisfied).toBe(true);
+      expect(c.evaluate().satisfied).toBe(false);
+      expect(
+        c.evaluate().items.find((item) => item.id === "verify")?.satisfied,
+      ).toBe(false);
     }
   });
 
@@ -169,6 +175,19 @@ describe("WorkflowContract — contested corpora", () => {
 });
 
 describe("WorkflowContract — boundedness", () => {
+  it("narrows a nudged turn to tools that can satisfy the remaining items", () => {
+    expect(toolNamesForUnmetWorkflow(["derive"])).toEqual(
+      new Set(["extract_and_verify_claims"]),
+    );
+    expect(toolNamesForUnmetWorkflow(["ingest", "inspect"])).toEqual(
+      new Set([
+        "run_agem_cycle",
+        "run_agem_cycles_sectioned",
+        "get_graph_topology",
+      ]),
+    );
+  });
+
   it("never raises the same unmet set twice", () => {
     // Repeating an ignored instruction is a loop, not recovery.
     const c = withCorpus();

@@ -29,10 +29,21 @@ export interface RunLogger {
   jsonlPath: string;
   mdPath: string;
   event(type: string, data: Record<string, unknown>): void;
+  turn(index: number, data: RunTurnLog): void;
   toolCall(name: string, args: unknown): void;
   toolResult(name: string, output: string): void;
   cycleIngest(text: string): void;
   end(summary: Record<string, unknown>): void;
+}
+
+export interface RunTurnLog {
+  content: string;
+  thinking?: string;
+  finishReason?: string;
+  toolNames: string[];
+  inputMessageCount: number;
+  compressedMessageCount: number;
+  usage?: unknown;
 }
 
 const NULL_LOGGER: RunLogger = {
@@ -40,6 +51,7 @@ const NULL_LOGGER: RunLogger = {
   jsonlPath: "",
   mdPath: "",
   event() {},
+  turn() {},
   toolCall() {},
   toolResult() {},
   cycleIngest() {},
@@ -63,9 +75,11 @@ export function createRunLogger(meta: {
   model: string;
   sessionId?: string;
   message?: string;
+  /** Injectable for tests; production logs still use KNOWLEDGE_BASE_PATH. */
+  basePath?: string;
 }): RunLogger {
   try {
-    const base = settings.all.KNOWLEDGE_BASE_PATH;
+    const base = meta.basePath ?? settings.all.KNOWLEDGE_BASE_PATH;
     const dir = join(base, "runs");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -129,6 +143,12 @@ export function createRunLogger(meta: {
       mdPath,
       event(type, data) {
         writeJsonl(type, data);
+      },
+      turn(index, data) {
+        writeJsonl("turn", { turn: index, ...data });
+        writeMd(
+          `### Assistant turn ${index} (${data.content.length} chars; tools: ${data.toolNames.join(", ") || "none"})\n\n${data.content.slice(0, 8000)}\n`,
+        );
       },
       toolCall(name, args) {
         const argStr = JSON.stringify(args ?? {});

@@ -94,6 +94,7 @@ export interface StreamCallbacks {
   onToolResult?: (tool: string, elapsedMs: number, output: string) => void;
   onUsage?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void;
   onClearStream?: () => void;
+  onFinalStart?: (status?: string) => void;
   onDone: (message: ChatMessage) => void;
   onError: (error: string) => void;
 }
@@ -154,6 +155,11 @@ export function streamChat(
             break;
           case "clear_stream":
             callbacks.onClearStream?.();
+            break;
+          case "final_start":
+            callbacks.onFinalStart?.(
+              typeof data.status === "string" ? data.status : undefined,
+            );
             break;
           case "tool_result":
             callbacks.onToolResult?.(

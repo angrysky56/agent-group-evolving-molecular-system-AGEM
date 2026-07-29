@@ -47,7 +47,11 @@ export interface ClaimBlockDerivation {
   sharedExistencePredicates: string[];
   /** Automatically generated non-vacuity axioms, keyed by derived block. */
   injectedAxioms: Record<string, string[]>;
-  rejected: Array<{ segmentId: string; reason: string }>;
+  rejected: Array<{
+    segmentId: string;
+    reason: string;
+    rejectionKind: "attribution" | "quality" | "conversion";
+  }>;
 }
 
 export interface DeriveClaimBlocksOptions {
@@ -149,6 +153,8 @@ function subjectLabels(claim: ExtractedClaim): string[] {
         ? "identified"
         : claim.kind === "causal-claim"
           ? "cause"
+          : claim.kind === "property-assertion"
+            ? "subject"
           : claim.kind === "entailment"
             ? "antecedent"
             : claim.kind === "distinction"
@@ -444,11 +450,17 @@ export async function deriveClaimBlocks(
       outcome.claimId &&
       !attributionIssue(outcome.claim),
   );
-  const rejected: ClaimBlockDerivation["rejected"] = [...attributionIssues];
+  const rejected: ClaimBlockDerivation["rejected"] = attributionIssues.map(
+    (issue) => ({ ...issue, rejectionKind: "attribution" }),
+  );
   const eligible = structurallyEligible.filter((outcome) => {
     const reason = claimQualityIssue(outcome.claim);
     if (!reason) return true;
-    rejected.push({ segmentId: outcome.segmentId, reason });
+    rejected.push({
+      segmentId: outcome.segmentId,
+      reason,
+      rejectionKind: "quality",
+    });
     return false;
   });
   const {
@@ -479,6 +491,7 @@ export async function deriveClaimBlocks(
       rejected.push({
         segmentId: outcome.segmentId,
         reason: "claim could not be converted to propositions",
+        rejectionKind: "conversion",
       });
       continue;
     }

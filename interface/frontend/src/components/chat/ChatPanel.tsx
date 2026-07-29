@@ -11,6 +11,7 @@ import { useSessionStore } from "../../stores/sessions";
 import { MessageBubble } from "./MessageBubble";
 import { InputBar } from "./InputBar";
 import { streamChat, createSession } from "../../api";
+import { selectFinalAssistantContent } from "../../chat-stream";
 import type { ChatMessage } from "@shared/types";
 
 const LOCAL_STRINGS = {
@@ -136,6 +137,11 @@ export function ChatPanel() {
               chat.setStreamingContent("");
             }
           },
+          onFinalStart: () => {
+            assistantText = "";
+            chat.setStreamingContent("");
+            setActiveToolResults([]);
+          },
           onDone: (message) => {
             chat.setIsStreaming(false);
             chat.setStreamingContent("");
@@ -145,9 +151,13 @@ export function ChatPanel() {
               tool_results: toolResults,
               usage: finalUsage,
             };
-            if (assistantText.length > (message.content?.length ?? 0)) {
-              message = { ...message, content: assistantText };
-            }
+            message = {
+              ...message,
+              content: selectFinalAssistantContent(
+                message.content,
+                assistantText,
+              ),
+            };
             chat.addMessage(message);
             chat.setAbortController(null);
             // Refresh the session list in case the backend auto-titled it

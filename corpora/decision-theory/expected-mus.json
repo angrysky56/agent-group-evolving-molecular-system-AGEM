@@ -2,18 +2,24 @@
   "corpus": "decision-theory",
   "note": "Smallest corpus in the set: 3 theories, 8 problems, 4 desiderata, 9 sections. Ingest one cycle per section into a named subgraph. Use as the smoke test before the QM corpus.",
   "revision": "2026-07-28: run 1 correctly REFUTED newcomb_lesion_tension because the corpus asserted the conclusion without its derivation. Sections 2 and 3 now carry the two bridging entailments explicitly. The refutation was a correct engine result against a defective corpus.",
-  "revision2": "2026-07-28: the bridging entailments were first written as nominalized antonyms ('dominance entails Newcomb-inadequacy'). That invites the extractor to mint newcomb_inadequacy as a POSITIVE predicate unrelated to newcomb_adequacy — the pseudo_negation pathology analyzeFormalization already has a warning code for, and one an alias map CANNOT repair since it cannot express 'A is the negation of B'. Rewritten as explicit negation ('any theory holding dominance is not Newcomb-adequate'). PRE-REGISTERED CHECK: grep the check log for newcomb_inadequacy or lesion_inadequacy appearing as standalone predicates. If either does, extraction is nominalizing negation and the arity-4 MUS will be missed for a third distinct reason.",
+  "revision2": "2026-07-28: the bridging entailments were first written as nominalized antonyms ('dominance entails Newcomb-inadequacy'). That invites the extractor to mint newcomb_inadequacy as a POSITIVE predicate unrelated to newcomb_adequacy — the pseudo_negation pathology analyzeFormalization already has a warning code for, and one an alias map CANNOT repair since it cannot express 'A is the negation of B'. Rewritten as explicit negation ('any theory holding dominance is not Newcomb-adequate'). PRE-REGISTERED CHECK: grep the check log for newcomb_inadequacy or lesion_inadequacy appearing as standalone predicates. If either does, extraction is nominalizing negation and the two bridge-based MUSes will be missed.",
+  "revision3": "2026-07-29: the former arity-4 target was not minimal. The two bridging rules make {dominance, newcomb_adequacy} and {evidential_responsiveness, lesion_adequacy} separate arity-2 MUSes. Consequently no three of the four desiderata are jointly satisfiable; the previous examples witnessed pairs, not triples.",
   "mustFind": [
     {
-      "id": "newcomb_lesion_tension",
-      "arity": 4,
-      "stances": ["dominance", "evidential_responsiveness", "newcomb_adequacy", "lesion_adequacy"],
-      "source": "Nozick 1969; Egan 2007; Ahmed 2014",
-      "note": "The central result. Requires the two bridging entailments from sections 2 and 3: dominance -> -newcomb_adequacy (Newcomb's payoff structure), evidential_responsiveness -> -lesion_adequacy (the lesion's confounded correlation). Without those the four desiderata are unrelated predicates and the set is trivially SAT — which is exactly what run 1 found.",
-      "requiresBridges": [
-        "all x (dominance(x) -> -newcomb_adequacy(x))",
-        "all x (evidential_responsiveness(x) -> -lesion_adequacy(x))"
-      ]
+      "id": "dominance_newcomb_incompatibility",
+      "arity": 2,
+      "stances": ["dominance", "newcomb_adequacy"],
+      "source": "Nozick 1969",
+      "note": "Newcomb's payoff structure yields dominance -> -newcomb_adequacy. The bridge and the two positive desiderata form the first actual minimal conflict.",
+      "requiresBridges": ["all x (dominance(x) -> -newcomb_adequacy(x))"]
+    },
+    {
+      "id": "evidential_lesion_incompatibility",
+      "arity": 2,
+      "stances": ["evidential_responsiveness", "lesion_adequacy"],
+      "source": "Egan 2007; Ahmed 2014",
+      "note": "The lesion's confounded correlation yields evidential_responsiveness -> -lesion_adequacy. The bridge and the two positive desiderata form the second actual minimal conflict.",
+      "requiresBridges": ["all x (evidential_responsiveness(x) -> -lesion_adequacy(x))"]
     },
     {
       "id": "ratifiability_impossible",

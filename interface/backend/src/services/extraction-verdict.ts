@@ -6,6 +6,7 @@ export type ExtractionFailureCode =
   | "storage-rejections"
   | "parse-failures"
   | "attribution-issues"
+  | "quality-rejections"
   | "conversion-rejections";
 
 export interface ExtractionFailureCause {
@@ -16,7 +17,11 @@ export interface ExtractionFailureCause {
 
 interface DerivationFailures {
   attributionIssues: Array<{ segmentId: string; reason: string }>;
-  rejected: Array<{ segmentId: string; reason: string }>;
+  rejected: Array<{
+    segmentId: string;
+    reason: string;
+    rejectionKind?: "attribution" | "quality" | "conversion";
+  }>;
 }
 
 /** Return only the failure channels that actually fired. */
@@ -34,7 +39,13 @@ export function extractionFailureCauses(
     ),
   );
   const conversionRejections = derivation.rejected.filter(
-    (issue) => !attributionIssueKeys.has(`${issue.segmentId}\n${issue.reason}`),
+    (issue) =>
+      issue.rejectionKind === "conversion" ||
+      (issue.rejectionKind === undefined &&
+        !attributionIssueKeys.has(`${issue.segmentId}\n${issue.reason}`)),
+  ).length;
+  const qualityRejections = derivation.rejected.filter(
+    (issue) => issue.rejectionKind === "quality",
   ).length;
 
   return [
@@ -64,6 +75,11 @@ export function extractionFailureCauses(
       message: "derived claim(s) lacked a valid assertion context",
     },
     {
+      code: "quality-rejections" as const,
+      count: qualityRejections,
+      message: "accepted claim(s) failed deterministic quality validation",
+    },
+    {
       code: "conversion-rejections" as const,
       count: conversionRejections,
       message: "accepted claim(s) could not be converted into logic",
@@ -81,4 +97,27 @@ export function inconclusiveExtractionVerdict(
     `INCONCLUSIVE EXTRACTION — ${detail || "the extraction was incomplete"}. ` +
     "No logical verdict was computed and no finding may be stored."
   );
+}
+
+/**
+ * Missing claims cannot invalidate an UNSAT witness over accepted claims, but
+ * they do invalidate a clean whole-corpus result. Preserve that asymmetry.
+ */
+export function applyExtractionCoverage<
+  T extends { verdictKind: string; semanticsValidated: boolean },
+>(
+  verdict: T,
+  coverage: { corpusComplete: boolean; capped: boolean },
+): T {
+  if (
+    verdict.verdictKind === "no-contradiction" &&
+    (!coverage.corpusComplete || coverage.capped)
+  ) {
+    return {
+      ...verdict,
+      verdictKind: "inconclusive",
+      semanticsValidated: false,
+    };
+  }
+  return verdict;
 }

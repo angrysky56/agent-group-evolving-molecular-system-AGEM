@@ -54,10 +54,12 @@ describe("ConfigService — update and Zod schema re-validation", () => {
   });
 
   it("provides a configurable positive request deadline", () => {
+    const originalTurns = settings.all.CHAT_MAX_TURNS;
     const original = settings.all.CHAT_REQUEST_TIMEOUT_MS;
     const originalExtractionMinimum =
       settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS;
-    expect(original).toBe(30 * 60 * 1000);
+    expect(originalTurns).toBe(48);
+    expect(original).toBe(45 * 60 * 1000);
     expect(originalExtractionMinimum).toBe(8 * 60 * 1000);
 
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 90_000 } as any)).toBe(
@@ -65,6 +67,10 @@ describe("ConfigService — update and Zod schema re-validation", () => {
     );
     expect(settings.all.CHAT_REQUEST_TIMEOUT_MS).toBe(90_000);
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: 0 } as any)).toBe(false);
+    expect(settings.update({ CHAT_MAX_TURNS: 24 } as any)).toBe(true);
+    expect(settings.all.CHAT_MAX_TURNS).toBe(24);
+    expect(settings.update({ CHAT_MAX_TURNS: 0 } as any)).toBe(false);
+    expect(settings.update({ CHAT_MAX_TURNS: 1.5 } as any)).toBe(false);
     expect(
       settings.update({ CLAIM_EXTRACTION_MIN_REMAINING_MS: 120_000 } as any),
     ).toBe(true);
@@ -76,6 +82,7 @@ describe("ConfigService — update and Zod schema re-validation", () => {
     expect(settings.update({ CHAT_REQUEST_TIMEOUT_MS: original } as any)).toBe(
       true,
     );
+    expect(settings.update({ CHAT_MAX_TURNS: originalTurns } as any)).toBe(true);
     expect(
       settings.update({
         CLAIM_EXTRACTION_MIN_REMAINING_MS: originalExtractionMinimum,

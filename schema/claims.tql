@@ -107,6 +107,14 @@ define
     relates effect @card(1),
     owns polarity @card(1);
 
+  # Ordinary predication: a named theory or entity has (or lacks) a property.
+  # Keeping this distinct from entailment prevents "CDT holds dominance" from
+  # being reversed into the invalid rule dominance(x) -> cdt(x).
+  relation property-assertion sub claim,
+    relates subject @card(1),
+    relates property @card(1),
+    owns polarity @card(1);
+
   # #10: multiple realizability vs substrate independence — one is strictly
   # stronger, so the relation is directional and must not be read symmetrically.
   relation entailment sub claim,
@@ -129,6 +137,8 @@ define
     plays exclusion:excluded,
     plays causal-claim:cause,
     plays causal-claim:effect,
+    plays property-assertion:subject,
+    plays property-assertion:property,
     plays entailment:antecedent,
     plays entailment:consequent;
 

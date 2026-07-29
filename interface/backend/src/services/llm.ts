@@ -41,6 +41,7 @@ export interface ChatCompletionResult {
   content: string;
   thinking?: string;
   tool_calls?: any[];
+  finishReason?: string;
   usage: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -489,6 +490,7 @@ class OpenRouterProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let fullContent = "";
     let thinking = "";
+    let finishReason: string | undefined;
     let toolCallsMap: Record<number, any> = {};
     let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
@@ -598,8 +600,9 @@ class OpenRouterProvider implements LLMProvider {
           }
 
           // Detect truncation or completion
-          const finishReason = parsed.choices?.[0]?.finish_reason;
-          if (finishReason === "length") {
+          const parsedFinishReason = parsed.choices?.[0]?.finish_reason;
+          if (parsedFinishReason) finishReason = parsedFinishReason;
+          if (parsedFinishReason === "length") {
             console.warn(
               `[LLM] OpenRouter response truncated (finish_reason=length). Increase max_tokens.`,
             );
@@ -617,6 +620,7 @@ class OpenRouterProvider implements LLMProvider {
       content: fullContent,
       thinking: thinking || undefined,
       tool_calls: finalToolCalls,
+      finishReason,
       usage,
     };
   }

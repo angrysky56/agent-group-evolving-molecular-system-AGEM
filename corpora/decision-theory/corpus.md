@@ -100,12 +100,16 @@ Therefore **every theory fails at least one of the four properties**: a theory
 that holds dominance is not Newcomb-adequate, and a theory that holds evidential
 responsiveness is not lesion-adequate. This is not merely a fact about the three
 named theories; it follows from the payoff structure of the two problems together
-with the definitions of the four properties. Any three of the four are jointly
-satisfiable:
+with the definitions of the four properties. In fact, **no three of the four are
+jointly satisfiable**: every three-property subset contains either dominance +
+Newcomb-adequacy or evidential responsiveness + lesion-adequacy.
 
-- dominance + lesion-adequacy, dropping evidential responsiveness, gives CDT.
-- evidential responsiveness + Newcomb-adequacy, dropping dominance, gives EDT.
-- Newcomb-adequacy + lesion-adequacy, dropping dominance-over-acts, gives FDT.
+The maximal satisfiable subsets under these two incompatibility rules are pairs:
+
+- dominance + evidential responsiveness.
+- dominance + lesion-adequacy, as exemplified by CDT.
+- evidential responsiveness + Newcomb-adequacy, as exemplified by EDT.
+- Newcomb-adequacy + lesion-adequacy, as exemplified by FDT.
 
 FDT's escape is distinctive: it does not weaken a desideratum, it changes the
 object of evaluation from acts to policies. Whether policy-dominance counts as
