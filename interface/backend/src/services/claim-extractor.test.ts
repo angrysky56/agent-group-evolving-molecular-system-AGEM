@@ -5,6 +5,7 @@ import {
   buildCorpusGlossaryPrompt,
   claimIdentity,
   claimAttributionIssue,
+  claimSourceSemanticIssue,
   claimSchemaIssue,
   claimVocabularyIssue,
   claimToPropositions,
@@ -183,6 +184,42 @@ describe("claim identity for finding evidence", () => {
     expect(claimSchemaIssue(normalized)).toBeNull();
   });
 
+  it("mechanically repairs flattened role fields and object-shaped position scope", () => {
+    const normalized = normalizeClaimExtras({
+      kind: "property-assertion",
+      subject: "copenhagen",
+      property: "psi-epistemic",
+      roles: {},
+      scope: { positionId: "copenhagen" },
+      polarity: "asserts",
+    } as unknown as ExtractedClaim);
+
+    expect(normalized).toEqual({
+      kind: "property-assertion",
+      roles: { subject: "copenhagen", property: "psi-epistemic" },
+      scope: "position",
+      positionId: "copenhagen",
+      polarity: "asserts",
+    });
+    expect(claimSchemaIssue(normalized)).toBeNull();
+  });
+
+  it("lifts flattened distinction values but still rejects a collapsed pair", () => {
+    const normalized = normalizeClaimExtras({
+      kind: "distinction",
+      distinguished: ["wavefunction-status", "wavefunction-status"],
+      roles: {},
+      scope: "corpus",
+      differenceKind: "in-kind",
+    } as unknown as ExtractedClaim);
+
+    expect(normalized.roles.distinguished).toEqual([
+      "wavefunction-status",
+      "wavefunction-status",
+    ]);
+    expect(claimSchemaIssue(normalized)).toMatch(/found 1/);
+  });
+
   it("mechanically lifts nominalized no-negation into structural polarity", () => {
     expect(
       normalizeClaimExtras({
@@ -280,18 +317,20 @@ describe("claim identity for finding evidence", () => {
       [
         {
           label: "mental-state",
+          kind: "entity",
           definition: "a mental state",
           sourceForms: ["mind", "it"],
         },
         {
           label: "physical-event",
+          kind: "entity",
           definition: "a physical event",
           sourceForms: ["physical events"],
         },
       ],
       true,
     );
-    expect(prompt).toContain("CLOSED CORPUS VOCABULARY");
+    expect(prompt).toContain("CLOSED CORPUS ROLE VOCABULARY");
     expect(prompt).toContain("mental-state");
     expect(prompt).toContain("no new symbols are permitted");
     expect(prompt).toContain('to "unmappable"');
@@ -330,6 +369,7 @@ describe("claim identity for finding evidence", () => {
         glossary: [
           {
             label: "dominance",
+            kind: "property",
             definition: "the dominance property",
             sourceForms: ["theory holding dominance", "dominance"],
           },
@@ -338,10 +378,52 @@ describe("claim identity for finding evidence", () => {
     ).toEqual([
       {
         label: "dominance",
+        kind: "property",
         definition: "the dominance property",
         sourceForms: ["dominance", "theory holding dominance"],
       },
     ]);
+    expect(
+      parseClosedGlossary({
+        glossary: [
+          {
+            label: "wavefunction-status",
+            kind: "axis",
+            axisEncoding: "categorical",
+            definition: "status of psi",
+            sourceForms: ["Wavefunction status"],
+            values: ["psi-ontic", "psi-epistemic"],
+          },
+          {
+            label: "psi-ontic",
+            kind: "axis-value",
+            axis: "wavefunction-status",
+            definition: "psi is physical",
+            sourceForms: [],
+          },
+          {
+            label: "psi-epistemic",
+            kind: "axis-value",
+            axis: "wavefunction-status",
+            definition: "psi is informational",
+            sourceForms: [],
+          },
+        ],
+      }),
+    ).not.toBeNull();
+    expect(
+      parseClosedGlossary({
+        glossary: [
+          {
+            label: "wavefunction-status",
+            kind: "axis",
+            axisEncoding: "categorical",
+            definition: "status of psi",
+            values: ["wavefunction-status", "wavefunction-status"],
+          },
+        ],
+      }),
+    ).toBeNull();
     expect(
       parseClosedGlossary({
         glossary: [{ label: "act-itself", definition: "the act" }],
@@ -373,13 +455,19 @@ describe("claim identity for finding evidence", () => {
       }),
     ).toEqual({
       claims: [],
-      unmappable: ["No glossary label represents calibration."],
+      unmappable: [
+        {
+          reason: "No glossary label represents calibration.",
+          candidateLabels: [],
+        },
+      ],
     });
     expect(parseSegmentProposal({ claims: [] }, true)).toBeNull();
 
     const glossary = [
       {
         label: "dominance",
+        kind: "property" as const,
         definition: "the dominance property",
         sourceForms: ["theory that holds dominance"],
       },
@@ -403,6 +491,68 @@ describe("claim identity for finding evidence", () => {
           kind: "property-assertion",
           roles: { subject: "dominance", property: "dominance" },
           scope: "corpus",
+          polarity: "asserts",
+        },
+        glossary,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps axis headings out of the predicate vocabulary", () => {
+    const glossary = parseClosedGlossary({
+      glossary: [
+        {
+          label: "wavefunction-status",
+          kind: "axis",
+          axisEncoding: "categorical",
+          definition: "status of psi",
+          values: ["psi-ontic", "psi-epistemic"],
+        },
+        {
+          label: "psi-ontic",
+          kind: "axis-value",
+          axis: "wavefunction-status",
+          definition: "psi is physical",
+        },
+        {
+          label: "psi-epistemic",
+          kind: "axis-value",
+          axis: "wavefunction-status",
+          definition: "psi is informational",
+        },
+        {
+          label: "consistent-histories",
+          kind: "entity",
+          definition: "the consistent histories position",
+        },
+      ],
+    })!;
+
+    expect(
+      claimVocabularyIssue(
+        {
+          kind: "property-assertion",
+          roles: {
+            subject: "consistent-histories",
+            property: "wavefunction-status",
+          },
+          scope: "position",
+          positionId: "consistent-histories",
+          polarity: "denies",
+        },
+        glossary,
+      ),
+    ).toMatch(/metadata-only axis/i);
+    expect(
+      claimVocabularyIssue(
+        {
+          kind: "property-assertion",
+          roles: {
+            subject: "consistent-histories",
+            property: "psi-epistemic",
+          },
+          scope: "position",
+          positionId: "consistent-histories",
           polarity: "asserts",
         },
         glossary,
@@ -447,6 +597,33 @@ describe("claim identity for finding evidence", () => {
     };
 
     expect(claimAttributionIssue(rule, source)).toBeNull();
+  });
+
+  it("refuses to turn an n-ary no-go theorem into pairwise exclusions", () => {
+    const claim: ExtractedClaim = {
+      kind: "exclusion",
+      roles: { excluder: "bell-theorem", excluded: "locality" },
+      scope: "corpus",
+    };
+
+    expect(
+      claimSourceSemanticIssue(
+        claim,
+        "No position can hold all of: locality, hidden variables, measurement independence, and empirical adequacy.",
+      ),
+    ).toMatch(/joint incompatibility.*pairwise exclusions/i);
+    expect(
+      claimSourceSemanticIssue(
+        claim,
+        "No position can hold all three of: universal quantum theory, agent consistency, and single outcomes.",
+      ),
+    ).toMatch(/joint incompatibility/i);
+    expect(
+      claimSourceSemanticIssue(
+        claim,
+        "Every theory that holds dominance is not Newcomb-adequate.",
+      ),
+    ).toBeNull();
   });
 
   it("does not mistake the decision-theory universal rule for named attribution", () => {

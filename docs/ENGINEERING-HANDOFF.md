@@ -206,12 +206,31 @@ times before the block was dropped from the search.
 AGEM now catches this locally (`inconsistent_arity`). The upstream fix belongs
 in mcp-logic: validate the statement SET, not each statement in isolation.
 
-**4.2 Extraction produced junk predicates (closed-vocabulary fix complete).** Seen in real output:
+**4.2 Extraction produced junk predicates (closed vocabulary plus axis guard implemented).** Seen in real output:
 `all x (this(x) -> contiguous_codon_domains(x))` — a pronoun promoted to a
 predicate — and `causes_makes_the_comparison_quantitative(x)`. Pass one now
 resolves coreference over the whole corpus; pass two can use only its closed
 labels. Any escaped label is deterministically rejected, and unmappable claims
 are surfaced as an inconclusive extraction rather than silently accepted.
+
+The QM run `2026-07-29T18-38-25-991Z_ajovtf` exposed two follow-on defects. The
+model flattened required roles beside an empty `roles` object and emitted
+position scope as `{positionId: ...}`; the normalizer now repairs that envelope
+mechanically. More importantly, pass one put category headings such as
+`wavefunction-status` in the predicate vocabulary. Glossary entries now type
+categorical or signed-property axes, and metadata-only axis labels are forbidden
+in claim roles. The apparent Consistent Histories contradiction was exactly the
+invalid pair `wavefunction_status(entity_consistent_histories)` and its
+negation—not a corpus finding.
+
+That run did make 7 logic-engine checks (2 internal checks and 5 core probes),
+despite its incomplete extraction. Incomplete extraction now aborts before
+cohomology with `proverCalls: 0`; a propose-only repair loop can rank bounded
+same-segment candidates through `mcp-logic.abductive_explain`, but never applies
+them. Joint no-go statements such as “no position can hold all of A, B, C” are
+also rejected rather than falsely split into three pairwise exclusions. The
+current binary claim schema still needs an n-ary joint-incompatibility relation
+before the QM `mustFind` contract can pass.
 
 **4.3 Output token cap is not exposed in the UI.** `OPENROUTER_MAX_TOKENS` is
 now 32768 in `.env` (was a hardcoded-feeling 16384 default). The configured

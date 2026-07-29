@@ -74,15 +74,31 @@ export interface ExtractionOutcome {
 export interface ClosedGlossaryEntry {
   /** Exact role label the claim pass must use. */
   label: string;
+  /** Axes are metadata only; their values, never the heading, fill claim roles. */
+  kind:
+    | "entity"
+    | "property"
+    | "relation"
+    | "constraint"
+    | "axis"
+    | "axis-value";
   /** Human-auditable meaning used by the claim pass for forced choice. */
   definition: string;
   /** Surface forms this entry intentionally collapses. */
   sourceForms: string[];
+  /** Required on an axis-value and names its metadata-only axis entry. */
+  axis?: string;
+  /** Categorical axes use distinct values; signed axes assert/deny one property. */
+  axisEncoding?: "categorical" | "signed-property";
+  /** Required on an axis and names its eligible value/property labels. */
+  values?: string[];
 }
 
 export interface UnmappableClaim {
   segmentId: string;
   reason: string;
+  /** Source-grounded glossary additions for propose-only repair. */
+  candidateLabels?: string[];
 }
 
 export interface ExtractionReport {
@@ -135,7 +151,7 @@ export function parseClaimArray(value: unknown): ExtractedClaim[] | null {
 
 interface SegmentProposal {
   claims: ExtractedClaim[];
-  unmappable: string[];
+  unmappable: Array<{ reason: string; candidateLabels: string[] }>;
 }
 
 /** Parse the closed-pass envelope while retaining old array responses. */
@@ -154,7 +170,7 @@ export function parseSegmentProposal(
     return requireUnmappableField ? null : { claims, unmappable: [] };
   }
   if (!Array.isArray(raw)) return null;
-  const unmappable: string[] = [];
+  const unmappable: SegmentProposal["unmappable"] = [];
   for (const item of raw) {
     const reason =
       typeof item === "string"
@@ -163,7 +179,20 @@ export function parseSegmentProposal(
           ? String((item as { reason?: unknown }).reason ?? "").trim()
           : "";
     if (!reason) return null;
-    unmappable.push(reason);
+    const rawCandidates =
+      item && typeof item === "object"
+        ? (item as { candidateLabels?: unknown }).candidateLabels
+        : undefined;
+    if (rawCandidates !== undefined && !Array.isArray(rawCandidates)) return null;
+    const candidateLabels = [
+      ...new Set(
+        (Array.isArray(rawCandidates) ? rawCandidates : [])
+          .filter((candidate): candidate is string => typeof candidate === "string")
+          .map((candidate) => candidate.trim())
+          .filter((candidate) => GLOSSARY_LABEL.test(candidate)),
+      ),
+    ].sort();
+    unmappable.push({ reason, candidateLabels });
   }
   return { claims, unmappable };
 }
@@ -207,15 +236,28 @@ export function parseClosedGlossary(value: unknown): ClosedGlossaryEntry[] | nul
     if (!item || typeof item !== "object") return null;
     const source = item as {
       label?: unknown;
+      kind?: unknown;
       definition?: unknown;
       sourceForms?: unknown;
+      axis?: unknown;
+      axisEncoding?: unknown;
+      values?: unknown;
     };
     const label = String(source.label ?? "").trim();
+    const kind = String(source.kind ?? "").trim() as ClosedGlossaryEntry["kind"];
     const definition = String(source.definition ?? "").trim();
     const labelTokens = label.split(/[-_]+/);
     const symbolKey = formalSymbol(label);
     if (
       !GLOSSARY_LABEL.test(label) ||
+      ![
+        "entity",
+        "property",
+        "relation",
+        "constraint",
+        "axis",
+        "axis-value",
+      ].includes(kind) ||
       labelTokens.some((token) => PRONOUN_LABELS.has(token)) ||
       !definition ||
       labels.has(label) ||
@@ -234,9 +276,68 @@ export function parseClosedGlossary(value: unknown): ClosedGlossaryEntry[] | nul
           .filter(Boolean),
       ),
     ].sort();
+    const axis = typeof source.axis === "string" ? source.axis.trim() : undefined;
+    const axisEncoding =
+      source.axisEncoding === "categorical" || source.axisEncoding === "signed-property"
+        ? source.axisEncoding
+        : undefined;
+    if (axis !== undefined && !GLOSSARY_LABEL.test(axis)) return null;
+    if (source.values !== undefined && !Array.isArray(source.values)) return null;
+    const values = [
+      ...new Set(
+        (Array.isArray(source.values) ? source.values : [])
+          .filter((axisValue): axisValue is string => typeof axisValue === "string")
+          .map((axisValue) => axisValue.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (
+      kind === "axis" &&
+      (axis !== undefined ||
+        !axisEncoding ||
+        (axisEncoding === "categorical" ? values.length < 2 : values.length !== 1))
+    ) {
+      return null;
+    }
+    if (kind === "axis-value" && (!axis || values.length > 0)) return null;
+    if (
+      kind !== "axis" &&
+      kind !== "axis-value" &&
+      (axis || axisEncoding || values.length > 0)
+    ) {
+      return null;
+    }
+    if (kind !== "axis" && axisEncoding) return null;
     labels.add(label);
     symbolKeys.add(symbolKey);
-    entries.push({ label, definition, sourceForms });
+    entries.push({
+      label,
+      kind,
+      definition,
+      sourceForms,
+      ...(axis ? { axis } : {}),
+      ...(axisEncoding ? { axisEncoding } : {}),
+      ...(values.length > 0 ? { values } : {}),
+    });
+  }
+  const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
+  for (const entry of entries) {
+    if (entry.kind === "axis") {
+      if (entry.axisEncoding === "categorical") {
+        if (
+          entry.values!.some(
+            (axisValue) =>
+              byLabel.get(axisValue)?.kind !== "axis-value" ||
+              byLabel.get(axisValue)?.axis !== entry.label,
+          )
+        ) {
+          return null;
+        }
+      } else if (byLabel.get(entry.values![0])?.kind !== "property") return null;
+    } else if (entry.kind === "axis-value") {
+      const parent = byLabel.get(entry.axis!);
+      if (parent?.kind !== "axis" || !parent.values?.includes(entry.label)) return null;
+    }
   }
   return entries.sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -246,12 +347,26 @@ export function claimVocabularyIssue(
   claim: ExtractedClaim,
   glossary: readonly ClosedGlossaryEntry[],
 ): string | null {
-  const allowed = new Set(glossary.map(({ label }) => label));
-  const outside = Object.values(claim.roles ?? {})
+  const allowed = new Set(
+    glossary.filter(({ kind }) => kind !== "axis").map(({ label }) => label),
+  );
+  const roleValues = Object.values(claim.roles ?? {})
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .map(String)
     .map((value) => value.trim())
-    .filter((value) => value && !allowed.has(value));
+    .filter(Boolean);
+  const axisLabels = new Set(
+    glossary.filter(({ kind }) => kind === "axis").map(({ label }) => label),
+  );
+  const usedAxes = roleValues.filter((value) => axisLabels.has(value));
+  if (usedAxes.length > 0) {
+    return `closed vocabulary: metadata-only axis label(s) cannot fill claim roles; choose the declared value/property and structural polarity: ${[
+      ...new Set(usedAxes),
+    ]
+      .sort()
+      .join(", ")}`;
+  }
+  const outside = roleValues.filter((value) => !allowed.has(value));
   return outside.length > 0
     ? `closed vocabulary: role label(s) not in the corpus glossary: ${[
         ...new Set(outside),
@@ -266,13 +381,47 @@ export function claimVocabularyIssue(
  * This is deliberately structural: it never guesses semantic aliases.
  */
 export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
-  const source = claim as ExtractedClaim & {
+  const source = claim as unknown as Record<string, unknown> & {
+    kind: ClaimKind;
+    roles?: Record<string, string | string[]>;
     extra?: { polarity?: unknown; differenceKind?: unknown };
+    scope?: unknown;
   };
   const normalized = {
     ...claim,
     roles: { ...(claim.roles ?? {}) },
   } as ExtractedClaim & { extra?: unknown };
+  const roleNamesByKind: Partial<Record<ClaimKind, string[]>> = {
+    distinction: ["distinguished"],
+    dissociation: ["dissociable"],
+    "identity-claim": ["identified", "identified-with"],
+    exclusion: ["excluder", "excluded"],
+    "causal-claim": ["cause", "effect"],
+    "property-assertion": ["subject", "property"],
+    entailment: ["antecedent", "consequent"],
+  };
+  for (const role of roleNamesByKind[normalized.kind] ?? []) {
+    const flattened = source[role];
+    if (
+      normalized.roles[role] === undefined &&
+      (typeof flattened === "string" ||
+        (Array.isArray(flattened) && flattened.every((value) => typeof value === "string")))
+    ) {
+      normalized.roles[role] = flattened as string | string[];
+    }
+    delete (normalized as unknown as Record<string, unknown>)[role];
+  }
+  if (source.scope && typeof source.scope === "object") {
+    const rawScope = source.scope as { positionId?: unknown; type?: unknown };
+    const scopedPosition =
+      typeof rawScope.positionId === "string"
+        ? rawScope.positionId.trim()
+        : "";
+    if (scopedPosition) normalized.scope = "position";
+    else if (rawScope.type === "corpus") normalized.scope = "corpus";
+    else delete (normalized as unknown as Record<string, unknown>).scope;
+    if (scopedPosition && !normalized.positionId) normalized.positionId = scopedPosition;
+  }
   const ownsPolarity =
     normalized.kind === "causal-claim" ||
     normalized.kind === "property-assertion" ||
@@ -356,6 +505,25 @@ export function claimAttributionIssue(
     return (
       "attribution flattening detected: the source reports what a named holder " +
       "asserts, but the extracted claim was scoped to the corpus"
+    );
+  }
+  return null;
+}
+
+/** Reject source constructions that the current binary relation schema cannot preserve. */
+export function claimSourceSemanticIssue(
+  claim: ExtractedClaim,
+  sourceText = "",
+): string | null {
+  if (
+    claim.kind === "exclusion" &&
+    /\bno\s+(?:position|theor(?:y|ies)|view|account|model)\s+can\s+hold\s+all(?:\s+(?:three|four|five|\d+))?\s+(?:of\s*)?:?/i.test(
+      sourceText,
+    )
+  ) {
+    return (
+      "schema expressivity: a joint incompatibility cannot be split into pairwise " +
+      "exclusions; doing so would falsely say each conjunct is individually impossible"
     );
   }
   return null;
@@ -489,7 +657,7 @@ function glossaryEntry(
   value: string | ClosedGlossaryEntry,
 ): ClosedGlossaryEntry {
   return typeof value === "string"
-    ? { label: value, definition: value, sourceForms: [] }
+    ? { label: value, kind: "property", definition: value, sourceForms: [] }
     : value;
 }
 
@@ -515,8 +683,8 @@ export function buildCorpusGlossaryPrompt(
   return `Read the ENTIRE numbered corpus and propose the smallest adequate CLOSED
 formal vocabulary for extracting its explicit claims. Output JSON only.
 
-Return exactly:
-{"glossary":[{"label":"dominance","definition":"a decision rule preferring an act better in every state","sourceForms":["dominance principle","theory that holds dominance"]}]}
+Return exactly this shape:
+{"glossary":[{"label":"wavefunction-status","kind":"axis","axisEncoding":"categorical","definition":"the corpus classification axis for the status of psi","sourceForms":["Wavefunction status"],"values":["psi-ontic","psi-epistemic"]},{"label":"psi-ontic","kind":"axis-value","axis":"wavefunction-status","definition":"psi represents an observer-independent physical state","sourceForms":["psi ontic"]},{"label":"psi-epistemic","kind":"axis-value","axis":"wavefunction-status","definition":"psi represents knowledge or information rather than an observer-independent physical state","sourceForms":["psi epistemic"]},{"label":"collapse-status","kind":"axis","axisEncoding":"signed-property","definition":"whether real dynamical collapse occurs","sourceForms":["collapse"],"values":["collapse"]},{"label":"collapse","kind":"property","definition":"a real dynamical collapse occurs","sourceForms":["real collapse","no collapse"]},{"label":"dominance","kind":"property","definition":"a decision rule preferring an act better in every state","sourceForms":["dominance principle","theory that holds dominance"]}]}
 
 Rules:
 - Each label is a lowercase hyphenated or underscored canonical symbol. It names
@@ -527,6 +695,20 @@ Rules:
 - Include every concept needed as a typed claim role, including named theories,
   acts, properties, causes, and effects. Attribution holders are positionId
   metadata and need not be duplicated merely for attribution.
+- Classify entries as entity, property, relation, constraint, axis, or axis-value.
+  An axis is a category heading such as "wavefunction status" or "outcomes";
+  it has no truth value and is metadata only. A categorical binary "X vs Y"
+  axis uses axisEncoding "categorical", lists two distinct axis-value labels,
+  and each value points back with axis. Never collapse opposed positive values
+  such as psi-ontic/psi-epistemic, deterministic/stochastic, or
+  single-outcome/many-outcomes.
+- A lexical positive/negative opposition such as collapse/no collapse uses
+  axisEncoding "signed-property" and lists exactly one positive property label.
+  The claim pass asserts or denies that property structurally. Never create a
+  no-*, not-*, or non-* label merely to carry grammatical negation.
+- Axis headings can NEVER fill a claim role or become a Boolean predicate. A
+  position has one of the axis-value properties; it does not assert or deny the
+  axis name itself.
 - Negation is not a concept. "no act is ratifiable", "not ratifiable", and
   "unratifiable" all use the positive label "ratifiable"; the claim pass records
   denial structurally.
@@ -560,28 +742,40 @@ export function buildClaimExtractionPrompt(
     .join("\n");
 
   const entries = glossary.map(glossaryEntry);
+  const eligibleEntries = entries.filter(({ kind }) => kind !== "axis");
+  const axes = entries.filter(({ kind }) => kind === "axis");
   const glossarySection = !closedVocabulary && entries.length === 0
     ? ""
-    : `\nCLOSED CORPUS VOCABULARY (pass one; immutable):\n${entries
+    : `\nCLOSED CORPUS ROLE VOCABULARY (pass one; immutable):\n${eligibleEntries
         .map(
-          ({ label, definition, sourceForms }) =>
-            `- ${label}: ${definition}${
+          ({ label, kind, definition, sourceForms, axis }) =>
+            `- ${label} [${kind}${axis ? ` of ${axis}` : ""}]: ${definition}${
               sourceForms.length > 0
                 ? ` [covers: ${sourceForms.join("; ")}]`
                 : ""
             }`,
         )
         .join("\n")}
+\nMETADATA-ONLY AXES (never copy an axis label into a claim role):\n${axes
+        .map(
+          ({ label, definition, values, axisEncoding }) =>
+            `- ${label} [${axisEncoding}]: ${definition} [${
+              axisEncoding === "signed-property" ? "assert or deny" : "choose one of"
+            }: ${(values ?? []).join("; ")}]`,
+        )
+        .join("\n")}
 Every role value MUST be one of the labels above, copied exactly. Forced choice
 means no new symbols are permitted. Resolve paraphrases, relativizers, and
 pronouns to the matching label. If an explicit claim cannot be represented with
-these labels, omit that claim and add {"reason":"..."} to "unmappable" instead
-of minting a label.\n`;
+these labels, omit that claim and add
+{"reason":"...","candidateLabels":["source-grounded-label"]} to "unmappable"
+instead of minting a role label. Candidate labels are repair hypotheses only;
+they are never added or applied by this extraction pass.\n`;
   const emptyOutput = closedVocabulary
     ? '{"claims":[],"unmappable":[]}'
     : '{"claims":[]}';
   const outputShape = closedVocabulary
-    ? '{"claims":[],"unmappable":[]} when there are no claims, or the same envelope with typed claim objects whose role values are copied exactly from the closed labels above. An unmappable item has shape {"reason":"why no closed label fits"}.'
+    ? '{"claims":[],"unmappable":[]} when there are no claims, or the same envelope with typed claim objects whose role values are copied exactly from the closed role labels above. An unmappable item has shape {"reason":"why no closed label fits","candidateLabels":["one-or-more source-grounded glossary additions"]}.'
     : '{"claims":[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},{"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]}';
 
   return `Extract the explicit claims from ONE sentence. Output JSON only.
@@ -599,7 +793,12 @@ Rules:
 - Concept labels are semantic concepts, not surface-form noun phrases. When a
   closed vocabulary is supplied below, copy its labels exactly.
 - A "distinction" needs exactly two distinct values under "distinguished";
-  supply them as an array.
+  supply them as an array. For a named axis or "X vs Y" sentence, use the two
+  axis-value labels. Never repeat the axis heading as both values and never use
+  the axis heading as a property.
+- "No position can hold all of A, B, and C" is one joint incompatibility, NOT
+  three pairwise exclusions. The current claim kinds cannot preserve that
+  n-ary constraint: emit one unmappable repair item and no exclusion claims.
 - Infer attribution from ordinary prose; authors need not add extraction
   boilerplate. Every claim MUST include a scope. Use {"scope":"corpus"} when the
   source itself directly asserts the proposition. Use {"scope":"position",
@@ -1134,8 +1333,14 @@ export async function extractIntoStore(
       report.parseFailures.push(seg.id);
       continue;
     }
-    for (const reason of proposal.unmappable) {
-      report.unmappableClaims.push({ segmentId: seg.id, reason });
+    for (const unmappable of proposal.unmappable) {
+      report.unmappableClaims.push({
+        segmentId: seg.id,
+        reason: unmappable.reason,
+        ...(unmappable.candidateLabels.length > 0
+          ? { candidateLabels: unmappable.candidateLabels }
+          : {}),
+      });
     }
 
     for (const proposedClaim of proposal.claims) {
@@ -1150,6 +1355,19 @@ export async function extractIntoStore(
           accepted: false,
           rejectionKind: "schema",
           rejection: schemaRejection,
+        });
+        continue;
+      }
+      const semanticRejection = claimSourceSemanticIssue(claim, seg.text);
+      if (semanticRejection) {
+        report.claimsProposed++;
+        report.claimsRejected++;
+        report.outcomes.push({
+          segmentId: seg.id,
+          claim,
+          accepted: false,
+          rejectionKind: "schema",
+          rejection: semanticRejection,
         });
         continue;
       }

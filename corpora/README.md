@@ -84,6 +84,22 @@ surface-derived symbol. For example, `no act is ratifiable` must map to denial o
 `ratifiable`; `theory that holds dominance` and `theory holding dominance` must
 share the `dominance` entry; and `the act itself` must resolve to `act`.
 
+Corpus axes are metadata, not propositions. A heading such as
+`wavefunction-status` may group `psi-ontic` and `psi-epistemic`, but the heading
+itself cannot fill a claim role or become a Boolean predicate. Positive/negative
+axes such as collapse/no collapse share one positive property and use structural
+polarity. This prevents an axis label from manufacturing
+`wavefunction_status(P) ∧ -wavefunction_status(P)`.
+
+An incomplete extraction stops before Prover9/Mace4. It may run the bounded
+propositional `mcp-logic.abductive_explain` repair pass over candidates from the
+same segment and closed glossary, but every returned patch is `propose-only` and
+`applied: false`. Glossary additions, missing distinction values, attribution
+holders, and ontology bridges require review and a fresh extraction. D-ALP/RST
+salience pruning is not part of this failure-repair path; consider it only after
+the known `mustFind` cases reproduce and corpus-content abduction has a measured
+search-space problem.
+
 Attribution remains semantically irreducible: the pipeline must preserve who
 asserts what. The extractor infers that metadata from the prose and refuses a
 claim when it cannot establish an assertion holder; the author need not add

@@ -40,6 +40,7 @@ import {
   inconclusiveExtractionVerdict,
   inconclusiveFormalizationVerdict,
 } from "../services/extraction-verdict.js";
+import { proposeExtractionRepairs } from "../services/extraction-repairs.js";
 import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
@@ -1831,8 +1832,8 @@ ${skillContent}`,
                   communities: graphCommunities,
                   ontology,
                   closedVocabulary: extraction.glossary.map(
-                    ({ label }) => label,
-                  ),
+                    ({ label, kind }) => (kind === "axis" ? "" : label),
+                  ).filter(Boolean),
                   embedder: claimBlockEmbedder,
                   sharedExistencePredicates,
                   signal: requestDeadline.signal,
@@ -1875,7 +1876,73 @@ ${skillContent}`,
                   derivation,
                 );
 
-                if (blocks.length === 0) {
+                if (!extractionComplete) {
+                  const repairReport = await proposeExtractionRepairs(
+                    {
+                      segments: segs,
+                      extraction,
+                      attributionIssues: derivation.attributionIssues,
+                      predicateAliasSuggestions:
+                        derivation.predicateAliasSuggestions,
+                    },
+                    (repairArgs) =>
+                      mcpManager.executeTool(
+                        "mcp-logic",
+                        "abductive_explain",
+                        repairArgs,
+                        requestDeadline.signal,
+                      ),
+                  );
+                  runLog.event("logic_check_log", {
+                    runLogId: runLog.runId,
+                    totalChecks: 0,
+                    checkLog: [],
+                    preflightAborted: true,
+                    preflightStage: "extraction",
+                    abductiveRepairCalls: repairReport.abductiveCalls,
+                  });
+                  output = JSON.stringify({
+                    runLogId: runLog.runId,
+                    corpusCompletenessValidated: false,
+                    verdictScope: "none",
+                    preflightAborted: true,
+                    preflightStage: "extraction",
+                    proverCalls: 0,
+                    attributionComplete: derivation.attributionComplete,
+                    attributionIssues: derivation.attributionIssues,
+                    inconclusiveCauses,
+                    semanticsValidated: false,
+                    verdictKind: "inconclusive",
+                    hasCorpusContradiction: false,
+                    hasPositionContradiction: false,
+                    hasPositionIncompatibility: false,
+                    semanticFrustrations: [],
+                    verdict: inconclusiveExtractionVerdict(inconclusiveCauses),
+                    repairReport,
+                    extraction: {
+                      segmentsProcessed: extraction.segmentsProcessed,
+                      claimsProposed: extraction.claimsProposed,
+                      claimsAccepted: extraction.claimsAccepted,
+                      claimsRejected: extraction.claimsRejected,
+                      glossary: extraction.glossary,
+                      glossaryFailure: extraction.glossaryFailure,
+                      unmappableClaims: extraction.unmappableClaims,
+                      parseFailures: extraction.parseFailures.length,
+                      rejections: extraction.outcomes
+                        .filter((outcome) => !outcome.accepted)
+                        .slice(0, 10)
+                        .map((outcome) => ({
+                          claim: outcome.claim,
+                          why: outcome.rejection,
+                        })),
+                    },
+                    derivedBlocksHeldAtPreflight: blocks,
+                    predicateMapping: derivation.predicateMapping,
+                    predicateAliasSuggestions:
+                      derivation.predicateAliasSuggestions,
+                    derivationRejections: derivation.rejected,
+                  });
+                } else if (blocks.length === 0) {
                   output = JSON.stringify({
                     runLogId: runLog.runId,
                     extraction,

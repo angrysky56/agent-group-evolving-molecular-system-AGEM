@@ -63,6 +63,7 @@ describe("claim extraction generation profile", () => {
         glossary: [
           {
             label: "dominance",
+            kind: "property",
             definition: "the dominance property",
             sourceForms: ["theory holding dominance"],
           },
@@ -80,6 +81,7 @@ describe("claim extraction generation profile", () => {
     ).resolves.toEqual([
       {
         label: "dominance",
+        kind: "property",
         definition: "the dominance property",
         sourceForms: ["theory holding dominance"],
       },
@@ -112,6 +114,7 @@ describe("claim extraction generation profile", () => {
         glossary: [
           {
             label: "dominance-principle",
+            kind: "property",
             definition: "the dominance property",
             sourceForms: [],
           },
@@ -158,6 +161,7 @@ describe("claim extraction generation profile", () => {
           glossary: [
             {
               label: "dominance",
+              kind: "property",
               definition: "the dominance property",
               sourceForms: ["theory that holds dominance"],
             },
