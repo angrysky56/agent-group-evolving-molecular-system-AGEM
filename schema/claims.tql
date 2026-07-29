@@ -117,9 +117,12 @@ define
 
   # #10: multiple realizability vs substrate independence — one is strictly
   # stronger, so the relation is directional and must not be read symmetrically.
+  # Optional polarity: absence means positive implication; denies negates the
+  # consequent during deterministic conversion.
   relation entailment sub claim,
     relates antecedent @card(1),
-    relates consequent @card(1);
+    relates consequent @card(1),
+    owns polarity @card(0..1);
 
   # Which position advances which claim.
   relation attribution,

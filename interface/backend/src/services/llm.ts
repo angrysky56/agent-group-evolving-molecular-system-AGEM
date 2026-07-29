@@ -28,6 +28,16 @@ export interface ChatCompletionOptions {
   }>;
   model?: string;
   maxTokens?: number;
+  /** Per-task reasoning policy. Mechanical extraction should disable it. */
+  reasoning?: {
+    enabled?: boolean;
+    effort?: "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none";
+    max_tokens?: number;
+    exclude?: boolean;
+  };
+  /** OpenAI-compatible response_format payload. */
+  responseFormat?: Record<string, unknown>;
+  temperature?: number;
   tools?: any[];
   apiKey?: string;
   onToken?: StreamCallback;
@@ -459,6 +469,11 @@ class OpenRouterProvider implements LLMProvider {
       stream: true,
       max_tokens: options.maxTokens ?? settings.all.OPENROUTER_MAX_TOKENS,
     };
+    if (options.reasoning) bodyObj.reasoning = options.reasoning;
+    if (options.responseFormat) bodyObj.response_format = options.responseFormat;
+    if (options.temperature !== undefined) {
+      bodyObj.temperature = options.temperature;
+    }
     if (options.tools && options.tools.length > 0) {
       bodyObj.tools = options.tools;
     }
@@ -539,8 +554,7 @@ class OpenRouterProvider implements LLMProvider {
         const dataStr = line.slice(6).trim();
         if (dataStr === "[DONE]") continue;
 
-        try {
-          const parsed = JSON.parse(dataStr) as {
+        let parsed: {
             choices?: Array<{
               delta?: {
                 content?: string;
@@ -552,63 +566,67 @@ class OpenRouterProvider implements LLMProvider {
             usage?: any;
             error?: { message?: string; code?: number; type?: string };
           };
-
-          // Handle OpenRouter error responses embedded in stream
-          if (parsed.error) {
-            const errMsg = parsed.error.message ?? "Unknown stream error";
-            console.error(
-              `[LLM] OpenRouter stream error: ${errMsg} (code: ${parsed.error.code})`,
-            );
-            if (errMsg.includes("rate limit") || parsed.error.code === 429) {
-              throw new Error(`OpenRouter rate limited: ${errMsg}`);
-            }
-            throw new Error(`OpenRouter stream error: ${errMsg}`);
-          }
-
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta?.content) {
-            fullContent += delta.content;
-            options.onToken?.(delta.content);
-          }
-          if (delta?.reasoning) {
-            thinking += delta.reasoning;
-            options.onThinking?.(delta.reasoning);
-          }
-          if (delta?.tool_calls) {
-            for (const call of delta.tool_calls) {
-              const idx = call.index ?? 0;
-              if (!toolCallsMap[idx])
-                toolCallsMap[idx] = {
-                  id: call.id,
-                  type: call.type,
-                  function: { name: "", arguments: "" },
-                };
-              if (call.id) toolCallsMap[idx].id = call.id;
-              if (call.function?.name)
-                toolCallsMap[idx].function.name += call.function.name;
-              if (call.function?.arguments)
-                toolCallsMap[idx].function.arguments += call.function.arguments;
-            }
-          }
-          if (parsed.usage) {
-            usage = {
-              prompt_tokens: parsed.usage.prompt_tokens ?? 0,
-              completion_tokens: parsed.usage.completion_tokens ?? 0,
-              total_tokens: parsed.usage.total_tokens ?? 0,
-            };
-            options.onUsage?.(usage);
-          }
-
-          // Detect truncation or completion
-          const parsedFinishReason = parsed.choices?.[0]?.finish_reason;
-          if (parsedFinishReason) finishReason = parsedFinishReason;
-          if (parsedFinishReason === "length") {
-            console.warn(
-              `[LLM] OpenRouter response truncated (finish_reason=length). Increase max_tokens.`,
-            );
-          }
+        try {
+          parsed = JSON.parse(dataStr) as typeof parsed;
         } catch {
-          // Skip malformed data
+          // Invalid framing is ignorable; a parsed provider error is not.
+          continue;
+        }
+
+        // Mid-stream OpenRouter errors are terminal SSE events. Never return
+        // the preceding partial content as a successful completion.
+        if (parsed.error) {
+          const errMsg = parsed.error.message ?? "Unknown stream error";
+          console.error(
+            `[LLM] OpenRouter stream error: ${errMsg} (code: ${parsed.error.code})`,
+          );
+          if (errMsg.includes("rate limit") || parsed.error.code === 429) {
+            throw new Error(`OpenRouter rate limited: ${errMsg}`);
+          }
+          throw new Error(`OpenRouter stream error: ${errMsg}`);
+        }
+
+        const delta = parsed.choices?.[0]?.delta;
+        if (delta?.content) {
+          fullContent += delta.content;
+          options.onToken?.(delta.content);
+        }
+        if (delta?.reasoning) {
+          thinking += delta.reasoning;
+          options.onThinking?.(delta.reasoning);
+        }
+        if (delta?.tool_calls) {
+          for (const call of delta.tool_calls) {
+            const idx = call.index ?? 0;
+            if (!toolCallsMap[idx])
+              toolCallsMap[idx] = {
+                id: call.id,
+                type: call.type,
+                function: { name: "", arguments: "" },
+              };
+            if (call.id) toolCallsMap[idx].id = call.id;
+            if (call.function?.name)
+              toolCallsMap[idx].function.name += call.function.name;
+            if (call.function?.arguments)
+              toolCallsMap[idx].function.arguments += call.function.arguments;
+          }
+        }
+        if (parsed.usage) {
+          usage = {
+            prompt_tokens: parsed.usage.prompt_tokens ?? 0,
+            completion_tokens: parsed.usage.completion_tokens ?? 0,
+            total_tokens: parsed.usage.total_tokens ?? 0,
+          };
+          options.onUsage?.(usage);
+        }
+
+        // Detect truncation or completion
+        const parsedFinishReason = parsed.choices?.[0]?.finish_reason;
+        if (parsedFinishReason) finishReason = parsedFinishReason;
+        if (parsedFinishReason === "length") {
+          console.warn(
+            `[LLM] OpenRouter response truncated (finish_reason=length). Caller must retry with a smaller task or a larger output budget.`,
+          );
         }
       }
     }

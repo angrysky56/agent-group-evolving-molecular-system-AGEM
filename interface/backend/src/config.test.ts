@@ -58,7 +58,7 @@ describe("ConfigService — update and Zod schema re-validation", () => {
     const original = settings.all.CHAT_REQUEST_TIMEOUT_MS;
     const originalExtractionMinimum =
       settings.all.CLAIM_EXTRACTION_MIN_REMAINING_MS;
-    expect(originalTurns).toBe(48);
+    expect(originalTurns).toBe(64);
     expect(original).toBe(45 * 60 * 1000);
     expect(originalExtractionMinimum).toBe(8 * 60 * 1000);
 

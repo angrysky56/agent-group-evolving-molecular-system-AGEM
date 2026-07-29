@@ -101,6 +101,14 @@ match
 insert
   $_ isa property-assertion, links (subject: $cs, property: $phi, source: $s);'
 
+run "negative entailment with explicit polarity" "ACCEPTED" '
+match
+  $cs isa concept, has label "consciousness";
+  $phi isa concept, has label "phi";
+  $s isa segment, has segment-id "tom-3-1";
+insert
+  $_ isa entailment, links (antecedent: $cs, consequent: $phi, source: $s), has polarity "denies";'
+
 if [ "$failures" -gt 0 ]; then
   echo ""
   echo "$failures CONTRACT FAILURE(S)"

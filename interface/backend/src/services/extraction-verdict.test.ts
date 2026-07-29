@@ -2,10 +2,32 @@ import { describe, expect, it } from "vitest";
 import {
   applyExtractionCoverage,
   extractionFailureCauses,
+  inconclusiveFormalizationVerdict,
   inconclusiveExtractionVerdict,
 } from "./extraction-verdict.js";
 
 describe("cause-specific extraction verdicts", () => {
+  it("names the critical formalization codes that actually fired", () => {
+    const verdict = inconclusiveFormalizationVerdict([
+      {
+        code: "inconsistent_arity",
+        severity: "critical",
+        message: "Seven symbols have inconsistent arity.",
+      },
+      {
+        code: "isolated_predicates",
+        severity: "warning",
+        message: "One block is isolated.",
+      },
+    ]);
+
+    expect(verdict).toMatch(/INCONCLUSIVE FORMALIZATION/i);
+    expect(verdict).toMatch(/inconsistent_arity/i);
+    expect(verdict).toMatch(/Seven symbols/i);
+    expect(verdict).not.toMatch(/attribution/i);
+    expect(verdict).not.toMatch(/isolated_predicates/i);
+  });
+
   it("names schema rejection without inventing an attribution failure", () => {
     const causes = extractionFailureCauses(
       {

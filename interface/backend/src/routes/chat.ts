@@ -38,6 +38,7 @@ import {
   applyExtractionCoverage,
   extractionFailureCauses,
   inconclusiveExtractionVerdict,
+  inconclusiveFormalizationVerdict,
 } from "../services/extraction-verdict.js";
 import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
@@ -71,11 +72,14 @@ import {
 import { assessToolBudget } from "../services/tool-budget.js";
 import {
   explicitlyRequestedMcpServers,
+  shouldExposeMcpMetaTools,
   unwrapNestedToolArguments,
 } from "../services/mcp-tool-activation.js";
 import {
   finalizeRunOutcome,
   sanitizeToolsDisabledFinal,
+  typedVerificationFinalization,
+  type TypedVerificationFinalization,
   type RunTerminalStatus,
 } from "../services/run-termination.js";
 import {
@@ -450,23 +454,23 @@ Recalled findings are context, not an agenda. Cite one you actually use with its
 - list_finding_conflicts, resolve_finding_conflict
 - spawn_agem_agent, reset_agem_engine, read_skill
 
-# Formal logic — mcp-logic (REQUIRED for contested/multi-position topics)
-The graph cannot detect contradiction, entailment, or consistency — only formal logic can. So whenever a corpus contains multiple positions, claims, or theories that might conflict, you MUST verify their logical relations with mcp-logic. Do NOT adjudicate "these positions are consistent / contradictory / the same axis" in prose alone — that judgement has to be checked, not asserted.
+# Formal verification (REQUIRED for contested/multi-position topics)
+The graph cannot detect contradiction, entailment, or consistency — only formal logic can. For a raw corpus, call extract_and_verify_claims: it invokes mcp-logic internally after deriving attributed formulas. Do NOT replace a failed typed extraction with premises you author yourself. evaluate_logical_consistency is only for formulas the user or another audited process already supplied.
 
 Required procedure for contested topics:
-1. Identify who asserts each claim. Logical blocks are corpus-level assertions or named attributed positions; concept communities may help discovery but never define assertion contexts.
-2. State each block's core claim as one or more SINGLE first-order-logic propositions.
+1. For raw text, call extract_and_verify_claims with the corpus text. It identifies assertion holders, validates typed roles, converts claims, runs formalization preflight, and invokes the prover.
+2. Only for already-audited formulas, identify who asserts each claim and preserve those assertion-context blocks. Concept communities may help discovery but never define assertion contexts.
    **NEGATION MUST USE THE "-" OPERATOR.** Write "-travels(x)". NEVER encode negation in a predicate NAME — "not_travels(x)", "no_transfer(x)", "non_local(x)" are, to the prover, symbols with no relationship whatsoever to "travels(x)", so they can never contradict it. This is the single most common way this tool gets a meaningless answer: a set of formulas with no "-" anywhere is ALWAYS satisfiable (make every predicate true everywhere), so it will report "no contradiction" no matter what the text said.
    Blocks must also SHARE predicate symbols. If block A says "travels(capability)" and block B says "distribution_bound(policy)", nothing connects them. Use the same predicate for the same idea across blocks, and negate it where a block denies it.
    A contradiction is normally expressed by one block asserting P and another asserting -P, or by a conditional in one block whose antecedent the others satisfy — so if the text contains a conditional ("X only if Y", "if X then not Y"), ENCODE IT AS A CONDITIONAL. Dropping it usually destroys the tension.
    **EVERY BLOCK OF UNIVERSALS NEEDS AN EXISTENTIAL WITNESS.** "all x (capability(x) -> travels(x))" is TRUE when nothing is a capability, so a set of pure "all x (...)" formulas is satisfied by the empty world and can never contradict. Whenever you write "all x (P(x) -> ...)" and P is supposed to be non-empty, also assert "exists x (P(x))". This has produced a real false "no contradiction" on a corpus that contained two.
-3. Call evaluate_logical_consistency with those blocks. The engine runs every satisfiability check via mcp-logic for you (so the calls can't be malformed). A model of the full set certifies every subset at once; an unsatisfiable full set triggers complete, monotone MUS enumeration unless a caller cap, budget, or undetermined oracle result prevents completion. A **minimal unsatisfiable set** is a set of blocks that cannot all be true together, but every proper subset of which can.
+3. Call evaluate_logical_consistency only with those already-audited blocks. The engine runs every satisfiability check via mcp-logic for you. A model of the full set certifies every subset at once; an unsatisfiable full set triggers complete, monotone MUS enumeration unless a caller cap, budget, or undetermined oracle result prevents completion. A **minimal unsatisfiable set** is a set of blocks that cannot all be true together, but every proper subset of which can.
 4. On the typed path, read \`verdictKind\`: \`position-contradiction\` and \`corpus-contradiction\` are contradictions in one assertion context; \`positions-incompatible\` means rival positions cannot jointly hold and does NOT make a survey corpus contradictory. On the hand-authored path, read \`frustrations\`, but report them only as consequences of analyst-supplied premises. They carry no evidential weight about what the source corpus says unless a separate attributed extraction validates those premises. Do NOT use H¹ as a verdict.
 5. If "searchTruncated" is true, say so: no contradiction was found *up to the arity searched*, which is not the same as none existing. **Read "truncationNote"** — it says WHICH cap stopped the search. If it names a budget limit, "checksRequiredForNextLevel" is the exact 'maxChecks' that settles the question: call the tool again passing that value. Truncation is a setting, not a capability ceiling — never report it as "the tool cannot search further".
 6. Report the frustrated sets whenever "hasContradiction" is true, and check "frustrationsComplete" plus "checkFailures". A found MUS remains evidence when enumeration is incomplete, but it is not proof that no additional MUS exists.
-7. **If "resultIsVacuous" is true, the overall verdict is invalid.** With no contradiction, the encoding made "consistent" a foregone conclusion. If contradictions were found, the listed clashes remain evidence, but critical alias/arity defects can hide additional ones. Read "formalizationWarnings", fix the formulas, and call the tool again. Never report a clean consistency or complete contradiction inventory from a vacuous result.
+7. **If "resultIsVacuous" is true, the overall verdict is invalid.** With no contradiction, the encoding made "consistent" a foregone conclusion. If contradictions were found, the listed clashes remain evidence, but critical alias/arity defects can hide additional ones. Read "formalizationWarnings" and report the actual defects. On a typed-path failure, stop: do not substitute hand-authored proofs or spend more tool turns.
 
-You may also call mcp-logic directly for one-off proofs/counterexamples:
+If and only if the user explicitly requests mcp-logic, you may call it directly for a one-off proof/counterexample:
 
 Tools and EXACT argument shapes (verified — do not deviate):
 - prove → arguments={"premises": ["all x (man(x) -> mortal(x))", "man(socrates)"], "conclusion": "mortal(socrates)"}
@@ -479,7 +483,7 @@ Consistency check idiom: to test whether a set of claims can all be true togethe
 
 SYNTAX RULES (these are where calls fail — follow exactly):
 - "premises" is an ARRAY of strings, ONE formula per array element. NEVER put multiple statements in one string, and NEVER use newline characters inside a formula — a literal \\n will fail. Split into separate array elements instead.
-- Operators are ASCII: -> (implies), <-> (iff), & (and), | (or), ~ (not).
+- Operators are ASCII: -> (implies), <-> (iff), & (and), | (or), - (not).
 - Quantifiers MUST be parenthesized: "all x (man(x) -> mortal(x))", "exists y (knows(y, socrates))".
 - One predicate per fact; lowercase predicate and constant names. Properties
   are always predicates: write "lesion_adequate(fdt)", never
@@ -492,7 +496,7 @@ SYNTAX RULES (these are where calls fail — follow exactly):
 Reachable via call_mcp_tool but NOT part of normal reasoning: fetch (web fetch), sqlite/memory (storage), desktop-commander, playwright, docker. Other servers listed by list_mcp_servers exist but are experimental — ignore them unless the user names one.
 
 # Calling MCP tools
-Use the meta-tools: list_mcp_servers, list_server_tools(server_name), call_mcp_tool(server_name, tool_name, arguments).
+MCP discovery and invocation tools are exposed only when the user explicitly names a connected server. When exposed, use list_server_tools(server_name) before an unfamiliar call and put tool arguments inside the "arguments" object.
 ALWAYS put tool arguments INSIDE the "arguments" object, and call list_server_tools FIRST if you are unsure of a tool's exact schema — do not guess argument names.
 
 ${skillContent}`,
@@ -1165,18 +1169,23 @@ ${skillContent}`,
       );
     }
 
-    // All providers get AGEM native tools + meta-tools + active MCP tools
+    const exposedMetaTools = shouldExposeMcpMetaTools([...activeServers])
+      ? metaTools
+      : [];
+
+    // All providers get AGEM native tools. MCP discovery is opt-in because
+    // call_mcp_tool otherwise bypasses the selective direct-tool surface.
     // Cloud providers additionally get skill tools for direct access
     let tools: any[];
     if (isOllama) {
-      tools = [...agemTools, ...metaTools, ...activeMcpTools];
+      tools = [...agemTools, ...exposedMetaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Ollama: ${agemTools.length} AGEM + ${metaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
+        `[Chat] Ollama: ${agemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     } else {
-      tools = [...skillTools, ...agemTools, ...metaTools, ...activeMcpTools];
+      tools = [...skillTools, ...agemTools, ...exposedMetaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${metaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
+        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     }
 
@@ -1192,6 +1201,7 @@ ${skillContent}`,
     let deferredTool:
       | { name: string; remainingMs: number; requiredMs: number }
       | undefined;
+    let typedFinalization: TypedVerificationFinalization | undefined;
     let finalResponsePending = false;
 
     // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
@@ -1287,13 +1297,15 @@ ${skillContent}`,
       });
 
       if (finalResponsePending) {
-        const fallbackContent = [
-          `PARTIAL / DEFERRED — ${deferredTool?.name ?? "required verification"} could not be completed within the request budget.`,
-          deferredTool
-            ? `The tool needed ${Math.ceil(deferredTool.requiredMs / 1000)}s of safe budget, with ${Math.floor(deferredTool.remainingMs / 1000)}s remaining.`
-            : "Required verification remains incomplete.",
-          "The persisted engine state can be continued in a new request.",
-        ].join("\n\n");
+        const fallbackContent =
+          typedFinalization?.fallbackContent ??
+          [
+            `PARTIAL / DEFERRED — ${deferredTool?.name ?? "required verification"} could not be completed within the request budget.`,
+            deferredTool
+              ? `The tool needed ${Math.ceil(deferredTool.requiredMs / 1000)}s of safe budget, with ${Math.floor(deferredTool.remainingMs / 1000)}s remaining.`
+              : "Required verification remains incomplete.",
+            "The persisted engine state can be continued in a new request.",
+          ].join("\n\n");
         const sanitizedFinal = sanitizeToolsDisabledFinal(
           result,
           fallbackContent,
@@ -2011,7 +2023,15 @@ ${skillContent}`,
                           : semantic.verdictKind === "mixed"
                             ? `MIXED LOGICAL RESULTS — multiple semantic conflict kinds were found (${semanticSets}). Manual interpretation is required; no automatic finding will be stored.`
                             : semantic.verdictKind === "inconclusive"
-                              ? `INCONCLUSIVE — attribution, extraction completeness, or formalization validation failed; a check was undetermined; or the search was truncated. ${result.truncationNote ?? (inconclusiveCauses.length > 0 ? inconclusiveExtractionVerdict(inconclusiveCauses) : "Review formalizationWarnings.")}`
+                              ? result.preflightAborted
+                                ? inconclusiveFormalizationVerdict(
+                                    result.formalizationWarnings,
+                                  )
+                                : inconclusiveCauses.length > 0
+                                  ? inconclusiveExtractionVerdict(
+                                      inconclusiveCauses,
+                                    )
+                                  : `INCONCLUSIVE — ${result.truncationNote ?? "a logical check was undetermined or the search was truncated. Review formalizationWarnings."}`
                               : `No contradiction within ${evaluated} evaluated assertion context(s) up to arity ${result.searchedToArity}.`;
                   output = JSON.stringify(
                     {
@@ -2825,7 +2845,26 @@ ${skillContent}`,
             });
           }
         }
-        if (deferredTool && turnCount < maxTurns) {
+        typedFinalization = executed
+          .filter((call) => call.fnName === "extract_and_verify_claims" && call.ok)
+          .map((call) => typedVerificationFinalization(call.output))
+          .find((finalization): finalization is TypedVerificationFinalization =>
+            finalization !== null,
+          );
+        if (typedFinalization && turnCount < maxTurns) {
+          finalResponsePending = true;
+          tools = [];
+          terminalStatus = "contract-unmet";
+          sendEvent("final_start", { status: terminalStatus });
+          historyMessages.push({
+            role: "user",
+            content: typedFinalization.instruction,
+          });
+          runLog.event("finalization_required", {
+            reason: typedFinalization.reason,
+            tool: "extract_and_verify_claims",
+          });
+        } else if (deferredTool && turnCount < maxTurns) {
           finalResponsePending = true;
           tools = [];
           terminalStatus = "contract-unmet";

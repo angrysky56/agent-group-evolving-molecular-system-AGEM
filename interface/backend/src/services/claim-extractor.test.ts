@@ -8,12 +8,20 @@ import {
   claimToPropositions,
   claimToTypeQL,
   extractIntoStore,
+  normalizeClaimExtras,
+  parseClaimArray,
   schemaClaimFact,
   type ExtractedClaim,
 } from "./claim-extractor.js";
 import { SCHEMA_RELATIVE_PATHS } from "./typedb-claims.js";
 
 describe("claim identity for finding evidence", () => {
+  it("accepts both direct and wrapped claim arrays from cheap models", () => {
+    expect(parseClaimArray([])).toEqual([]);
+    expect(parseClaimArray({ claims: [] })).toEqual([]);
+    expect(parseClaimArray({ claims: "not-an-array" })).toBeNull();
+  });
+
   const claim: ExtractedClaim = {
     kind: "distinction",
     roles: { distinguished: ["b", "a"] } as any,
@@ -69,7 +77,7 @@ describe("claim identity for finding evidence", () => {
       "segment-1",
     );
 
-    expect(query?.position).toContain('isa position, has label "HOT theorists"');
+    expect(query?.position).toContain('isa position, has label "hot theorists"');
     expect(query?.claim).toContain('has claim-scope "position"');
     expect(query?.attribution).toContain("holder: $position");
     expect(query?.attribution).toContain("attributed-claim: $claim");
@@ -94,7 +102,7 @@ describe("claim identity for finding evidence", () => {
         scope: "position",
         positionId: "HOT",
       }),
-    ).toContain('positionId="HOT"');
+    ).toContain('positionId="hot"');
     expect(
       schemaClaimFact({
         kind: "causal-claim",
@@ -157,6 +165,20 @@ describe("claim identity for finding evidence", () => {
     expect(schemaClaimFact(noisy)).toBe(schemaClaimFact(clean));
   });
 
+  it("lifts cheap-model polarity from a nested extra object", () => {
+    const normalized = normalizeClaimExtras({
+      kind: "property-assertion",
+      roles: { subject: "FDT", property: "pays" },
+      scope: "position",
+      positionId: "FDT",
+      extra: { polarity: "asserts" },
+    } as unknown as ExtractedClaim);
+
+    expect(normalized.polarity).toBe("asserts");
+    expect("extra" in normalized).toBe(false);
+    expect(claimSchemaIssue(normalized)).toBeNull();
+  });
+
   it("uses predicate form throughout deterministic claim conversion", () => {
     const converted = claimToPropositions({
       kind: "entailment",
@@ -173,6 +195,43 @@ describe("claim identity for finding evidence", () => {
     expect(converted?.propositions.join(" ")).not.toContain("holds(");
   });
 
+  it("represents a denied entailment by negating its consequent", () => {
+    const converted = claimToPropositions({
+      kind: "entailment",
+      roles: {
+        antecedent: "dominance-holding",
+        consequent: "newcomb-adequacy",
+      },
+      scope: "corpus",
+      polarity: "denies",
+    });
+
+    expect(converted?.propositions).toContain(
+      "all x (dominance_holding(x) -> -newcomb_adequacy(x))",
+    );
+  });
+
+  it("uses a separate symbol namespace for property subjects", () => {
+    const classProperty = claimToPropositions({
+      kind: "property-assertion",
+      roles: { subject: "two-boxes", property: "better-in-every-state" },
+      scope: "corpus",
+      polarity: "asserts",
+    });
+    const theoryProperty = claimToPropositions({
+      kind: "property-assertion",
+      roles: { subject: "CDT", property: "two-boxes" },
+      scope: "position",
+      positionId: "CDT",
+      polarity: "asserts",
+    });
+
+    expect(classProperty?.propositions).toEqual([
+      "better_in_every_state(entity_two_boxes)",
+    ]);
+    expect(theoryProperty?.propositions).toEqual(["two_boxes(entity_cdt)"]);
+  });
+
   it("represents a theory holding a property as predication, not reverse entailment", () => {
     const claim = {
       kind: "property-assertion",
@@ -183,7 +242,7 @@ describe("claim identity for finding evidence", () => {
     } as ExtractedClaim;
 
     expect(claimToPropositions(claim)?.propositions).toEqual([
-      "dominance(cdt)",
+      "dominance(entity_cdt)",
     ]);
     expect(claimToTypeQL(claim, "segment-9")?.claim).toContain(
       "$claim isa property-assertion",

@@ -15,6 +15,13 @@ export function explicitlyRequestedMcpServers(
   );
 }
 
+/** Meta-tools can reach every server, so expose them only with explicit scope. */
+export function shouldExposeMcpMetaTools(
+  explicitlyRequestedServers: readonly string[],
+): boolean {
+  return explicitlyRequestedServers.length > 0;
+}
+
 /** Repair a direct MCP call that redundantly nests the real payload once. */
 export function unwrapNestedToolArguments(
   args: Record<string, unknown>,

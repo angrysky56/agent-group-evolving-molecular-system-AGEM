@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   explicitlyRequestedMcpServers,
+  shouldExposeMcpMetaTools,
   unwrapNestedToolArguments,
 } from "./mcp-tool-activation.js";
 
@@ -21,6 +22,11 @@ describe("MCP tool activation", () => {
         ["mcp-logic", "advanced-reasoning"],
       ),
     ).toEqual(["mcp-logic"]);
+  });
+
+  it("hides MCP discovery and invocation unless a server was requested", () => {
+    expect(shouldExposeMcpMetaTools([])).toBe(false);
+    expect(shouldExposeMcpMetaTools(["mcp-logic"])).toBe(true);
   });
 
   it("unwraps the direct-MCP nested arguments shape without discarding siblings", () => {

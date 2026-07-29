@@ -92,12 +92,73 @@ export interface ExtractionOptions {
   signal?: AbortSignal;
 }
 
-/** Remove model-added metadata that the selected relation kind does not own. */
+/** Stable assertion-holder identity. Holder spelling is display data, not identity. */
+export function canonicalPositionId(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+/** Accept the two JSON shapes inexpensive models commonly emit. */
+export function parseClaimArray(value: unknown): ExtractedClaim[] | null {
+  if (Array.isArray(value)) return value as ExtractedClaim[];
+  if (!value || typeof value !== "object") return null;
+  const claims = (value as { claims?: unknown }).claims;
+  return Array.isArray(claims) ? (claims as ExtractedClaim[]) : null;
+}
+
+/**
+ * Repair cheap-model envelope drift, then remove metadata the relation does not own.
+ * This is deliberately structural: it never guesses semantic aliases.
+ */
 export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
-  const normalized = { ...claim };
+  const source = claim as ExtractedClaim & {
+    extra?: { polarity?: unknown; differenceKind?: unknown };
+  };
+  const normalized = {
+    ...claim,
+    roles: { ...(claim.roles ?? {}) },
+  } as ExtractedClaim & { extra?: unknown };
+  const ownsPolarity =
+    normalized.kind === "causal-claim" ||
+    normalized.kind === "property-assertion" ||
+    normalized.kind === "entailment";
   if (
-    normalized.kind !== "causal-claim" &&
-    normalized.kind !== "property-assertion"
+    ownsPolarity &&
+    normalized.polarity === undefined &&
+    (source.extra?.polarity === "asserts" || source.extra?.polarity === "denies")
+  ) {
+    normalized.polarity = source.extra.polarity;
+  }
+  if (
+    normalized.kind === "distinction" &&
+    normalized.differenceKind === undefined &&
+    (source.extra?.differenceKind === "in-kind" ||
+      source.extra?.differenceKind === "in-degree")
+  ) {
+    normalized.differenceKind = source.extra.differenceKind;
+  }
+  delete normalized.extra;
+
+  // An explicit lexical negator in a property slot is encoding syntax, not a
+  // new predicate. Lift it into polarity before formalization.
+  const negatedRole =
+    normalized.kind === "property-assertion"
+      ? "property"
+      : normalized.kind === "entailment"
+        ? "consequent"
+        : undefined;
+  if (negatedRole) {
+    const value = normalized.roles[negatedRole];
+    if (typeof value === "string") {
+      const match = value.trim().match(/^(?:not|non)[-_\s]+(.+)$/i);
+      if (match?.[1]) {
+        normalized.roles[negatedRole] = match[1];
+        normalized.polarity = "denies";
+      }
+    }
+  }
+  if (
+    !ownsPolarity
   ) {
     delete normalized.polarity;
   }
@@ -180,7 +241,8 @@ const ROLE_SPEC: Record<ClaimKind, { roles: string[]; extras?: string[]; gloss: 
   },
   entailment: {
     roles: ["antecedent", "consequent"],
-    gloss: "A implies B, directionally. Do not use for mutual implication; that is two claims.",
+    extras: ["polarity"],
+    gloss: "A implies B, directionally. Set polarity to 'denies' when A implies NOT-B; otherwise omit it or use 'asserts'. Do not encode negation in a role label.",
   },
 };
 
@@ -243,6 +305,14 @@ export function claimSchemaIssue(claim: ExtractedClaim): string | null {
     return `schema cardinality: ${claim.kind} requires polarity 'asserts' or 'denies'`;
   }
   if (
+    claim.kind === "entailment" &&
+    claim.polarity !== undefined &&
+    claim.polarity !== "asserts" &&
+    claim.polarity !== "denies"
+  ) {
+    return "schema value: entailment polarity must be 'asserts' or 'denies'";
+  }
+  if (
     claim.modality !== undefined &&
     !["epistemic", "modal", "functional", "metaphysical"].includes(
       claim.modality,
@@ -289,7 +359,8 @@ ${kinds}
 
 Rules:
 - Extract only what the sentence states. Do not infer, complete, or supply
-  background knowledge. If the sentence makes no claim of these kinds, return [].
+  background knowledge. If the sentence makes no claim of these kinds, return
+  {"claims":[]}.
 - Every role listed for a kind MUST be filled. A claim with a missing role is
   worse than no claim — it will be rejected, and silently dropping a role is how
   a contradiction gets reported as agreement.
@@ -308,12 +379,14 @@ Rules:
 ${glossarySection}
 
 Output shape:
-[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},
- {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]
+{"claims":[{"kind":"identity-claim","roles":{"identified":"meta-state","identified-with":"thought-like"},"scope":"position","positionId":"HOT"},
+ {"kind":"distinction","roles":{"distinguished":["hard-problem","easy-problems"]},"scope":"corpus","differenceKind":"in-kind"}]}
 
-Never emit an extra field unless it is listed for that claim kind. In
-particular, only causal-claim and property-assertion own polarity, and only
-distinction owns differenceKind.
+Never emit an object named "extra". Put listed extra fields at the top level.
+Never put not-, no-, or non- into a role label. Use polarity:"denies" for a
+negative causal claim, property assertion, or entailment consequent. Only
+causal-claim, property-assertion, and entailment own polarity; only distinction
+owns differenceKind.
 
 SENTENCE:
 ${segment}`;
@@ -341,7 +414,7 @@ export function canonicalClaim(claim: ExtractedClaim): string {
     scope: normalized.scope ?? null,
     positionId:
       normalized.scope === "position"
-        ? normalized.positionId?.trim() || null
+        ? canonicalPositionId(normalized.positionId) ?? null
         : null,
     modality: normalized.modality ?? null,
     polarity: normalized.polarity ?? null,
@@ -363,7 +436,7 @@ export function schemaClaimFact(claim: ExtractedClaim): string | null {
   const spec = ROLE_SPEC[claim?.kind];
   if (!spec || claimSchemaIssue(claim)) return null;
   if (claim.scope !== "corpus" && claim.scope !== "position") return null;
-  const positionId = claim.positionId?.trim();
+  const positionId = canonicalPositionId(claim.positionId);
   if (claim.scope === "position" && !positionId) return null;
   if (claim.scope === "corpus" && positionId) return null;
 
@@ -438,7 +511,7 @@ export function claimToTypeQL(
   claim = normalizeClaimExtras(claim);
   const spec = ROLE_SPEC[claim.kind];
   if (!spec || claimSchemaIssue(claim)) return null;
-  const positionId = claim.positionId?.trim();
+  const positionId = canonicalPositionId(claim.positionId);
   if (claim.scope !== "corpus" && claim.scope !== "position") return null;
   if (claim.scope === "position" && !positionId) return null;
   if (claim.scope === "corpus" && positionId) return null;
@@ -523,13 +596,15 @@ export async function proposeClaims(
       },
     ],
     maxTokens: 1024,
+    reasoning: { enabled: false },
+    responseFormat: { type: "json_object" },
+    temperature: 0,
     signal,
   });
-  const match = res.content.match(/\[[\s\S]*\]/);
-  if (!match) return null;
+  if (res.finishReason === "length") return null;
   try {
-    const parsed = JSON.parse(match[0]);
-    return Array.isArray(parsed) ? (parsed as ExtractedClaim[]) : null;
+    const parsed = JSON.parse(res.content) as unknown;
+    return parseClaimArray(parsed);
   } catch {
     return null;
   }
@@ -590,20 +665,26 @@ async function proposeClaimsBatch(
    * reply would write off every segment in it. Fall back to per-segment calls,
    * which are slower but cannot take their neighbours down with them.
    */
-  const fallbackPerSegment = async () => {
+  const fallbackIndices = async (indices: readonly number[]) => {
     telemetry.fallbackBatches++;
-    telemetry.fallbackSegmentCalls += segments.length;
-    const results = await Promise.all(
-      segments.map((s) =>
-        proposeClaims(s.text, glossary, signal).catch((error) => {
+    // Batches already run concurrently. Keep each batch's fallback sequential
+    // so four truncated batches cannot fan out into sixteen simultaneous calls.
+    for (const index of indices) {
+      telemetry.fallbackSegmentCalls++;
+      const claims = await proposeClaims(
+        segments[index].text,
+        glossary,
+        signal,
+      ).catch((error) => {
           signal?.throwIfAborted();
           return null;
-        }),
-      ),
-    );
-    results.forEach((r, i) => out.set(i, r));
+        });
+      out.set(index, claims);
+    }
     return out;
   };
+  const fallbackPerSegment = () =>
+    fallbackIndices(segments.map((_, index) => index));
 
   let content = "";
   try {
@@ -614,8 +695,12 @@ async function proposeClaimsBatch(
         { role: "user", content: buildBatchPrompt(segments, glossary) },
       ],
       maxTokens: BATCH_MAX_TOKENS,
+      reasoning: { enabled: false },
+      responseFormat: { type: "json_object" },
+      temperature: 0,
       signal,
     });
+    if (res.finishReason === "length") return fallbackPerSegment();
     content = res.content;
   } catch (error) {
     signal?.throwIfAborted();
@@ -631,11 +716,14 @@ async function proposeClaimsBatch(
     // Almost always a truncated response: the closing brace never arrived.
     return fallbackPerSegment();
   }
+  const missing: number[] = [];
   for (let i = 0; i < segments.length; i++) {
     const v = parsed[String(i)];
-    out.set(i, Array.isArray(v) ? (v as ExtractedClaim[]) : v === undefined ? null : []);
+    const claims = parseClaimArray(v);
+    if (claims === null) missing.push(i);
+    else out.set(i, claims);
   }
-  return out;
+  return missing.length > 0 ? fallbackIndices(missing) : out;
 }
 
 /**
@@ -837,6 +925,7 @@ export function claimToPropositions(claim: ExtractedClaim): {
   claim = normalizeClaimExtras(claim);
   if (claimSchemaIssue(claim) || claimAttributionIssue(claim)) return null;
   const pred = (label: string) => label.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
+  const entity = (label: string) => `entity_${pred(label)}`;
   const r = claim.roles as Record<string, string | string[]>;
   const one = (k: string): string | undefined => {
     const v = r[k];
@@ -889,16 +978,17 @@ export function claimToPropositions(claim: ExtractedClaim): {
       const sign = claim.polarity === "denies" ? "-" : "";
       return {
         name: `property(${subject},${sign}${property})`,
-        propositions: [`${sign}${pred(property)}(${pred(subject)})`],
+        propositions: [`${sign}${pred(property)}(${entity(subject)})`],
       };
     }
     case "entailment": {
       const a = one("antecedent"), b = one("consequent");
       if (!a || !b) return null;
+      const sign = claim.polarity === "denies" ? "-" : "";
       return {
-        name: `entails(${a},${b})`,
+        name: `entails(${a},${sign}${b})`,
         propositions: [
-          `all x (${pred(a)}(x) -> ${pred(b)}(x))`,
+          `all x (${pred(a)}(x) -> ${sign}${pred(b)}(x))`,
           `exists x (${pred(a)}(x))`,
         ],
       };

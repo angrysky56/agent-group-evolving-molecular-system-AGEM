@@ -1,6 +1,7 @@
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
 import natural from "natural";
 import {
+  canonicalPositionId,
   claimToPropositions,
   type ExtractedClaim,
   type ExtractionOutcome,
@@ -500,7 +501,7 @@ export async function deriveClaimBlocks(
       roleLabels(canonicalClaim),
       options.communities ?? [],
     );
-    const positionId = canonicalClaim.positionId?.trim();
+    const positionId = canonicalPositionId(canonicalClaim.positionId);
     const assertionScope = canonicalClaim.scope;
     const groupKey =
       assertionScope === "position"

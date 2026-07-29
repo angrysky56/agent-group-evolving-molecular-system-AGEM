@@ -99,6 +99,24 @@ export function inconclusiveExtractionVerdict(
   );
 }
 
+/** Name formalization failures directly instead of using an attribution catch-all. */
+export function inconclusiveFormalizationVerdict(
+  warnings: ReadonlyArray<{
+    code: string;
+    severity: string;
+    message: string;
+  }>,
+): string {
+  const critical = warnings.filter((warning) => warning.severity === "critical");
+  const detail = critical
+    .map((warning) => `${warning.code}: ${warning.message}`)
+    .join("; ");
+  return (
+    `INCONCLUSIVE FORMALIZATION — ${detail || "critical encoding defects were reported"}. ` +
+    "Preflight stopped before the prover, so no logical verdict was computed."
+  );
+}
+
 /**
  * Missing claims cannot invalidate an UNSAT witness over accepted claims, but
  * they do invalidate a clean whole-corpus result. Preserve that asymmetry.

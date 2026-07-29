@@ -16,6 +16,56 @@ export interface ToolsDisabledFinalResult {
   usedFallback: boolean;
 }
 
+export interface TypedVerificationFinalization {
+  reason:
+    | "typed-formalization-preflight-failed"
+    | "typed-verification-inconclusive";
+  fallbackContent: string;
+  instruction: string;
+}
+
+/**
+ * A failed typed verification is a terminal analytical result for this run.
+ * Replacing it with model-authored premises only restates the model's beliefs
+ * and can never satisfy the provenance-bearing workflow contract.
+ */
+export function typedVerificationFinalization(
+  output: string,
+): TypedVerificationFinalization | null {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(output) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (parsed.semanticsValidated === true) return null;
+  if (String(parsed.status ?? "").startsWith("deferred-")) return null;
+
+  const preflightAborted = parsed.preflightAborted === true;
+  const reason = preflightAborted
+    ? "typed-formalization-preflight-failed"
+    : "typed-verification-inconclusive";
+  const verdict =
+    typeof parsed.verdict === "string" && parsed.verdict.trim()
+      ? parsed.verdict.trim()
+      : preflightAborted
+        ? "Formalization preflight found critical defects before any prover call."
+        : "Typed claim verification did not produce a semantically validated verdict.";
+  return {
+    reason,
+    fallbackContent: [
+      "INCONCLUSIVE — typed claim verification did not produce a validated corpus verdict.",
+      verdict,
+      "No hand-authored proof is a substitute for the failed provenance-bearing path.",
+    ].join("\n\n"),
+    instruction: [
+      "Typed claim verification is inconclusive. Do not call or request more tools.",
+      "Write the final user-facing response now and label it INCONCLUSIVE.",
+      "Name the actual reported failure causes. Do not substitute or present hand-authored logic as corpus evidence.",
+    ].join("\n"),
+  };
+}
+
 /**
  * A reserved final response is never allowed to reopen the tool loop. This is
  * provider-agnostic because inexpensive models may emit a tool call even when

@@ -197,7 +197,7 @@ const ConfigSchema = z.object({
   /** Maximum reasoning steps per VdW agent before self-termination. Default: 50 */
   VDW_AGENT_MAX_ITERATIONS: z.coerce.number().default(50),
   /** Maximum tool execution turns before a separate tools-disabled final response. */
-  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(48),
+  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(64),
   /** Hard wall-clock deadline for one chat request, including in-flight tools. */
   CHAT_REQUEST_TIMEOUT_MS: z.coerce
     .number()

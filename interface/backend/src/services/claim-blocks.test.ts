@@ -8,6 +8,7 @@ import {
 } from "./claim-blocks.js";
 import type { ExtractedClaim, ExtractionOutcome } from "./claim-extractor.js";
 import {
+  analyzeFormalization,
   computeLogicalCohomology,
   type SatOracle,
 } from "./logicalCohomology.js";
@@ -59,6 +60,84 @@ describe("deriveClaimBlocks", () => {
       "2": "Frozen accident",
       "4": "Stereochemical affinity",
     });
+  });
+
+  it("merges holder identities that differ only by case", async () => {
+    const result = await deriveClaimBlocks(
+      [
+        accepted("s1", "claim:fdt-upper", {
+          kind: "property-assertion",
+          roles: { subject: "FDT", property: "lesion-adequate" },
+          scope: "position",
+          positionId: "FDT",
+          polarity: "asserts",
+        }),
+        accepted("s2", "claim:fdt-lower", {
+          kind: "property-assertion",
+          roles: { subject: "FDT", property: "newcomb-adequate" },
+          scope: "position",
+          positionId: "fdt",
+          polarity: "asserts",
+        }),
+      ],
+      { corpusId: "decision-theory" },
+    );
+
+    expect(result.blocks).toHaveLength(1);
+    expect(result.blocks[0]).toMatchObject({
+      name: "position:fdt",
+      positionId: "fdt",
+    });
+  });
+
+  it("eliminates the decision-theory arity and pseudo-negation preflight defects", async () => {
+    const result = await deriveClaimBlocks(
+      [
+        accepted("s1", "claim:act-class", {
+          kind: "property-assertion",
+          roles: { subject: "two-boxing", property: "better-in-every-state" },
+          polarity: "asserts",
+        }),
+        accepted("s2", "claim:cdt-two-boxes", {
+          kind: "property-assertion",
+          roles: { subject: "CDT", property: "two-boxes" },
+          scope: "position",
+          positionId: "CDT",
+          polarity: "asserts",
+        }),
+        accepted("s3", "claim:newcomb-rule", {
+          kind: "entailment",
+          roles: {
+            antecedent: "dominance-holding",
+            consequent: "non-newcomb-adequacy",
+          },
+        }),
+        accepted("s4", "claim:ratifiability", {
+          kind: "property-assertion",
+          roles: { subject: "staying", property: "not-ratifiable" },
+          polarity: "asserts",
+        }),
+      ],
+      { corpusId: "decision-theory" },
+    );
+
+    const warnings = analyzeFormalization(
+      result.blocks.map(({ name, propositions }) => ({ name, propositions })),
+    );
+    expect(warnings.map((warning) => warning.code)).not.toContain(
+      "inconsistent_arity",
+    );
+    expect(warnings.map((warning) => warning.code)).not.toContain(
+      "pseudo_negation",
+    );
+    expect(result.blocks.flatMap((block) => block.propositions)).toEqual(
+      expect.arrayContaining([
+        "better_in_every_state(entity_two_boxes)",
+        "two_boxes(entity_cdt)",
+        "all x (dominance_holding(x) -> -newcomb_adequacy(x))",
+        "-ratifiable(entity_staying)",
+      ]),
+    );
   });
 
   it("applies audited aliases while communities remain diagnostic annotations", async () => {
@@ -345,8 +424,8 @@ describe("deriveClaimBlocks", () => {
     );
 
     expect(result.blocks.map((block) => block.positionId)).toEqual([
-      "Frozen accident",
-      "Stereochemical affinity",
+      "frozen accident",
+      "stereochemical affinity",
     ]);
     expect(result.blocks.map((block) => block.communityIds)).toEqual([[0], [0]]);
   });
@@ -411,10 +490,10 @@ describe("deriveClaimBlocks", () => {
     );
 
     expect(result.sharedExistencePredicates).toEqual([]);
-    expect(result.injectedAxioms["position:Stereochemical"]).toEqual([
+    expect(result.injectedAxioms["position:stereochemical"]).toEqual([
       "exists x (affinity(x))",
     ]);
-    expect(result.injectedAxioms["position:Frozen accident"]).toEqual([
+    expect(result.injectedAxioms["position:frozen accident"]).toEqual([
       "exists x (historical_accident(x))",
     ]);
   });
@@ -472,8 +551,8 @@ describe("deriveClaimBlocks", () => {
     expect(result.attributionComplete).toBe(true);
     expect(result.blocks.map((block) => block.name).sort()).toEqual([
       "corpus:consciousness",
-      "position:HOP",
-      "position:HOT",
+      "position:hop",
+      "position:hot",
     ]);
     expect(
       result.blocks

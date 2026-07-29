@@ -2,9 +2,39 @@ import { describe, expect, it } from "vitest";
 import {
   finalizeRunOutcome,
   sanitizeToolsDisabledFinal,
+  typedVerificationFinalization,
 } from "./run-termination.js";
 
 describe("run termination", () => {
+  it("requires a tools-disabled final after typed formalization preflight fails", () => {
+    const finalization = typedVerificationFinalization(
+      JSON.stringify({
+        semanticsValidated: false,
+        verdictKind: "inconclusive",
+        preflightAborted: true,
+        verdict: "INCONCLUSIVE — inconsistent arity on 7 symbols.",
+        formalizationWarnings: [
+          { severity: "critical", code: "inconsistent_arity", message: "arity collision" },
+        ],
+      }),
+    );
+
+    expect(finalization).toMatchObject({
+      reason: "typed-formalization-preflight-failed",
+    });
+    expect(finalization?.fallbackContent).toMatch(/INCONCLUSIVE/i);
+    expect(finalization?.instruction).toMatch(/do not.*tools/i);
+    expect(finalization?.instruction).toMatch(/hand-authored/i);
+  });
+
+  it("does not interrupt a semantically validated typed result", () => {
+    expect(
+      typedVerificationFinalization(
+        JSON.stringify({ semanticsValidated: true, verdictKind: "no-contradiction" }),
+      ),
+    ).toBeNull();
+  });
+
   it("never emits normal completion or a satisfied contract after timeout", () => {
     const outcome = finalizeRunOutcome("timed-out", {
       satisfied: true,
