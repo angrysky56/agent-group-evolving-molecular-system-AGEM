@@ -45,7 +45,7 @@ define
     owns attribution-validated @card(0..1),
     owns semantics-validated @card(0..1),
     owns created-at,
-    owns finding-status @card(1),
+    owns finding-status @card(0..1),
     owns verification-fingerprint @card(0..1),
     owns revalidation-required-at @card(0..1),
     owns revalidation-changes @card(0..1),
