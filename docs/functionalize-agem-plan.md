@@ -743,10 +743,23 @@ Completed and verified:
 
 Evidence gates deliberately not claimed:
 
-- The current provider is OpenRouter with no configured API key. Therefore the
+- ~~The current provider is OpenRouter with no configured API key. Therefore the
   live three-by-three extractor baseline was not run, and adaptive `k=3`
   sampling was not enabled without evidence of current within-version
-  disagreement.
+  disagreement.~~
+
+  **CORRECTED 2026-07-30 — the premise was false.** An OpenRouter key is
+  configured in `.env` and exported from the user's shell as
+  `OPENROUTER_API_KEY`. `GET /api/v1/system/config` reports
+  `"has_api_key": true` with provider `openrouter`, model
+  `deepseek/deepseek-v4-flash`. Live provider sampling was **available and not
+  attempted**, which is a different and less defensible statement than "blocked
+  on a credential". The three-by-three extractor baseline and adaptive `k=3`
+  sampling remain un-run, but nothing external prevents them.
+
+  Anyone reading this section: verify a claimed blocker before inheriting it.
+  This one was load-bearing enough that a later session deferred every live
+  evidence gate on the strength of it.
 - The backend was not restarted for a live replay of all six quantum corpora.
   The answer-keyed six-constraint fixture, source-semantic guard, real Mace4
   semantics, and live TypeDB storage contract pass, but these are not presented

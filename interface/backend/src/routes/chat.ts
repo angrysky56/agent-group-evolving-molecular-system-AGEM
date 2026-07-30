@@ -939,18 +939,24 @@ ${skillContent}`,
         function: {
           name: "build_defensible_claim",
           description:
-            "Build an EVIDENTIAL (defeasible) claim anchored to checkable grounds, for corpora that support a recommendation without supporting a theorem. Filters opinions and unbacked assertions out of the grounds, weighs what remains on relevance/reliability/coverage/verifiability, and SHRINKS THE SCOPE until the claim fits the evidence rather than hedging the wording. Requires a disconfirming-search receipt — the query you ran asking what would prove the recommendation wrong, and where — and refuses to build without one. Result is stored as a finding with method 'evidential'; it never satisfies formal verification.",
+            "Build an EVIDENTIAL (defeasible) claim anchored to checkable grounds, for corpora that support a CLAIM without supporting a theorem. The claim can be a thesis, a reading, an interpretation, an attribution, or a practical recommendation — this is NOT limited to decision-support. A philosophical or historical corpus that argues for an interpretation is a primary use, not an edge case. Filters opinions and unbacked assertions out of the grounds, weighs what remains on relevance/reliability/coverage/verifiability, and SHRINKS THE SCOPE until the claim fits the evidence rather than hedging the wording. Requires a disconfirming-search receipt and refuses to build without one. On a single-document corpus the disconfirming search means searching the text for its OWN concessions, caveats, tensions and counter-cases — a passage where the argument limits itself is disconfirming evidence, and citing it is the receipt. Result is stored as a finding with method 'evidential'; it never satisfies formal verification.",
           parameters: {
             type: "object",
             properties: {
               decision: {
                 type: "object",
                 description:
-                  "{question, subQuestions?}. Evidence is weighed against THIS decision; a weight computed for another question is not reusable.",
+                  "{question, subQuestions?}. The question at issue — 'does abduction dissolve Einstein's puzzle?' is as valid here as 'should we adopt X?'. Evidence is weighed against THIS question; a weight computed for another is not reusable.",
               },
               recommendation: {
                 type: "string",
-                description: "The point you want accepted, before calibration.",
+                description:
+                  "The point you want accepted, before calibration. A thesis or interpretation counts — it need not be an action. Alias: 'claim'.",
+              },
+              claim: {
+                type: "string",
+                description:
+                  "Alias for 'recommendation', for claims that are theses rather than actions.",
               },
               statements: {
                 type: "array",
@@ -2626,7 +2632,13 @@ ${skillContent}`,
                   decision: (args.decision ?? {
                     question: "",
                   }) as { question: string; subQuestions?: string[] },
-                  recommendation: String(args.recommendation ?? ""),
+                  // `claim` is the alias for corpora whose point is a thesis
+                  // rather than an action. A live run declined this tool
+                  // outright because "recommendation" read as decision-support
+                  // and the corpus was a philosophy essay.
+                  recommendation: String(
+                    args.recommendation ?? args.claim ?? "",
+                  ),
                   statements: Array.isArray(args.statements)
                     ? (args.statements as CandidateStatement[])
                     : [],

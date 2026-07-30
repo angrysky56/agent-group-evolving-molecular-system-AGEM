@@ -16,9 +16,22 @@ description: "Build evidential (defeasible) claims anchored to checkable grounds
 | Situation | Path |
 |-----------|------|
 | Corpus positions can be formalised and checked | `extract_and_verify_claims` — use the prover |
-| Corpus supports a recommendation but proves nothing | **This skill** |
+| Corpus argues for a thesis, reading, or interpretation | **This skill** |
+| Corpus supports a practical recommendation | **This skill** |
 | You have a hypothesis and need grounds | `abductive-reasoning` first, then this |
 | You have an opinion and want it to look grounded | Neither. That is what the filter removes. |
+
+> [!WARNING]
+> **"Recommendation" does not mean "action".** The field is named that way
+> because the source specification came from decision-support, and a live run on
+> a philosophy essay declined this tool with *"the corpus does not ground a
+> specific decision-recommendation"* — reading the parameter name as the scope.
+>
+> A thesis is a claim. "Abduction dissolves Einstein's puzzle" is exactly the
+> kind of point that has checkable grounds (what the texts say, where) and no
+> proof. Philosophical, historical and interpretive corpora are the **primary**
+> use of this skill, not an edge case. Pass `claim` instead of `recommendation`
+> if the wording helps.
 
 ---
 
@@ -55,8 +68,21 @@ disconfirmingSearch: {
 itself* as the strongest objection, which is honest. Not looking is not a
 result, and the tool throws.
 
-Run the search with `search_context`, or over the corpus segments directly, then
-call the tool.
+**On a single-document corpus, search the text against itself.** A live run
+stalled here: `search_context` returned the same whole essay for all three
+queries, because a one-cycle ingest leaves one LCM entry. The model concluded
+there were "no distinct disconfirming sources" and declined.
+
+That was the wrong inference. A good argument disconfirms itself in writing —
+in its concessions, caveats, hedges, and the objections it raises to answer. The
+Peirce/Einstein essay ends *"The miracle is relocated, not removed: what remains
+unexplained is why the process converges at all."* That sentence is
+disconfirming evidence against the thesis that abduction dissolves the puzzle.
+Cite it as a `segment:` locator with `bearing: "contradicts"`; the segment ids
+are the `searchedIn`.
+
+If the text makes no concession anywhere, that is itself a finding about the
+text, and `found: 0` with the segments you read is the honest receipt.
 
 ### 2. Scope shrinks; wording does not hedge
 
