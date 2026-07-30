@@ -75,6 +75,21 @@
         "run",
         "eml-mcp"
       ]
+    },
+    "astermind-elm": {
+      "command": "node",
+      "args": [
+        "/path/to/astermind-elm-mcp/build/index.js"
+      ],
+      "env": {
+        "ENABLE_PERSISTENCE": "true",
+        "LOG_PREDICTIONS": "true",
+        "SURREALDB_URL": "ws://127.0.0.1:8001/rpc",
+        "SURREALDB_NAMESPACE": "astermind",
+        "SURREALDB_DATABASE": "production",
+        "SURREALDB_USERNAME": "root",
+        "SURREALDB_PASSWORD": "root"
+      }
     }
   }
 }
