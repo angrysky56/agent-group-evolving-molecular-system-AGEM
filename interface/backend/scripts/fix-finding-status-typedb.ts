@@ -27,7 +27,9 @@ async function main(): Promise<void> {
   const db = config.TYPEDB_DATABASE;
 
   const health = await driver.health();
-  console.log(`server: ${config.TYPEDB_ADDRESS} — ${isOkResponse(health) ? "ok" : "UNREACHABLE"}`);
+  console.log(
+    `server: ${config.TYPEDB_ADDRESS} — ${isOkResponse(health) ? "ok" : "UNREACHABLE"}`,
+  );
   if (!isOkResponse(health)) process.exit(1);
 
   const missing = await driver.oneShotQuery(
@@ -36,15 +38,18 @@ async function main(): Promise<void> {
     db,
     "read",
   );
-  
-  const count = isOkResponse(missing) && Array.isArray(missing.ok?.data)
-    ? missing.ok.data.length
-    : 0;
+
+  const answers = isOkResponse(missing)
+    ? (missing.ok as { answers?: unknown[] })?.answers
+    : undefined;
+  const count = Array.isArray(answers) ? answers.length : 0;
 
   console.log(`Pre-existing findings missing finding-status: ${count}`);
 
   if (!APPLY) {
-    console.log("\nDry run — re-run with --apply to insert 'active' status for legacy findings.");
+    console.log(
+      "\nDry run — re-run with --apply to insert 'active' status for legacy findings.",
+    );
     return;
   }
 
@@ -61,7 +66,9 @@ async function main(): Promise<void> {
       console.error(JSON.stringify(updateResult, null, 2).slice(0, 1500));
       process.exit(1);
     }
-    console.log(`\nUpdated ${count} findings with default finding-status "active".`);
+    console.log(
+      `\nUpdated ${count} findings with default finding-status "active".`,
+    );
   } else {
     console.log("\nNo findings require backfilling.");
   }
