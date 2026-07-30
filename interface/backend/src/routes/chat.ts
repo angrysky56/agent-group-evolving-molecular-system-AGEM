@@ -46,6 +46,10 @@ import {
 } from "../services/extraction-verdict.js";
 import { proposeExtractionRepairs } from "../services/extraction-repairs.js";
 import {
+  assessMaterial,
+  assessmentBriefing,
+} from "../services/material-assessment.js";
+import {
   executeAbductiveLeap,
   hypothesisId,
   leapsOfFaith,
@@ -1386,6 +1390,37 @@ ${skillContent}`,
       isClaimStoreAvailable: () => claimStore.available,
       materialChars: typeof message === "string" ? message.length : 0,
       materialThreshold: settings.all.CHAT_CONTRACT_MATERIAL_CHARS,
+    });
+
+    /*
+     * Reason about the input BEFORE anything ingests it.
+     *
+     * The pipeline was unconditional: whatever arrived got segmented into the
+     * co-occurrence graph, and instrument choice came from `body.intent` — the
+     * CALLER's declaration, never the engine's own view. So a bare question was
+     * ingested as if it were a corpus, and material that cannot carry a formal
+     * verdict was put through formal verification anyway, which burns a full
+     * extraction pass before aborting.
+     *
+     * This is measurement, not a model call, in every clear case. It briefs the
+     * run rather than gating it: a recommendation the reasoning can override on
+     * evidence is adaptation; a hard rule would be one more hand-tuned branch
+     * of the kind this is meant to replace.
+     */
+    const materialAssessment = await assessMaterial(
+      typeof message === "string" ? message : "",
+    );
+    runLog.event("material_assessment", {
+      kind: materialAssessment.kind,
+      formalizability: materialAssessment.formalizability,
+      recommendedPath: materialAssessment.recommendedPath,
+      decidedBy: materialAssessment.decidedBy,
+      signals: materialAssessment.signals,
+      reasons: materialAssessment.reasons,
+    });
+    historyMessages.push({
+      role: "system",
+      content: assessmentBriefing(materialAssessment),
     });
 
     while (!isDone && turnCount < maxTurns) {
