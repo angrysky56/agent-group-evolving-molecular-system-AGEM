@@ -39,6 +39,18 @@ export interface VdWSpawnParams {
   readonly communityB: number;
 }
 
+export interface VdWExplorationProposal {
+  readonly proposalId: string;
+  readonly kind: "catalyst-question";
+  readonly question: string;
+  readonly gapId: string;
+  readonly origin: "vdw-proposal";
+  readonly rationale: string;
+  readonly creator: string;
+  readonly verificationStatus: "propose-only";
+  readonly applied: false;
+}
+
 // ---------------------------------------------------------------------------
 // VdWAgent — ephemeral reasoning agent with bounded lifecycle
 // ---------------------------------------------------------------------------
@@ -61,6 +73,7 @@ export class VdWAgent {
   #synthQueries: string[] = [];
   #entitiesAdded: string[] = [];
   #relationsAdded: Array<{ from: string; to: string; type: string }> = [];
+  #proposals: VdWExplorationProposal[] = [];
 
   constructor(id: string, params: VdWSpawnParams) {
     this.id = id;
@@ -95,14 +108,21 @@ export class VdWAgent {
       `to community ${this.params.communityB}? (step ${this.#stepsExecuted})`;
     this.#synthQueries.push(query);
 
-    // Generate synthetic bridge entity on the first step
+    // Record one bounded exploration proposal. Earlier versions fabricated a
+    // `vdw-bridge-*` node here and later inserted it into the corpus graph.
+    // A placeholder is not a discovery and must never affect topology/SOC.
     if (this.#stepsExecuted === 1) {
-      const entity = `vdw-bridge-${this.params.gapId}-${this.id}`;
-      this.#entitiesAdded.push(entity);
-      this.#relationsAdded.push({
-        from: entity,
-        to: `community-${this.params.communityA}`,
-        type: "vdw-bridge",
+      this.#proposals.push({
+        proposalId: `vdw-proposal-${this.params.gapId}-${this.id}`,
+        kind: "catalyst-question",
+        question: query,
+        gapId: this.params.gapId,
+        origin: "vdw-proposal",
+        rationale:
+          "Registry-cycle topology and a structural graph gap selected this bounded probe; it is not corpus evidence.",
+        creator: this.id,
+        verificationStatus: "propose-only",
+        applied: false,
       });
     }
 
@@ -127,6 +147,7 @@ export class VdWAgent {
     relationsAdded: ReadonlyArray<{ from: string; to: string; type: string }>;
     stepsExecuted: number;
     success: boolean;
+    proposals: readonly VdWExplorationProposal[];
   } {
     return {
       synthQueries: [...this.#synthQueries],
@@ -134,6 +155,7 @@ export class VdWAgent {
       relationsAdded: [...this.#relationsAdded],
       stepsExecuted: this.#stepsExecuted,
       success: this.#stepsExecuted > 0,
+      proposals: [...this.#proposals],
     };
   }
 }
@@ -479,6 +501,7 @@ export class VdWAgentSpawner {
       synthQueries: results.synthQueries,
       entitiesAdded: results.entitiesAdded,
       relationsAdded: results.relationsAdded,
+      proposals: results.proposals,
       stepsExecuted: results.stepsExecuted,
       success: results.success,
     } as unknown as AnyEvent;

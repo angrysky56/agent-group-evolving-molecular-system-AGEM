@@ -97,6 +97,19 @@ export interface GapFillResult {
   /** Synthetic questions generated to guide gap bridging (for Phase 6 LLM use). */
   readonly synthQueries: string[];
 
+  /** Bounded, non-applied exploration proposals; never corpus graph facts. */
+  readonly proposals: Array<{
+    proposalId: string;
+    kind: "catalyst-question";
+    question: string;
+    gapId: string;
+    origin: "catalyst-proposal";
+    rationale: string;
+    creator: string;
+    verificationStatus: "propose-only";
+    applied: false;
+  }>;
+
   /** Unix timestamp (ms) when gap fill completed. */
   readonly timestamp: number;
 }
@@ -266,8 +279,8 @@ export class ObstructionHandler {
     // Run gap detection and fill
     const gapFillResult = await this.#runGapDetectorAgent(agent, obstruction);
 
-    // Integrate results into TNA graph
-    this.#integrateGapFillResults(gapFillResult);
+    // Proposals remain outside the corpus graph. Acceptance must route their
+    // source material through typed extraction; no placeholder is integrated.
 
     // Return agent to idle state
     agent.status = "idle";
@@ -355,6 +368,7 @@ export class ObstructionHandler {
     const entitiesAdded: string[] = [];
     const relationsAdded: Array<{ from: string; to: string; type: string }> =
       [];
+    const proposals: GapFillResult["proposals"] = [];
 
     for (const gap of gaps) {
       // Generate a synthetic bridging query
@@ -363,20 +377,20 @@ export class ObstructionHandler {
         `(density=${gap.interCommunityDensity.toFixed(3)}, path=${gap.shortestPathLength})`;
       synthQueries.push(query);
 
-      // Phase 5 stub: generate synthetic entity IDs to bridge the gap
-      // In Phase 6: actual LLM inference would return real entities/relations
-      const bridgeEntity = `bridge-gap-${obstruction.iteration}-c${gap.communityA}-c${gap.communityB}`;
-      entitiesAdded.push(bridgeEntity);
-
-      // Add a synthetic relation between communities via the bridge entity
-      const bridgeNodes = gap.bridgeNodes;
-      if (bridgeNodes.length >= 1) {
-        relationsAdded.push({
-          from: String(bridgeNodes[0]),
-          to: bridgeEntity,
-          type: "gap-bridge",
-        });
-      }
+      proposals.push({
+        proposalId:
+          `catalyst-proposal-${obstruction.iteration}-` +
+          `${gap.communityA}-${gap.communityB}`,
+        kind: "catalyst-question",
+        question: query,
+        gapId: `${gap.communityA}_${gap.communityB}`,
+        origin: "catalyst-proposal",
+        rationale:
+          "Registry-cycle topology selected an already measured structural graph gap for bounded exploration; this is not evidence.",
+        creator: agent.id,
+        verificationStatus: "propose-only",
+        applied: false,
+      });
     }
 
     // Simulate agent execution time (minimal for Phase 5)
@@ -388,6 +402,7 @@ export class ObstructionHandler {
       entitiesAdded,
       relationsAdded,
       synthQueries,
+      proposals,
       timestamp: Date.now(),
     };
   }

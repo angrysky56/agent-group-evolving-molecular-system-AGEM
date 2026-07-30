@@ -442,4 +442,52 @@ describe("GapDetector", () => {
       );
     }
   });
+
+  it("invalidates an empty cached result after direct topology mutation", () => {
+    const detector = new GapDetector(
+      twoCliqueGraph,
+      twoCliqueLouvain,
+      twoCliqueCentrality,
+    );
+    const graph = twoCliqueGraph.getGraph();
+    const a = ["a1", "a2", "a3", "a4", "a5"];
+    const b = ["b1", "b2", "b3", "b4", "b5"];
+    for (const left of a) {
+      for (const right of b) {
+        if (!graph.hasEdge(left, right)) {
+          graph.addEdge(left, right, { weight: 1, createdAtIteration: 0 });
+        }
+      }
+    }
+    expect(detector.findGaps()).toHaveLength(0);
+
+    graph.forEachEdge((edge, _attrs, source, target) => {
+      const crosses =
+        (a.includes(source) && b.includes(target)) ||
+        (b.includes(source) && a.includes(target));
+      const isBridge =
+        (source === "a1" && target === "b1") ||
+        (source === "b1" && target === "a1");
+      if (crosses && !isBridge) graph.dropEdge(edge);
+    });
+
+    expect(detector.findGaps()).toHaveLength(1);
+  });
+
+  it("invalidates cached gaps when assignments change without topology changes", () => {
+    const detector = new GapDetector(
+      twoCliqueGraph,
+      twoCliqueLouvain,
+      twoCliqueCentrality,
+    );
+    expect(detector.findGaps()).toHaveLength(1);
+    const topologyRevision = twoCliqueGraph.getTopologyRevision();
+
+    for (const node of twoCliqueGraph.getNodes()) {
+      twoCliqueGraph.updateNodeCommunity(node.lemma, 0);
+    }
+
+    expect(twoCliqueGraph.getTopologyRevision()).toBe(topologyRevision);
+    expect(detector.findGaps()).toHaveLength(0);
+  });
 });

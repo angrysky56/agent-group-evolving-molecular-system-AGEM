@@ -123,6 +123,8 @@ export class CooccurrenceGraph {
   > = new Map();
 
   #currentIteration: number = 0;
+  #topologyRevision: number = 0;
+  #communityRevision: number = 0;
 
   /**
    * Optional bigram-phrase extractor. When configured, frequently-seen
@@ -152,6 +154,15 @@ export class CooccurrenceGraph {
     this.#preprocessor = preprocessor;
     this.#windowSize = config?.windowSize ?? DEFAULT_WINDOW_SIZE;
     this.#graph = new GraphConstructor({ type: "undirected", multi: false });
+    const topologyChanged = () => {
+      this.#topologyRevision++;
+    };
+    this.#graph.on("nodeAdded", topologyChanged);
+    this.#graph.on("nodeDropped", topologyChanged);
+    this.#graph.on("edgeAdded", topologyChanged);
+    this.#graph.on("edgeDropped", topologyChanged);
+    this.#graph.on("cleared", topologyChanged);
+    this.#graph.on("edgesCleared", topologyChanged);
     this.#phraseExtractor =
       config?.enablePhrases !== false ? new PhraseExtractor() : null;
   }
@@ -374,6 +385,7 @@ export class CooccurrenceGraph {
             this.#graph.addEdgeWithKey(edgeKey, tokenI, tokenJ, {
               weight,
               createdAtIteration: this.#currentIteration,
+              origin: "corpus-cooccurrence",
             });
           } catch {
             // Edge already exists under a different key direction — accumulate weight.
@@ -490,6 +502,7 @@ export class CooccurrenceGraph {
       this.#graph.addEdge(src, dst, {
         weight,
         createdAtIteration: this.#currentIteration,
+        origin: "phrase",
       });
     }
   }
@@ -504,6 +517,16 @@ export class CooccurrenceGraph {
    */
   getGraph(): GraphInstance {
     return this.#graph;
+  }
+
+  /** Monotone revision updated for node/edge additions and removals. */
+  getTopologyRevision(): number {
+    return this.#topologyRevision;
+  }
+
+  /** Monotone revision updated only when an assignment actually changes. */
+  getCommunityRevision(): number {
+    return this.#communityRevision;
   }
 
   /**
@@ -591,9 +614,12 @@ export class CooccurrenceGraph {
    */
   updateNodeCommunity(nodeId: string, communityId: number): void {
     const meta = this.#nodeMetadata.get(nodeId);
-    if (meta) {
-      meta.communityId = communityId;
+    if (!meta || meta.communityId === communityId) return;
+    meta.communityId = communityId;
+    if (this.#graph.hasNode(nodeId)) {
+      this.#graph.setNodeAttribute(nodeId, "communityId", communityId);
     }
+    this.#communityRevision++;
   }
 
   // --------------------------------------------------------------------------

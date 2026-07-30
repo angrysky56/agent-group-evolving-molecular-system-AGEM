@@ -22,6 +22,7 @@
 
 import { existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { settings } from "../config.js";
 
 export interface RunLogger {
@@ -73,6 +74,8 @@ function estTokens(s: string): number {
  */
 export function createRunLogger(meta: {
   model: string;
+  provider?: string;
+  intent?: "discover" | "verify" | "discover-then-verify";
   sessionId?: string;
   message?: string;
   /** Injectable for tests; production logs still use KNOWLEDGE_BASE_PATH. */
@@ -87,6 +90,18 @@ export function createRunLogger(meta: {
     const runId = `${stamp}_${Math.random().toString(36).slice(2, 8)}`;
     const jsonlPath = join(dir, `${runId}.jsonl`);
     const mdPath = join(dir, `${runId}.md`);
+    const gitCommit =
+      process.env.GIT_COMMIT?.trim() ||
+      (() => {
+        try {
+          return execFileSync("git", ["rev-parse", "HEAD"], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"],
+          }).trim();
+        } catch {
+          return "unknown";
+        }
+      })();
 
     const writeJsonl = (type: string, data: Record<string, unknown>) => {
       try {
@@ -114,6 +129,9 @@ export function createRunLogger(meta: {
           `# AGEM run ${runId}`,
           "",
           `- **model**: ${meta.model}`,
+          `- **provider**: ${meta.provider ?? "unknown"}`,
+          `- **intent**: ${meta.intent ?? "discover-then-verify"}`,
+          `- **git commit**: ${gitCommit}`,
           `- **session**: ${meta.sessionId ?? "—"}`,
           `- **started**: ${ts()}`,
           "",
@@ -133,6 +151,10 @@ export function createRunLogger(meta: {
     writeJsonl("run_start", {
       runId,
       model: meta.model,
+      provider: meta.provider,
+      intent: meta.intent ?? "discover-then-verify",
+      gitCommit,
+      codeProvenance: "current-worktree",
       sessionId: meta.sessionId,
       messageChars: (meta.message ?? "").length,
     });

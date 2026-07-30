@@ -337,6 +337,7 @@ describe("ObstructionHandler", () => {
       expect(ev).toHaveProperty("entitiesAdded");
       expect(ev).toHaveProperty("relationsAdded");
       expect(ev).toHaveProperty("synthQueries");
+      expect(ev).toHaveProperty("proposals");
       expect(ev).toHaveProperty("timestamp");
 
       // obstructionId should reference the original obstruction

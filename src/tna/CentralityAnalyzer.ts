@@ -130,6 +130,9 @@ export class CentralityAnalyzer extends EventEmitter {
   /** Last iteration at which centrality was computed. */
   #lastComputeIteration: number = 0;
 
+  /** Graph topology revision represented by #scores, or null before compute. */
+  #calculationRevision: number | null = null;
+
   /** Current computation interval (adjusted by regime). */
   #currentInterval: number;
 
@@ -187,6 +190,7 @@ export class CentralityAnalyzer extends EventEmitter {
       this.#cooccurrenceGraph.updateNodeCentrality(nodeId, score);
     }
 
+    this.#calculationRevision = this.#cooccurrenceGraph.getTopologyRevision();
     return this.#scores as ReadonlyMap<string, number>;
   }
 
@@ -535,6 +539,11 @@ export class CentralityAnalyzer extends EventEmitter {
    */
   getScore(nodeId: string): number {
     return this.#scores.get(nodeId) ?? 0;
+  }
+
+  /** Topology revision represented by the current scores. */
+  getCalculationRevision(): number | null {
+    return this.#calculationRevision;
   }
 
   /**

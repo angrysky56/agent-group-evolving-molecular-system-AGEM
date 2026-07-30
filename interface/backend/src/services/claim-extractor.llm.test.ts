@@ -202,6 +202,7 @@ describe("claim extraction generation profile", () => {
     expect(report.unmappableClaims).toEqual([
       {
         segmentId: "s1",
+        sourceSegmentId: expect.stringMatching(/^source-segment:/),
         reason: "No glossary entry represents calibration.",
       },
     ]);

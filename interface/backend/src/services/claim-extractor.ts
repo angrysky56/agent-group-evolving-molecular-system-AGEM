@@ -37,9 +37,19 @@ export type ClaimKind =
   | "dissociation"
   | "identity-claim"
   | "exclusion"
+  | "joint-incompatibility"
   | "causal-claim"
   | "property-assertion"
   | "entailment";
+
+/** Versioned inputs that participate in extraction replay identity. */
+export const CLAIM_EXTRACTION_PROMPT_VERSION = "closed-glossary-v3-joint-incompatibility";
+export const CLAIM_SCHEMA_VERSION = "claims-typeql-v3-joint-incompatibility";
+export const CLAIM_SEGMENTATION_VERSION = "assertion-segments-v2";
+export const CLAIM_SOURCE_SEMANTIC_VALIDATOR_VERSION =
+  "source-semantics-v3-joint-incompatibility";
+export const CLAIM_FORMALIZER_VERSION =
+  "claim-propositions-v3-joint-incompatibility";
 
 export type ClaimScope = "corpus" | "position";
 
@@ -58,6 +68,8 @@ export interface ExtractedClaim {
 
 export interface ExtractionOutcome {
   segmentId: string;
+  /** Content-addressed entry in ExtractionReport.sourceSegments. */
+  sourceSegmentId?: string;
   claim: ExtractedClaim;
   /** Concrete graph relation occurrence used by evidences links. */
   claimId?: string;
@@ -96,9 +108,36 @@ export interface ClosedGlossaryEntry {
 
 export interface UnmappableClaim {
   segmentId: string;
+  /** Content-addressed entry in ExtractionReport.sourceSegments. */
+  sourceSegmentId?: string;
   reason: string;
   /** Source-grounded glossary additions for propose-only repair. */
   candidateLabels?: string[];
+}
+
+export interface ExtractionSourceSegment {
+  /** Content identity; repeated text is stored once even if it has several input IDs. */
+  sourceSegmentId: string;
+  segmentIds: string[];
+  text: string;
+  textHash: string;
+  chars: number;
+  truncated: false;
+  redacted: false;
+}
+
+export interface ParseFailureOutcome {
+  segmentId: string;
+  sourceSegmentId: string;
+  reason: "unparseable-provider-output";
+}
+
+export interface ExtractionReplayManifest {
+  corpusId: string;
+  corpusHash: string;
+  segmentationVersion: string;
+  promptVersion: string;
+  schemaVersion: string;
 }
 
 export interface ExtractionReport {
@@ -109,6 +148,10 @@ export interface ExtractionReport {
   outcomes: ExtractionOutcome[];
   /** Segments the model returned unparseable output for. */
   parseFailures: string[];
+  parseFailureOutcomes: ParseFailureOutcome[];
+  /** Deduplicated, lossless source table for every extraction outcome. */
+  sourceSegments: ExtractionSourceSegment[];
+  replayManifest: ExtractionReplayManifest;
   /** Immutable corpus-wide vocabulary used for every extraction batch. */
   glossary: ClosedGlossaryEntry[];
   /** Set when pass one could not establish a closed vocabulary. */
@@ -152,6 +195,39 @@ export function parseClaimArray(value: unknown): ExtractedClaim[] | null {
 interface SegmentProposal {
   claims: ExtractedClaim[];
   unmappable: Array<{ reason: string; candidateLabels: string[] }>;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function buildSourceTable(
+  segments: readonly { id: string; text: string }[],
+): {
+  sourceSegments: ExtractionSourceSegment[];
+  sourceIdBySegmentId: Map<string, string>;
+} {
+  const byText = new Map<string, ExtractionSourceSegment>();
+  const sourceIdBySegmentId = new Map<string, string>();
+  for (const segment of segments) {
+    const textHash = sha256(segment.text);
+    let record = byText.get(segment.text);
+    if (!record) {
+      record = {
+        sourceSegmentId: `source-segment:${textHash}`,
+        segmentIds: [],
+        text: segment.text,
+        textHash,
+        chars: segment.text.length,
+        truncated: false,
+        redacted: false,
+      };
+      byText.set(segment.text, record);
+    }
+    record.segmentIds.push(segment.id);
+    sourceIdBySegmentId.set(segment.id, record.sourceSegmentId);
+  }
+  return { sourceSegments: [...byText.values()], sourceIdBySegmentId };
 }
 
 /** Parse the closed-pass envelope while retaining old array responses. */
@@ -396,6 +472,7 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
     dissociation: ["dissociable"],
     "identity-claim": ["identified", "identified-with"],
     exclusion: ["excluder", "excluded"],
+    "joint-incompatibility": ["incompatible"],
     "causal-claim": ["cause", "effect"],
     "property-assertion": ["subject", "property"],
     entailment: ["antecedent", "consequent"],
@@ -471,7 +548,7 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
 }
 
 const ATTRIBUTED_ASSERTION_CUE =
-  /\b(?:theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
+  /\b(?:positions?|theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
 /** A corpus-level rule about arbitrary positions is not attribution to one holder. */
 const GENERIC_POSITION_RULE_CUE =
   /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\b/i;
@@ -510,20 +587,26 @@ export function claimAttributionIssue(
   return null;
 }
 
-/** Reject source constructions that the current binary relation schema cannot preserve. */
+const JOINT_INCOMPATIBILITY_CUE =
+  /\bno\s+(?:position|theor(?:y|ies)|view|account|model|subject|system)\s+can\s+(?:(?:simultaneously\s+)(?:hold|satisfy|possess|instantiate)(?:\s+all(?:\s+(?:three|four|five|six|\d+))?\s+(?:of\s*)?:?)?|(?:hold|satisfy|possess|instantiate)\s+all(?:\s+(?:three|four|five|six|\d+))?\s+(?:of\s*)?:?)/i;
+
+/** True when the source asserts that one subject cannot jointly satisfy a set. */
+export function sourceRequiresJointIncompatibility(sourceText = ""): boolean {
+  return JOINT_INCOMPATIBILITY_CUE.test(sourceText);
+}
+
+/** Reject a binary or unary decomposition of an irreducibly n-ary source. */
 export function claimSourceSemanticIssue(
   claim: ExtractedClaim,
   sourceText = "",
 ): string | null {
   if (
-    claim.kind === "exclusion" &&
-    /\bno\s+(?:position|theor(?:y|ies)|view|account|model)\s+can\s+hold\s+all(?:\s+(?:three|four|five|\d+))?\s+(?:of\s*)?:?/i.test(
-      sourceText,
-    )
+    sourceRequiresJointIncompatibility(sourceText) &&
+    claim.kind !== "joint-incompatibility"
   ) {
     return (
-      "schema expressivity: a joint incompatibility cannot be split into pairwise " +
-      "exclusions; doing so would falsely say each conjunct is individually impossible"
+      "source semantics: a joint incompatibility must remain one n-ary claim; " +
+      "binary exclusions, unary properties, and chained entailments change its meaning"
     );
   }
   return null;
@@ -551,6 +634,10 @@ const ROLE_SPEC: Record<ClaimKind, { roles: string[]; extras?: string[]; gloss: 
   exclusion: {
     roles: ["excluder", "excluded"],
     gloss: "A rules out B. THIS IS THE ONE MOST OFTEN MISSED. If the text says one thing holds 'whether or not' another does, or that A is present while B is absent, that is an exclusion. Without it, two rival theories look compatible.",
+  },
+  "joint-incompatibility": {
+    roles: ["incompatible", "incompatible"],
+    gloss: "A single subject cannot satisfy all listed members simultaneously. Put the complete set under incompatible as one array; never emit pairwise exclusions or unary denials.",
   },
   "causal-claim": {
     roles: ["cause", "effect"],
@@ -796,9 +883,9 @@ Rules:
   supply them as an array. For a named axis or "X vs Y" sentence, use the two
   axis-value labels. Never repeat the axis heading as both values and never use
   the axis heading as a property.
-- "No position can hold all of A, B, and C" is one joint incompatibility, NOT
-  three pairwise exclusions. The current claim kinds cannot preserve that
-  n-ary constraint: emit one unmappable repair item and no exclusion claims.
+- "No position can hold all of A, B, and C" is one joint-incompatibility, NOT
+  three pairwise exclusions or unary negative properties. Emit exactly one
+  joint-incompatibility claim with the complete set as the incompatible array.
 - Infer attribution from ordinary prose; authors need not add extraction
   boilerplate. Every claim MUST include a scope. Use {"scope":"corpus"} when the
   source itself directly asserts the proposition. Use {"scope":"position",
@@ -910,11 +997,9 @@ export function claimIdentity(
   segmentId: string,
 ): { claimId: string; claimKey: string } {
   const canonical = canonicalClaim(claim);
-  const digest = (value: string) =>
-    createHash("sha256").update(value, "utf8").digest("hex");
   return {
-    claimKey: `claim:${digest(canonical)}`,
-    claimId: `claim-occurrence:${digest(`${segmentId}\n${canonical}`)}`,
+    claimKey: `claim:${sha256(canonical)}`,
+    claimId: `claim-occurrence:${sha256(`${segmentId}\n${canonical}`)}`,
   };
 }
 
@@ -1237,6 +1322,10 @@ export async function extractIntoStore(
 ): Promise<ExtractionReport> {
   options.signal?.throwIfAborted();
   const startedAt = performance.now();
+  const { sourceSegments, sourceIdBySegmentId } = buildSourceTable(segments);
+  const corpusHash = sha256(
+    JSON.stringify(segments.map(({ id, text }) => ({ id, text }))),
+  );
   const report: ExtractionReport = {
     segmentsProcessed: 0,
     claimsProposed: 0,
@@ -1244,6 +1333,15 @@ export async function extractIntoStore(
     claimsRejected: 0,
     outcomes: [],
     parseFailures: [],
+    parseFailureOutcomes: [],
+    sourceSegments,
+    replayManifest: {
+      corpusId,
+      corpusHash,
+      segmentationVersion: CLAIM_SEGMENTATION_VERSION,
+      promptVersion: CLAIM_EXTRACTION_PROMPT_VERSION,
+      schemaVersion: CLAIM_SCHEMA_VERSION,
+    },
     glossary: [],
     unmappableClaims: [],
     telemetry: {
@@ -1328,14 +1426,36 @@ export async function extractIntoStore(
     options.signal?.throwIfAborted();
     report.segmentsProcessed++;
     await storeSegment(seg.id, seg.text, corpusId);
+    const sourceSegmentId = sourceIdBySegmentId.get(seg.id)!;
 
     if (proposal === null) {
       report.parseFailures.push(seg.id);
+      report.parseFailureOutcomes.push({
+        segmentId: seg.id,
+        sourceSegmentId,
+        reason: "unparseable-provider-output",
+      });
       continue;
+    }
+
+    if (sourceRequiresJointIncompatibility(seg.text)) {
+      const jointClaims = proposal.claims.filter(
+        (claim) => claim.kind === "joint-incompatibility",
+      );
+      if (jointClaims.length !== 1 || proposal.claims.length !== 1) {
+        report.unmappableClaims.push({
+          segmentId: seg.id,
+          sourceSegmentId,
+          reason:
+            "source semantics: expected exactly one complete joint-incompatibility claim; refused unary, pairwise, or chained decomposition",
+        });
+        continue;
+      }
     }
     for (const unmappable of proposal.unmappable) {
       report.unmappableClaims.push({
         segmentId: seg.id,
+        sourceSegmentId,
         reason: unmappable.reason,
         ...(unmappable.candidateLabels.length > 0
           ? { candidateLabels: unmappable.candidateLabels }
@@ -1351,6 +1471,7 @@ export async function extractIntoStore(
         report.claimsRejected++;
         report.outcomes.push({
           segmentId: seg.id,
+          sourceSegmentId,
           claim,
           accepted: false,
           rejectionKind: "schema",
@@ -1364,6 +1485,7 @@ export async function extractIntoStore(
         report.claimsRejected++;
         report.outcomes.push({
           segmentId: seg.id,
+          sourceSegmentId,
           claim,
           accepted: false,
           rejectionKind: "schema",
@@ -1377,6 +1499,7 @@ export async function extractIntoStore(
         report.claimsRejected++;
         report.outcomes.push({
           segmentId: seg.id,
+          sourceSegmentId,
           claim,
           accepted: false,
           rejectionKind: "attribution",
@@ -1390,6 +1513,7 @@ export async function extractIntoStore(
         report.claimsRejected++;
         report.outcomes.push({
           segmentId: seg.id,
+          sourceSegmentId,
           claim,
           accepted: false,
           rejectionKind: "vocabulary",
@@ -1403,6 +1527,7 @@ export async function extractIntoStore(
         report.claimsRejected++;
         report.outcomes.push({
           segmentId: seg.id,
+          sourceSegmentId,
           claim,
           accepted: false,
           rejectionKind: "schema",
@@ -1437,6 +1562,7 @@ export async function extractIntoStore(
       else report.claimsRejected++;
       report.outcomes.push({
         segmentId: seg.id,
+        sourceSegmentId,
         claim,
         claimId: query.claimId,
         claimKey: query.claimKey,
@@ -1496,6 +1622,21 @@ export function claimToPropositions(claim: ExtractedClaim): {
   };
 
   switch (claim.kind) {
+    case "joint-incompatibility": {
+      const members = [...new Set(many("incompatible"))].sort();
+      if (members.length < 2) return null;
+      const consequent = pred(members.at(-1)!);
+      const antecedent = members
+        .slice(0, -1)
+        .map((member) => `${pred(member)}(x)`)
+        .join(" & ");
+      return {
+        name: `joint-incompatibility(${members.join(",")})`,
+        // This forbids only the complete conjunction. No member, pair, or
+        // other proper subset is made impossible by the encoding.
+        propositions: [`all x ((${antecedent}) -> -${consequent}(x))`],
+      };
+    }
     case "exclusion": {
       const a = one("excluder"), b = one("excluded");
       if (!a || !b) return null;

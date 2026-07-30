@@ -7,13 +7,19 @@ import type {
   StoreFindingResult,
 } from "./finding-store.js";
 import {
+  CLAIM_FORMALIZER_VERSION,
+  CLAIM_SCHEMA_VERSION,
+  CLAIM_SEGMENTATION_VERSION,
+  CLAIM_SOURCE_SEMANTIC_VALIDATOR_VERSION,
   schemaClaimFact,
   type ExtractedClaim,
 } from "./claim-extractor.js";
+import { settings } from "../config.js";
 import type {
   DensificationResult,
   FindingNarrativeRequest,
 } from "./finding-narrative.js";
+import type { VerificationDependencies } from "./finding-store.js";
 
 export interface FindingCaptureContext {
   runLogId: string;
@@ -25,6 +31,22 @@ type CapturedNarrativeRequest = Omit<
   FindingNarrativeRequest,
   "model" | "provider"
 >;
+
+/** Semantic runtime fields that can invalidate prior typed findings. */
+export function currentVerificationDependencyOverrides(): Partial<VerificationDependencies> {
+  return {
+    segmentationVersion: CLAIM_SEGMENTATION_VERSION,
+    extractionSchemaVersion: CLAIM_SCHEMA_VERSION,
+    sourceSemanticValidatorVersion: CLAIM_SOURCE_SEMANTIC_VALIDATOR_VERSION,
+    formalizerVersion: CLAIM_FORMALIZER_VERSION,
+    proverVersion: "mcp-logic-mace4-prover9-v1",
+    solverSettings: {
+      defaultMaxArity: settings.all.LOGIC_MAX_ARITY,
+      maxChecks: settings.all.LOGIC_MAX_CHECKS,
+      maxBlocks: settings.all.LOGIC_MAX_BLOCKS,
+    },
+  };
+}
 
 export function captureFindingFromTool(
   toolName: string,
@@ -140,7 +162,57 @@ export function captureFindingFromTool(
       method === "derived-from-claims"
         ? stringArray(result.supportingClaimRefs)
         : undefined,
+    ...(method === "derived-from-claims"
+      ? {
+          verificationDependencies: buildVerificationDependencies(
+            result,
+            supportingClaims,
+            stringArray(result.supportingClaimRefs),
+          ),
+        }
+      : {}),
   };
+}
+
+function buildVerificationDependencies(
+  result: Record<string, any>,
+  supportingClaimKeys: string[],
+  supportingClaimRefs: string[],
+) {
+  const extraction =
+    result.extraction && typeof result.extraction === "object"
+      ? (result.extraction as Record<string, any>)
+      : {};
+  const manifest =
+    extraction.replayManifest && typeof extraction.replayManifest === "object"
+      ? (extraction.replayManifest as Record<string, any>)
+      : {};
+  const glossary = Array.isArray(extraction.glossary)
+    ? extraction.glossary
+    : [];
+  return {
+    corpusHash: String(manifest.corpusHash ?? "unknown"),
+    segmentationVersion: String(manifest.segmentationVersion ?? "unknown"),
+    supportingClaimIds: [...new Set(supportingClaimRefs)].sort(),
+    normalizedClaimKeys: [...new Set(supportingClaimKeys)].sort(),
+    ontologyVersion: `glossary-sha256:${digest(stableJson(glossary))}`,
+    extractionSchemaVersion: String(manifest.schemaVersion ?? "unknown"),
+    sourceSemanticValidatorVersion: CLAIM_SOURCE_SEMANTIC_VALIDATOR_VERSION,
+    formalizerVersion: CLAIM_FORMALIZER_VERSION,
+    proverVersion: currentVerificationDependencyOverrides().proverVersion!,
+    solverSettings: currentVerificationDependencyOverrides().solverSettings!,
+  };
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 /**

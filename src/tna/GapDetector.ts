@@ -54,8 +54,8 @@ export class GapDetector {
   /** Cached gaps sorted by inter-community density (ascending). */
   #gaps: GapMetrics[] = [];
 
-  /** Whether gaps have been computed yet. */
-  #computed: boolean = false;
+  /** Revision tuple under which #gaps was computed. */
+  #cacheKey: string | null = null;
 
   /** Default inter-community density threshold below which a region is considered a gap. */
   static readonly DENSITY_THRESHOLD = 0.2;
@@ -90,7 +90,8 @@ export class GapDetector {
    * @returns Read-only array of GapMetrics sorted by inter-community density.
    */
   findGaps(): ReadonlyArray<GapMetrics> {
-    if (this.#computed) {
+    const cacheKey = `${this.#cooccurrenceGraph.getTopologyRevision()}:${this.#cooccurrenceGraph.getCommunityRevision()}`;
+    if (this.#cacheKey === cacheKey) {
       return this.#gaps;
     }
 
@@ -101,8 +102,9 @@ export class GapDetector {
 
     // If only 1 community, no gaps possible.
     if (communityIds.length <= 1) {
-      this.#computed = true;
-      return [];
+      this.#gaps = [];
+      this.#cacheKey = cacheKey;
+      return this.#gaps;
     }
 
     const graph = this.#cooccurrenceGraph.getGraph();
@@ -134,7 +136,7 @@ export class GapDetector {
     newGaps.sort((a, b) => a.interCommunityDensity - b.interCommunityDensity);
 
     this.#gaps = newGaps;
-    this.#computed = true;
+    this.#cacheKey = cacheKey;
     return this.#gaps;
   }
 

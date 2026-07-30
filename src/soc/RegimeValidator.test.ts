@@ -35,6 +35,19 @@ function makeSocMetrics(
     embeddingEntropy: overrides.embeddingEntropy ?? 0.9,
     cdp: overrides.cdp ?? 0.1,
     surprisingEdgeRatio: overrides.surprisingEdgeRatio ?? 0.05,
+    eligibleNewEdgeCount: overrides.eligibleNewEdgeCount ?? 1,
+    surprisingEdgeCount: overrides.surprisingEdgeCount ?? 0,
+    unmeasurableEdgeCount: overrides.unmeasurableEdgeCount ?? 0,
+    surprisingEdgeStatus: overrides.surprisingEdgeStatus ?? "measured",
+    newEdgeCountsByOrigin:
+      overrides.newEdgeCountsByOrigin ?? {
+        "corpus-cooccurrence": 0,
+        phrase: 0,
+        "catalyst-proposal": 0,
+        "vdw-proposal": 0,
+        "accepted-discovery": 1,
+        unknown: 0,
+      },
     correlationCoefficient: overrides.correlationCoefficient ?? 0.5,
     isPhaseTransition: overrides.isPhaseTransition ?? false,
   };

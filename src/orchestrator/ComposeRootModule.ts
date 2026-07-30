@@ -1373,18 +1373,24 @@ export class Orchestrator {
   #getNewEdges(
     graph: ReturnType<CooccurrenceGraph["getGraph"]>,
     iteration: number,
-  ): Array<{ source: string; target: string; createdAtIteration: number }> {
-    const result: Array<{
-      source: string;
-      target: string;
-      createdAtIteration: number;
-    }> = [];
+  ): Array<SOCInputs["newEdges"][number]> {
+    const result: Array<SOCInputs["newEdges"][number]> = [];
     graph.forEachEdge((_edge, attrs, source, target) => {
       if (
         (attrs as { createdAtIteration?: number }).createdAtIteration ===
         iteration
       ) {
-        result.push({ source, target, createdAtIteration: iteration });
+        const rawOrigin = (attrs as { origin?: string }).origin;
+        const origin = [
+          "corpus-cooccurrence",
+          "phrase",
+          "catalyst-proposal",
+          "vdw-proposal",
+          "accepted-discovery",
+        ].includes(rawOrigin ?? "")
+          ? (rawOrigin as SOCInputs["newEdges"][number]["origin"])
+          : "unknown";
+        result.push({ source, target, createdAtIteration: iteration, origin });
       }
     });
     return result;

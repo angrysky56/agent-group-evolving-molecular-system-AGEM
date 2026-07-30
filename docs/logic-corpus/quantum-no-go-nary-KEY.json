@@ -1,0 +1,35 @@
+{
+  "corpusId": "quantum-no-go-nary-v1",
+  "segments": [
+    {
+      "id": "bell",
+      "source": "No model can simultaneously satisfy locality, realism, measurement independence, and empirical adequacy for the observed Bell-inequality violations.",
+      "incompatible": ["locality", "realism", "measurement-independence", "bell-empirical-adequacy"]
+    },
+    {
+      "id": "kochen-specker",
+      "source": "No model can simultaneously satisfy noncontextual value definiteness, functional consistency across compatible measurements, and empirical adequacy for the Kochen-Specker configurations.",
+      "incompatible": ["noncontextual-value-definiteness", "functional-consistency", "kochen-specker-empirical-adequacy"]
+    },
+    {
+      "id": "pbr",
+      "source": "No model can simultaneously satisfy preparation independence, overlapping psi-epistemic ontic distributions for distinct pure states, and empirical adequacy for the PBR measurement statistics.",
+      "incompatible": ["preparation-independence", "psi-epistemic-overlap", "pbr-empirical-adequacy"]
+    },
+    {
+      "id": "frauchiger-renner",
+      "source": "No position can simultaneously hold universal validity of quantum theory, single-world outcomes, consistency between agents' conclusions, and the self-referential multi-agent protocol assumptions used by Frauchiger-Renner.",
+      "incompatible": ["universal-quantum-validity", "single-world-outcomes", "inter-agent-consistency", "frauchiger-renner-protocol"]
+    },
+    {
+      "id": "leggett-garg",
+      "source": "No model can simultaneously satisfy macrorealism per se, non-invasive measurability, induction, and empirical adequacy for a Leggett-Garg inequality violation.",
+      "incompatible": ["macrorealism", "non-invasive-measurability", "induction", "leggett-garg-empirical-adequacy"]
+    },
+    {
+      "id": "brukner",
+      "source": "No position can simultaneously hold observer-independent facts, freedom of choice, locality, universal validity of quantum theory, and empirical adequacy for the extended Wigner's-friend correlations in Brukner's theorem.",
+      "incompatible": ["observer-independent-facts", "freedom-of-choice", "locality", "universal-quantum-validity", "brukner-empirical-adequacy"]
+    }
+  ]
+}

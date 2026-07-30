@@ -27,6 +27,9 @@ export class TypeDBFindingGraph implements FindingGraph {
       finding.semanticsValidated === true
         ? "has semantics-validated true"
         : "",
+      finding.verificationFingerprint
+        ? `has verification-fingerprint "${esc(finding.verificationFingerprint)}"`
+        : "",
     ].filter(Boolean);
     await requireWrite(`put
   $f isa finding,
@@ -38,6 +41,7 @@ export class TypeDBFindingGraph implements FindingGraph {
     has method "${esc(finding.method)}",
     has finding-outcome "${esc(finding.outcome)}",
     has memory-namespace "${esc(finding.memoryNamespace)}",
+    has finding-status "${esc(finding.status)}",
     has created-at ${finding.createdAt},
     has corpus-id "${esc(finding.corpusId)}"${optional.length ? `,\n    ${optional.join(",\n    ")}` : ""};`);
 
@@ -57,6 +61,18 @@ export class TypeDBFindingGraph implements FindingGraph {
 ${matches}
 insert
   $_ isa evidences (conclusion: $f, ${roles});`);
+  }
+
+  async recordRevalidationRequired(finding: StoredFinding): Promise<void> {
+    if (!claimStore.available || !finding.revalidationRequiredAt) return;
+    const changes = JSON.stringify(finding.revalidationChanges ?? []);
+    await requireWrite(`match
+  $f isa finding, has finding-id "${esc(finding.id)}";
+update
+  $f has finding-status "revalidation-required";
+insert
+  $f has revalidation-required-at ${finding.revalidationRequiredAt},
+    has revalidation-changes "${esc(changes)}";`);
   }
 
   async recordSupersedes(

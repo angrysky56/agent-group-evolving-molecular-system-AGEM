@@ -8,6 +8,8 @@ import {
   type FindingGraph,
   type FindingInput,
   type StoredFinding,
+  type VerificationDependencies,
+  verificationFingerprint,
 } from "./finding-store.js";
 
 class FakeEmbedder implements IEmbedder {
@@ -63,8 +65,28 @@ const input = (
             : outcome === "no-contradiction"
               ? ("no-contradiction" as const)
               : ("inconclusive" as const),
+        verificationDependencies: dependencies({
+          supportingClaimIds: claims,
+          normalizedClaimKeys: claims,
+        }),
       }
     : {}),
+});
+
+const dependencies = (
+  overrides: Partial<VerificationDependencies> = {},
+): VerificationDependencies => ({
+  corpusHash: "corpus-hash",
+  segmentationVersion: "segments-v1",
+  supportingClaimIds: ["claim-b", "claim-a"],
+  normalizedClaimKeys: ["key-b", "key-a"],
+  ontologyVersion: "ontology-v1",
+  extractionSchemaVersion: "schema-v1",
+  sourceSemanticValidatorVersion: "source-validator-v1",
+  formalizerVersion: "formalizer-v1",
+  proverVersion: "mace4-v1",
+  solverSettings: { maxChecks: 100, maxArity: 4 },
+  ...overrides,
 });
 
 describe("FindingStore", () => {
@@ -76,6 +98,89 @@ describe("FindingStore", () => {
 
   afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("fingerprints semantic dependencies canonically", () => {
+    const first = dependencies();
+    const reordered = dependencies({
+      supportingClaimIds: ["claim-a", "claim-b", "claim-a"],
+      normalizedClaimKeys: ["key-a", "key-b"],
+      solverSettings: { maxArity: 4, maxChecks: 100 },
+    });
+    expect(verificationFingerprint(first)).toBe(
+      verificationFingerprint(reordered),
+    );
+    expect(
+      verificationFingerprint(
+        dependencies({ sourceSemanticValidatorVersion: "source-validator-v2" }),
+      ),
+    ).not.toBe(verificationFingerprint(first));
+  });
+
+  it("marks changed semantic dependencies stale and removes them from active recall", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ finding: [1, 0], cue: [1, 0] }),
+      { directory, similarityFloor: 0.4 },
+    );
+    const stored = await store.store({
+      ...input(
+        "finding",
+        "contradiction",
+        ["key-a", "key-b"],
+        "typed-run",
+        "derived-from-claims",
+      ),
+      verificationDependencies: dependencies(),
+    });
+
+    const audit = await store.auditVerificationDependencies({
+      formalizerVersion: "formalizer-v2",
+    });
+    expect(audit).toMatchObject({ scanned: 1, marked: 1, unchanged: 0, truncated: false });
+    expect(audit.findings[0]).toMatchObject({
+      findingId: stored.finding.id,
+      changes: [
+        {
+          dependency: "formalizerVersion",
+          before: "formalizer-v1",
+          after: "formalizer-v2",
+        },
+      ],
+    });
+    await expect(
+      store.recall("cue", { memoryNamespace: "default-test" }),
+    ).resolves.toEqual([]);
+    expect(await store.getStats()).toMatchObject({ active: 0 });
+  });
+
+  it("keeps unchanged dependencies active and bounds each audit", async () => {
+    const store = new FindingStore(
+      new FakeEmbedder({ one: [1, 0], two: [1, 0], cue: [1, 0] }),
+      { directory, similarityFloor: 0.4 },
+    );
+    for (const verdict of ["one", "two"]) {
+      await store.store({
+        ...input(
+          verdict,
+          "contradiction",
+          [`key-${verdict}`],
+          `run-${verdict}`,
+          "derived-from-claims",
+        ),
+        verificationDependencies: dependencies({
+          normalizedClaimKeys: [`key-${verdict}`],
+        }),
+      });
+    }
+    expect(
+      await store.auditVerificationDependencies(
+        { sourceSemanticValidatorVersion: "source-validator-v1" },
+        { limit: 1 },
+      ),
+    ).toMatchObject({ scanned: 1, marked: 0, unchanged: 1, truncated: true });
+    expect(
+      await store.recall("cue", { memoryNamespace: "default-test" }),
+    ).toHaveLength(2);
   });
 
   it("uses one cue embedding, a raw similarity floor, and top-k", async () => {

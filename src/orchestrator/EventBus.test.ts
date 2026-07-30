@@ -37,6 +37,11 @@ function makeSOCMetricsEvent(iteration = 1): SOCMetricsEvent {
     embeddingEntropy: 1.098,
     cdp: 0.288,
     surprisingEdgeRatio: 0.08,
+    eligibleNewEdgeCount: 25,
+    surprisingEdgeCount: 2,
+    unmeasurableEdgeCount: 0,
+    surprisingEdgeStatus: "measured",
+    newEdgeCountsByOrigin: { "accepted-discovery": 25 },
     correlationCoefficient: 0.72,
     isPhaseTransition: false,
   };

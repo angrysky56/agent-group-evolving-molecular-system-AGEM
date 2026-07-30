@@ -107,7 +107,15 @@ export interface SOCMetricsEvent {
   readonly vonNeumannEntropy: number;
   readonly embeddingEntropy: number;
   readonly cdp: number;
-  readonly surprisingEdgeRatio: number;
+  readonly surprisingEdgeRatio: number | null;
+  readonly eligibleNewEdgeCount: number;
+  readonly surprisingEdgeCount: number;
+  readonly unmeasurableEdgeCount: number;
+  readonly surprisingEdgeStatus:
+    | "measured"
+    | "no-eligible-edges"
+    | "incomplete-data";
+  readonly newEdgeCountsByOrigin: Readonly<Record<string, number>>;
   readonly correlationCoefficient: number;
   readonly isPhaseTransition: boolean;
 }
@@ -169,6 +177,8 @@ export interface RegimeClassificationEvent {
   readonly cdpVariance: number;
   readonly correlationConsistency: number;
   readonly persistenceIterations: number;
+  readonly measurementStatus: "measured" | "insufficient-history";
+  readonly eligibleGrowthCount: number;
 }
 
 // ---------------------------------------------------------------------------

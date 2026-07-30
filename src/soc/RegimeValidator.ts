@@ -374,6 +374,7 @@ export class RegimeAnalyzer {
 
   /** Total number of analyzeRegime() calls made. Used for initial nascent detection. */
   #totalIterations: number = 0;
+  #eligibleGrowthCount: number = 0;
 
   constructor(config: Partial<RegimeAnalyzerConfig> = {}) {
     this.#config = { ...DEFAULT_ANALYZER_CONFIG, ...config };
@@ -395,6 +396,7 @@ export class RegimeAnalyzer {
 
     // Track total calls for initial nascent detection
     this.#totalIterations++;
+    this.#eligibleGrowthCount += metrics.eligibleNewEdgeCount;
 
     // Compute metrics
     const cdpValues = this.#metricsWindow.map((m) => m.cdp);
@@ -408,12 +410,20 @@ export class RegimeAnalyzer {
       metrics.iteration - this.#regimeStartIteration;
 
     // Classify regime
-    const newRegime = this.#classifyRegime(
-      cdpVariance,
-      correlationConsistency,
-      persistenceIterations,
-      isTransitioning,
-    );
+    const measurementStatus =
+      this.#totalIterations >= this.#config.persistenceThreshold &&
+      this.#eligibleGrowthCount > 0
+        ? "measured"
+        : "insufficient-history";
+    const newRegime =
+      measurementStatus === "measured"
+        ? this.#classifyRegime(
+            cdpVariance,
+            correlationConsistency,
+            persistenceIterations,
+            isTransitioning,
+          )
+        : "nascent";
 
     // If regime changed, reset persistence counter.
     // When transitioning OUT of 'nascent' (to stable/critical/transitioning),
@@ -429,6 +439,8 @@ export class RegimeAnalyzer {
       correlationConsistency,
       persistenceIterations,
       iteration: metrics.iteration,
+      measurementStatus,
+      eligibleGrowthCount: this.#eligibleGrowthCount,
     };
   }
 
@@ -494,12 +506,14 @@ export class RegimeAnalyzer {
     regimeStartIteration: number;
     metricsWindow: SOCMetrics[];
     totalIterations: number;
+    eligibleGrowthCount: number;
   } {
     return {
       currentRegime: this.#currentRegime,
       regimeStartIteration: this.#regimeStartIteration,
       metricsWindow: this.#metricsWindow.map((m) => ({ ...m })),
       totalIterations: this.#totalIterations,
+      eligibleGrowthCount: this.#eligibleGrowthCount,
     };
   }
 
@@ -508,10 +522,12 @@ export class RegimeAnalyzer {
     regimeStartIteration: number;
     metricsWindow: SOCMetrics[];
     totalIterations: number;
+    eligibleGrowthCount?: number;
   }): void {
     this.#currentRegime = snap.currentRegime;
     this.#regimeStartIteration = snap.regimeStartIteration;
     this.#metricsWindow = snap.metricsWindow.map((m) => ({ ...m }));
     this.#totalIterations = snap.totalIterations;
+    this.#eligibleGrowthCount = snap.eligibleGrowthCount ?? 0;
   }
 }

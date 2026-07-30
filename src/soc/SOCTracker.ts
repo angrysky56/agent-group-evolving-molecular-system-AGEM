@@ -42,6 +42,7 @@ import type {
   MetricsTrend,
   RegimeStability,
   RegimeMetrics,
+  SOCEdgeOrigin,
 } from "./interfaces.js";
 import type {
   SOCMetricsEvent,
@@ -243,7 +244,7 @@ export class SOCTracker extends EventEmitter {
     const cdp = vne - ee;
 
     // Step 4: Surprising edge ratio
-    const surprisingEdgeRatio = this.#computeSurprisingEdgeRatio(
+    const surprisingEdges = this.#computeSurprisingEdgeTelemetry(
       inputs,
       embeddings,
       communityAssignments,
@@ -294,7 +295,12 @@ export class SOCTracker extends EventEmitter {
       vonNeumannEntropy: vne,
       embeddingEntropy: ee,
       cdp,
-      surprisingEdgeRatio,
+      surprisingEdgeRatio: surprisingEdges.ratio,
+      eligibleNewEdgeCount: surprisingEdges.eligibleCount,
+      surprisingEdgeCount: surprisingEdges.surprisingCount,
+      unmeasurableEdgeCount: surprisingEdges.unmeasurableCount,
+      surprisingEdgeStatus: surprisingEdges.status,
+      newEdgeCountsByOrigin: surprisingEdges.countsByOrigin,
       correlationCoefficient,
       isPhaseTransition,
     };
@@ -316,7 +322,12 @@ export class SOCTracker extends EventEmitter {
       vonNeumannEntropy: vne,
       embeddingEntropy: ee,
       cdp,
-      surprisingEdgeRatio,
+      surprisingEdgeRatio: surprisingEdges.ratio,
+      eligibleNewEdgeCount: surprisingEdges.eligibleCount,
+      surprisingEdgeCount: surprisingEdges.surprisingCount,
+      unmeasurableEdgeCount: surprisingEdges.unmeasurableCount,
+      surprisingEdgeStatus: surprisingEdges.status,
+      newEdgeCountsByOrigin: surprisingEdges.countsByOrigin,
       correlationCoefficient,
       isPhaseTransition,
     };
@@ -374,6 +385,8 @@ export class SOCTracker extends EventEmitter {
       cdpVariance: regimeMetrics.cdpVariance,
       correlationConsistency: regimeMetrics.correlationConsistency,
       persistenceIterations: regimeMetrics.persistenceIterations,
+      measurementStatus: regimeMetrics.measurementStatus,
+      eligibleGrowthCount: regimeMetrics.eligibleGrowthCount,
     };
     this.emit("regime:classification", classificationEvent);
 
@@ -435,7 +448,7 @@ export class SOCTracker extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // #computeSurprisingEdgeRatio — per-iteration surprising edge computation
+  // #computeSurprisingEdgeTelemetry — per-iteration surprising edge computation
   // ---------------------------------------------------------------------------
 
   /**
@@ -451,7 +464,7 @@ export class SOCTracker extends EventEmitter {
    * Pitfall 3 guard: edges created in prior iterations are excluded from the
    * per-iteration ratio. Only edges tagged with the current iteration are counted.
    */
-  #computeSurprisingEdgeRatio(
+  #computeSurprisingEdgeTelemetry(
     _inputs: SOCInputs,
     embeddings: ReadonlyMap<string, Float64Array>,
     communityAssignments: ReadonlyMap<string, number>,
@@ -459,32 +472,72 @@ export class SOCTracker extends EventEmitter {
       source: string;
       target: string;
       createdAtIteration: number;
+      origin: SOCEdgeOrigin;
     }>,
     currentIteration: number,
-  ): number {
+  ): {
+    ratio: number | null;
+    eligibleCount: number;
+    surprisingCount: number;
+    unmeasurableCount: number;
+    status: "measured" | "no-eligible-edges" | "incomplete-data";
+    countsByOrigin: Record<SOCEdgeOrigin, number>;
+  } {
     // Filter to current iteration only (Pitfall 3 guard)
     const currentEdges = newEdges.filter(
       (e) => e.createdAtIteration === currentIteration,
     );
 
-    if (currentEdges.length === 0) return 0;
+    const countsByOrigin: Record<SOCEdgeOrigin, number> = {
+      "corpus-cooccurrence": 0,
+      phrase: 0,
+      "catalyst-proposal": 0,
+      "vdw-proposal": 0,
+      "accepted-discovery": 0,
+      unknown: 0,
+    };
+    for (const edge of currentEdges) countsByOrigin[edge.origin]++;
+    const eligibleOrigins = new Set<SOCEdgeOrigin>([
+      "catalyst-proposal",
+      "vdw-proposal",
+      "accepted-discovery",
+    ]);
+    const eligibleEdges = currentEdges.filter(({ origin }) =>
+      eligibleOrigins.has(origin),
+    );
+    if (eligibleEdges.length === 0) {
+      return {
+        ratio: null,
+        eligibleCount: 0,
+        surprisingCount: 0,
+        unmeasurableCount: 0,
+        status: "no-eligible-edges",
+        countsByOrigin,
+      };
+    }
 
     const threshold = this.#config.surprisingEdgeSimilarityThreshold;
     let surprisingCount = 0;
+    let unmeasurableCount = 0;
 
-    for (const edge of currentEdges) {
+    for (const edge of eligibleEdges) {
       const sourceCommunity = communityAssignments.get(edge.source);
       const targetCommunity = communityAssignments.get(edge.target);
 
       // Criterion (b): cross-community check
-      if (sourceCommunity === undefined || targetCommunity === undefined)
+      if (sourceCommunity === undefined || targetCommunity === undefined) {
+        unmeasurableCount++;
         continue;
+      }
       if (sourceCommunity === targetCommunity) continue; // intra-community → not surprising
 
       // Criterion (c): semantic similarity check
       const sourceEmb = embeddings.get(edge.source);
       const targetEmb = embeddings.get(edge.target);
-      if (sourceEmb === undefined || targetEmb === undefined) continue;
+      if (sourceEmb === undefined || targetEmb === undefined) {
+        unmeasurableCount++;
+        continue;
+      }
 
       const similarity = cosineSimilarity(sourceEmb, targetEmb);
       if (similarity < threshold) {
@@ -492,7 +545,17 @@ export class SOCTracker extends EventEmitter {
       }
     }
 
-    return surprisingCount / currentEdges.length;
+    return {
+      ratio:
+        unmeasurableCount === 0
+          ? surprisingCount / eligibleEdges.length
+          : null,
+      eligibleCount: eligibleEdges.length,
+      surprisingCount,
+      unmeasurableCount,
+      status: unmeasurableCount === 0 ? "measured" : "incomplete-data",
+      countsByOrigin,
+    };
   }
 
   // ---------------------------------------------------------------------------

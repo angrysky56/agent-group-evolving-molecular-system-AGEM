@@ -9,7 +9,11 @@ import { Router } from "express";
 import path from "path";
 import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
-import type { ChatMessage, ChatRequest } from "../../../shared/types.js";
+import type {
+  ChatMessage,
+  ChatRequest,
+  RunIntent,
+} from "../../../shared/types.js";
 import { createProvider } from "../services/llm.js";
 import { sessionStore } from "../services/session-store.js";
 import { agemBridge } from "../services/agem-bridge.js";
@@ -52,6 +56,7 @@ import {
   attachFindingMemory,
   captureFindingFromTool,
   captureFindingNarrativeFromTool,
+  currentVerificationDependencyOverrides,
   formatRecallContext,
 } from "../services/finding-capture.js";
 import type { DensificationResult } from "../services/finding-narrative.js";
@@ -83,6 +88,11 @@ import {
   type TypedVerificationFinalization,
   type RunTerminalStatus,
 } from "../services/run-termination.js";
+import {
+  annotateArtifactOutput,
+  normalizeRunIntent,
+  toolNamesForRunIntent,
+} from "../services/artifact-contract.js";
 import {
   RUN_AGEM_CYCLE_DESCRIPTION,
   RUN_SECTIONED_CYCLES_DESCRIPTION,
@@ -237,6 +247,7 @@ function normalizeMcpToolArgs(
 chatRouter.post("/completions", async (req, res) => {
   const body = req.body as ChatRequest;
   const { message, model, provider: providerType } = body;
+  const runIntent = normalizeRunIntent(body.intent);
   let sessionId = body.session_id;
 
   console.log(
@@ -369,6 +380,8 @@ chatRouter.post("/completions", async (req, res) => {
     // auditable alongside cycle and tool activity.
     const runLog = createRunLogger({
       model: effectiveModel,
+      provider: resolvedProvider,
+      intent: runIntent,
       sessionId: typeof sessionId === "string" ? sessionId : undefined,
       message,
     });
@@ -379,6 +392,12 @@ chatRouter.post("/completions", async (req, res) => {
     let recalledFindingIds: string[] = [];
     let recalledContext: string | null = null;
     try {
+      const revalidationAudit =
+        await findingStore.auditVerificationDependencies(
+          currentVerificationDependencyOverrides(),
+          { limit: 100, memoryNamespace },
+        );
+      runLog.event("finding_revalidation_audit", { ...revalidationAudit });
       const recalled = await findingStore.recall(
         message,
         {
@@ -420,6 +439,10 @@ chatRouter.post("/completions", async (req, res) => {
     historyMessages.push({
       role: "system",
       content: `You are AGEM, a reasoning engine built on text-network analysis and sheaf topology. Your own analytical substrate is the AGEM engine (the native tools below). You also have one external reasoning aid — formal logic — plus optional utility servers you only use when explicitly relevant.
+
+# Run intent: ${runIntent}
+
+Discovery outputs are hypotheses or candidates, never logical verdicts. Verification consumes source-grounded typed claims or explicitly audited formulas, never graph communities, embeddings, centrality, or sheaf values as evidence. In discover-then-verify mode, a discovery candidate must re-enter through typed extraction before it can become a verified finding.
 
 # How AGEM works (so you interpret its outputs correctly)
 
@@ -819,6 +842,10 @@ ${skillContent}`,
                 description:
                   "Optional gap ID to target (e.g. '0_1'). Omit to generate questions for all gaps.",
               },
+              max_proposals: {
+                type: "number",
+                description: "Maximum proposals to explore (1-12, default 6).",
+              },
             },
             required: [],
           },
@@ -1174,19 +1201,27 @@ ${skillContent}`,
       ? metaTools
       : [];
 
+    const intentToolNames = toolNamesForRunIntent(runIntent);
+    const intentAgemTools =
+      intentToolNames === null
+        ? agemTools
+        : agemTools.filter(({ function: definition }) =>
+            intentToolNames.has(definition.name),
+          );
+
     // All providers get AGEM native tools. MCP discovery is opt-in because
     // call_mcp_tool otherwise bypasses the selective direct-tool surface.
     // Cloud providers additionally get skill tools for direct access
     let tools: any[];
     if (isOllama) {
-      tools = [...agemTools, ...exposedMetaTools, ...activeMcpTools];
+      tools = [...intentAgemTools, ...exposedMetaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Ollama: ${agemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
+        `[Chat] Ollama: ${intentAgemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     } else {
-      tools = [...skillTools, ...agemTools, ...exposedMetaTools, ...activeMcpTools];
+      tools = [...skillTools, ...intentAgemTools, ...exposedMetaTools, ...activeMcpTools];
       console.log(
-        `[Chat] Cloud: ${skillTools.length} skill + ${agemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
+        `[Chat] Cloud: ${skillTools.length} skill + ${intentAgemTools.length} AGEM + ${exposedMetaTools.length} meta + ${activeMcpTools.length} active MCP = ${tools.length} total`,
       );
     }
 
@@ -1220,6 +1255,7 @@ ${skillContent}`,
     // "reset the engine" has no corpus, and nudging it to ingest just costs a
     // round trip.
     const workflowContract = createWorkflowContract({
+      intent: runIntent,
       enabled: settings.all.CHAT_ENFORCE_WORKFLOW_CONTRACT,
       isContested: () => (agemBridge.getState().communities ?? 0) >= 2,
       isClaimStoreAvailable: () => claimStore.available,
@@ -1803,6 +1839,11 @@ ${skillContent}`,
                 runLog.event("claim_extraction_telemetry", {
                   corpusId,
                   segments: segs.length,
+                  replayManifest: extraction.replayManifest,
+                  sourceSegments: extraction.sourceSegments,
+                  parseFailureOutcomes: extraction.parseFailureOutcomes,
+                  outcomes: extraction.outcomes,
+                  unmappable: extraction.unmappableClaims,
                   glossarySize: extraction.glossary.length,
                   glossaryFailure: extraction.glossaryFailure,
                   unmappableClaims: extraction.unmappableClaims.length,
@@ -1900,6 +1941,8 @@ ${skillContent}`,
                     preflightAborted: true,
                     preflightStage: "extraction",
                     abductiveRepairCalls: repairReport.abductiveCalls,
+                    counterfactualValidatorCalls:
+                      repairReport.validatorCalls,
                   });
                   output = JSON.stringify({
                     runLogId: runLog.runId,
@@ -1920,6 +1963,8 @@ ${skillContent}`,
                     verdict: inconclusiveExtractionVerdict(inconclusiveCauses),
                     repairReport,
                     extraction: {
+                      replayManifest: extraction.replayManifest,
+                      sourceSegments: extraction.sourceSegments,
                       segmentsProcessed: extraction.segmentsProcessed,
                       claimsProposed: extraction.claimsProposed,
                       claimsAccepted: extraction.claimsAccepted,
@@ -1928,10 +1973,13 @@ ${skillContent}`,
                       glossaryFailure: extraction.glossaryFailure,
                       unmappableClaims: extraction.unmappableClaims,
                       parseFailures: extraction.parseFailures.length,
+                      parseFailureOutcomes: extraction.parseFailureOutcomes,
                       rejections: extraction.outcomes
                         .filter((outcome) => !outcome.accepted)
                         .slice(0, 10)
                         .map((outcome) => ({
+                          segmentId: outcome.segmentId,
+                          sourceSegmentId: outcome.sourceSegmentId,
                           claim: outcome.claim,
                           why: outcome.rejection,
                         })),
@@ -2140,6 +2188,8 @@ ${skillContent}`,
                         semantic.hasPositionIncompatibility,
                       semanticFrustrations: semantic.semanticFrustrations,
                       extraction: {
+                        replayManifest: extraction.replayManifest,
+                        sourceSegments: extraction.sourceSegments,
                         segmentsProcessed: extraction.segmentsProcessed,
                         claimsProposed: extraction.claimsProposed,
                         claimsAccepted: extraction.claimsAccepted,
@@ -2148,10 +2198,16 @@ ${skillContent}`,
                         glossaryFailure: extraction.glossaryFailure,
                         unmappableClaims: extraction.unmappableClaims,
                         parseFailures: extraction.parseFailures.length,
+                        parseFailureOutcomes: extraction.parseFailureOutcomes,
                         rejections: extraction.outcomes
                           .filter((o) => !o.accepted)
                           .slice(0, 10)
-                          .map((o) => ({ claim: o.claim, why: o.rejection })),
+                          .map((o) => ({
+                            segmentId: o.segmentId,
+                            sourceSegmentId: o.sourceSegmentId,
+                            claim: o.claim,
+                            why: o.rejection,
+                          })),
                       },
                       derivedBlocks: blocks,
                       predicateMapping: derivation.predicateMapping,
@@ -2262,7 +2318,11 @@ ${skillContent}`,
             } else if (fnName === "generate_catalyst_questions") {
               const gapId = args.gap_id ?? args.gapId ?? args.gap ?? undefined;
               output = JSON.stringify(
-                agemBridge.generateCatalystQuestions(gapId),
+                await agemBridge.generateCatalystQuestions(
+                  gapId,
+                  Number(args.max_proposals ?? 6),
+                  requestDeadline.signal,
+                ),
                 null,
                 2,
               );
@@ -2699,13 +2759,15 @@ ${skillContent}`,
               onDiagnostic: (event) => runLog.event("recovery", event),
             });
 
-            let effectiveOutput = outcome.output;
+            let effectiveOutput = outcome.ok
+              ? annotateArtifactOutput(fnName, outcome.output, runIntent)
+              : outcome.output;
             if (outcome.ok) {
               try {
                 const finding = captureFindingFromTool(
                   fnName,
                   args,
-                  outcome.output,
+                  effectiveOutput,
                   {
                     runLogId: runLog.runId,
                     producedByModel: effectiveModel,
@@ -2717,7 +2779,7 @@ ${skillContent}`,
                   const narrativeRequest = captureFindingNarrativeFromTool(
                     fnName,
                     args,
-                    outcome.output,
+                    effectiveOutput,
                   );
                   if (narrativeRequest) {
                     try {
@@ -2771,7 +2833,7 @@ ${skillContent}`,
                     requestDeadline.signal,
                   );
                   effectiveOutput = attachFindingMemory(
-                    outcome.output,
+                    effectiveOutput,
                     memory,
                     densificationResult,
                   );

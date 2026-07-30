@@ -152,6 +152,8 @@ function subjectLabels(claim: ExtractedClaim): string[] {
   const role =
     claim.kind === "exclusion"
       ? "excluder"
+      : claim.kind === "joint-incompatibility"
+        ? "incompatible"
       : claim.kind === "identity-claim"
         ? "identified"
         : claim.kind === "causal-claim"

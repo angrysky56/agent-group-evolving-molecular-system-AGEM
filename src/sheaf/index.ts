@@ -37,3 +37,12 @@ export type {
 // Test helper factories (re-exported for integration tests in Phase 5)
 export { buildFlatSheaf } from "./helpers/flatSheafFactory.js";
 export { buildThreeCycleInconsistentSheaf } from "./helpers/threeCycleFactory.js";
+
+// Discovery-only A/B evaluation for the registry cycle-topology signal.
+export { evaluateRegistryDiscoveryValue } from "./DiscoveryValueEvaluator.js";
+export type {
+  DiscoveryRankingCandidate,
+  DiscoveryReplayCycle,
+  DiscoveryValueEvaluation,
+  DiscoveryValueOptions,
+} from "./DiscoveryValueEvaluator.js";

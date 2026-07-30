@@ -84,7 +84,7 @@
       "env": {
         "ENABLE_PERSISTENCE": "true",
         "LOG_PREDICTIONS": "true",
-        "SURREALDB_URL": "ws://127.0.0.1:8001/rpc",
+        "SURREALDB_URL": "ws://127.0.0.1:8002/rpc",
         "SURREALDB_NAMESPACE": "astermind",
         "SURREALDB_DATABASE": "production",
         "SURREALDB_USERNAME": "root",

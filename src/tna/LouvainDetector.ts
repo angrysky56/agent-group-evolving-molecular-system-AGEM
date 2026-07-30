@@ -159,6 +159,9 @@ export class LouvainDetector {
     this.#assignments = newAssignments;
     this.#modularity = details.modularity;
     this.#communityCount = communityIds.size;
+    for (const [nodeId, communityId] of newAssignments) {
+      this.#cooccurrenceGraph.updateNodeCommunity(nodeId, communityId);
+    }
 
     return {
       assignments: this.#assignments as ReadonlyMap<string, number>,

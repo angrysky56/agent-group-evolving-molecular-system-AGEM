@@ -1,7 +1,13 @@
-import type {
+import {
+  claimAttributionIssue,
+  claimSchemaIssue,
+  claimSourceSemanticIssue,
+  claimVocabularyIssue,
+  normalizeClaimExtras,
+  type ExtractedClaim,
   ClosedGlossaryEntry,
-  ExtractionOutcome,
-  ExtractionReport,
+  type ExtractionOutcome,
+  type ExtractionReport,
 } from "./claim-extractor.js";
 import type { PredicateAliasSuggestion } from "./predicate-aliases.js";
 
@@ -22,6 +28,21 @@ export interface ExtractionRepairCandidate {
     | { operation: "set-attribution"; scope: "position"; positionId: string }
     | { operation: "add-ontology-alias"; source: string; canonical: string };
   evidence: string;
+  ranking?: {
+    editCount: number;
+    exactGlossaryReuse: boolean;
+    sourceSpanDistance: number | null;
+  };
+  counterfactual?: {
+    status: "validated" | "rejected" | "not-applicable";
+    validator: "claim-integrity-v1";
+    beforeFailures: string[];
+    afterFailures: string[];
+    sourceCoverageBefore: number;
+    sourceCoverageAfter: number;
+    patchedClaim?: ExtractedClaim;
+    reason?: string;
+  };
 }
 
 export interface ExtractionRepairProposal {
@@ -30,9 +51,8 @@ export interface ExtractionRepairProposal {
   failure: string;
   candidates: ExtractionRepairCandidate[];
   selectedCandidateId?: string;
-  selectedBy?: "mcp-logic:abductive_explain";
-  explainsFailure?: boolean;
-  status: "proposed" | "unresolved" | "oracle-failed";
+  selectedBy?: "counterfactual-validator" | "mcp-logic:abductive_explain";
+  status: "counterfactually-validated" | "unresolved" | "oracle-failed";
   /** Repairs are suggestions until a human or audited ontology approves them. */
   applied: false;
   oracleError?: string;
@@ -43,6 +63,7 @@ export interface ExtractionRepairReport {
   proposals: ExtractionRepairProposal[];
   abductiveCalls: number;
   oracleFailures: number;
+  validatorCalls: number;
   truncated: boolean;
 }
 
@@ -61,6 +82,7 @@ export type AbductiveRepairOracle = (args: {
 }) => Promise<string>;
 
 const MAX_REPAIR_QUERIES = 32;
+const MAX_VALIDATOR_CALLS = 128;
 const MENTION_STOP_WORDS = new Set(["a", "an", "is", "the"]);
 
 function sourceMentions(source: string, value: string): boolean {
@@ -306,53 +328,249 @@ export function collectExtractionRepairProposals(
   return proposals;
 }
 
-/** Rank each bounded repair set with mcp-logic abduction, without applying it. */
+function patchLabels(candidate: ExtractionRepairCandidate): string[] {
+  switch (candidate.patch.operation) {
+    case "add-glossary-label":
+      return [candidate.patch.label];
+    case "replace-distinction-values":
+      return [...candidate.patch.values];
+    case "replace-role-value":
+      return [candidate.patch.value];
+    case "set-attribution":
+      return [candidate.patch.positionId];
+    case "add-ontology-alias":
+      return [candidate.patch.source, candidate.patch.canonical];
+  }
+}
+
+function sourceSpanDistance(
+  source: string,
+  candidate: ExtractionRepairCandidate,
+): number | null {
+  const normalized = source.toLocaleLowerCase();
+  const positions = patchLabels(candidate)
+    .map((label) => normalized.indexOf(label.replace(/[-_]+/g, " ").toLocaleLowerCase()))
+    .filter((index) => index >= 0);
+  return positions.length > 0 ? Math.min(...positions) : null;
+}
+
+function orderCandidates(
+  candidates: readonly ExtractionRepairCandidate[],
+  source: string,
+  glossary: readonly ClosedGlossaryEntry[],
+): ExtractionRepairCandidate[] {
+  const glossaryLabels = new Set(glossary.map(({ label }) => label));
+  return candidates
+    .map((candidate) => {
+      const ranking = {
+        editCount: 1,
+        exactGlossaryReuse: patchLabels(candidate).every((label) =>
+          glossaryLabels.has(label),
+        ),
+        sourceSpanDistance: sourceSpanDistance(source, candidate),
+      };
+      return { ...candidate, ranking };
+    })
+    .sort(
+      (a, b) =>
+        a.ranking!.editCount - b.ranking!.editCount ||
+        Number(b.ranking!.exactGlossaryReuse) -
+          Number(a.ranking!.exactGlossaryReuse) ||
+        (a.ranking!.sourceSpanDistance ?? Number.MAX_SAFE_INTEGER) -
+          (b.ranking!.sourceSpanDistance ?? Number.MAX_SAFE_INTEGER) ||
+        JSON.stringify(a.patch).localeCompare(JSON.stringify(b.patch)),
+    );
+}
+
+function roleValues(claim: ExtractedClaim): string[] {
+  return Object.values(claim.roles ?? {}).flatMap((raw) =>
+    (Array.isArray(raw) ? raw : [raw]).map(String),
+  );
+}
+
+function sourceCoverage(
+  claim: ExtractedClaim,
+  source: string,
+  glossary: readonly ClosedGlossaryEntry[],
+): number {
+  const byLabel = new Map(glossary.map((entry) => [entry.label, entry]));
+  return roleValues(claim).filter((label) => {
+    const entry = byLabel.get(label);
+    return sourceMentions(source, label) || (!!entry && entryMentioned(source, entry));
+  }).length;
+}
+
+function integrityFailures(
+  claim: ExtractedClaim,
+  source: string,
+  glossary: readonly ClosedGlossaryEntry[],
+): string[] {
+  return [
+    claimSchemaIssue(claim),
+    claimSourceSemanticIssue(claim, source),
+    claimAttributionIssue(claim, source),
+    claimVocabularyIssue(claim, glossary),
+  ].filter((failure): failure is string => !!failure);
+}
+
+function applyCandidate(
+  claim: ExtractedClaim,
+  candidate: ExtractionRepairCandidate,
+): ExtractedClaim | null {
+  const patched = normalizeClaimExtras(structuredClone(claim));
+  switch (candidate.patch.operation) {
+    case "replace-distinction-values":
+      if (patched.kind !== "distinction") return null;
+      patched.roles.distinguished = [...candidate.patch.values];
+      return patched;
+    case "replace-role-value":
+      if (!(candidate.patch.role in patched.roles)) return null;
+      patched.roles[candidate.patch.role] = candidate.patch.value;
+      return patched;
+    case "set-attribution":
+      patched.scope = candidate.patch.scope;
+      patched.positionId = candidate.patch.positionId;
+      return patched;
+    case "add-glossary-label":
+    case "add-ontology-alias":
+      // These alter semantic dependencies and require fresh extraction or
+      // explicit ontology acceptance; changing the failed claim here would be
+      // the same false-success shortcut this validator replaces.
+      return null;
+  }
+}
+
+function targetOutcome(
+  repair: ExtractionRepairProposal,
+  context: ExtractionRepairContext,
+): ExtractionOutcome | undefined {
+  return context.extraction.outcomes.find(
+    (outcome) =>
+      !outcome.accepted &&
+      outcome.segmentId === repair.segmentId &&
+      outcome.rejection === repair.failure,
+  );
+}
+
+function validateCandidate(
+  repair: ExtractionRepairProposal,
+  candidate: ExtractionRepairCandidate,
+  context: ExtractionRepairContext,
+): ExtractionRepairCandidate["counterfactual"] {
+  const source =
+    context.segments.find(({ id }) => id === repair.segmentId)?.text ?? "";
+  const target = targetOutcome(repair, context);
+  if (!target) {
+    return {
+      status: "not-applicable",
+      validator: "claim-integrity-v1",
+      beforeFailures: [],
+      afterFailures: [],
+      sourceCoverageBefore: 0,
+      sourceCoverageAfter: 0,
+      reason: "no concrete rejected claim is available for isolated revalidation",
+    };
+  }
+  const patched = applyCandidate(target.claim, candidate);
+  const beforeFailures = integrityFailures(
+    target.claim,
+    source,
+    context.extraction.glossary,
+  );
+  const sourceCoverageBefore = sourceCoverage(
+    target.claim,
+    source,
+    context.extraction.glossary,
+  );
+  if (!patched) {
+    return {
+      status: "not-applicable",
+      validator: "claim-integrity-v1",
+      beforeFailures,
+      afterFailures: beforeFailures,
+      sourceCoverageBefore,
+      sourceCoverageAfter: sourceCoverageBefore,
+      reason: "candidate requires fresh extraction or audited ontology acceptance",
+    };
+  }
+  const afterFailures = integrityFailures(
+    patched,
+    source,
+    context.extraction.glossary,
+  );
+  const sourceCoverageAfter = sourceCoverage(
+    patched,
+    source,
+    context.extraction.glossary,
+  );
+  const validated =
+    beforeFailures.length > 0 &&
+    afterFailures.length === 0 &&
+    sourceCoverageAfter >= sourceCoverageBefore;
+  return {
+    status: validated ? "validated" : "rejected",
+    validator: "claim-integrity-v1",
+    beforeFailures,
+    afterFailures,
+    sourceCoverageBefore,
+    sourceCoverageAfter,
+    patchedClaim: patched,
+    ...(validated
+      ? {}
+      : {
+          reason:
+            afterFailures.length > 0
+              ? "the patched copy still fails an extraction integrity validator"
+              : sourceCoverageAfter < sourceCoverageBefore
+                ? "the patched copy reduces exact source coverage"
+                : "the original failure was not reproduced by the validator",
+        }),
+  };
+}
+
+/**
+ * Validate concrete patches on isolated copies. The abductive oracle parameter
+ * remains API-compatible, but is intentionally not called until a future
+ * adapter can express real typed consequences and integrity constraints.
+ */
 export async function proposeExtractionRepairs(
   context: ExtractionRepairContext,
-  oracle: AbductiveRepairOracle,
+  _oracle?: AbductiveRepairOracle,
 ): Promise<ExtractionRepairReport> {
   const all = collectExtractionRepairProposals(context);
   const ranked = all.slice(0, MAX_REPAIR_QUERIES);
   let abductiveCalls = 0;
   let oracleFailures = 0;
+  let validatorCalls = 0;
+  let validatorBudgetExhausted = false;
 
   for (const repair of ranked) {
-    if (repair.candidates.length === 0) continue;
-    const formulas = repair.candidates.map((_, index) => `repair_${index}`);
-    const observation = "failure_resolved";
-    try {
-      abductiveCalls++;
-      const raw = await oracle({
-        observation,
-        candidates: formulas,
-        background: formulas.map((formula) => `${formula} -> ${observation}`),
-        max_complexity: 8,
-      });
-      const result = JSON.parse(raw) as {
-        best_explanation?: unknown;
-        explains_observation?: unknown;
-        error?: unknown;
-      };
-      if (result.error) throw new Error(String(result.error));
-      const match =
-        typeof result.best_explanation === "string"
-          ? result.best_explanation.match(/^repair_(\d+)$/)
-          : null;
-      const selected = match ? repair.candidates[Number(match[1])] : undefined;
-      if (!selected || result.explains_observation !== true) {
-        repair.status = "unresolved";
-        repair.explainsFailure = false;
-        continue;
+    const source =
+      context.segments.find(({ id }) => id === repair.segmentId)?.text ?? "";
+    repair.candidates = orderCandidates(
+      repair.candidates,
+      source,
+      context.extraction.glossary,
+    );
+    for (const candidate of repair.candidates) {
+      if (validatorCalls >= MAX_VALIDATOR_CALLS) {
+        validatorBudgetExhausted = true;
+        break;
       }
-      repair.selectedCandidateId = selected.id;
-      repair.selectedBy = "mcp-logic:abductive_explain";
-      repair.explainsFailure = true;
-      repair.status = "proposed";
-    } catch (error) {
-      oracleFailures++;
-      repair.status = "oracle-failed";
-      repair.oracleError = error instanceof Error ? error.message : String(error);
+      validatorCalls++;
+      candidate.counterfactual = validateCandidate(repair, candidate, context);
     }
+    const validated = repair.candidates.filter(
+      ({ counterfactual }) => counterfactual?.status === "validated",
+    );
+    if (validated.length > 0) {
+      repair.selectedCandidateId = validated[0]!.id;
+      repair.selectedBy = "counterfactual-validator";
+      repair.status = "counterfactually-validated";
+    } else {
+      repair.status = "unresolved";
+    }
+    if (validatorBudgetExhausted) break;
   }
 
   return {
@@ -360,6 +578,7 @@ export async function proposeExtractionRepairs(
     proposals: all,
     abductiveCalls,
     oracleFailures,
-    truncated: all.length > ranked.length,
+    validatorCalls,
+    truncated: all.length > ranked.length || validatorBudgetExhausted,
   };
 }

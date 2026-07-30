@@ -47,6 +47,9 @@ insert
   $phi isa concept, has label "phi";
   $bc isa concept, has label "broadcast";
   $cs isa concept, has label "consciousness";
+  $a isa concept, has label "joint-a";
+  $b isa concept, has label "joint-b";
+  $c isa concept, has label "joint-c";
 EOF
 seed_out=$("${TDB[@]}" --command "transaction write $DB" --command "source $TMP/seed.tql" --command "commit" 2>&1)
 if ! echo "$seed_out" | grep -qi "Successfully committed"; then
@@ -76,6 +79,30 @@ match
   $bc isa concept, has label "broadcast";
 insert
   $_ isa exclusion, links (excluder: $phi, excluded: $bc);'
+
+run "well-formed n-ary joint incompatibility" "ACCEPTED" '
+match
+  $a isa concept, has label "joint-a";
+  $b isa concept, has label "joint-b";
+  $c isa concept, has label "joint-c";
+  $s isa segment, has segment-id "tom-3-1";
+insert
+  $_ isa joint-incompatibility,
+    links (incompatible: $a, incompatible: $b, incompatible: $c, source: $s);'
+
+run "joint incompatibility with fewer than two role players" "REJECTED" '
+match
+  $a isa concept, has label "joint-a";
+  $s isa segment, has segment-id "tom-3-1";
+insert
+  $_ isa joint-incompatibility, links (incompatible: $a, source: $s);'
+
+run "joint incompatibility with no provenance" "REJECTED" '
+match
+  $a isa concept, has label "joint-a";
+  $b isa concept, has label "joint-b";
+insert
+  $_ isa joint-incompatibility, links (incompatible: $a, incompatible: $b);'
 
 run "causal-claim with no polarity — epiphenomenalism/interactionism collapse" "REJECTED" '
 match

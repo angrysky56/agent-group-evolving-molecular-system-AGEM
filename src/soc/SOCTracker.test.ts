@@ -36,6 +36,7 @@ function buildSyntheticInputs(
       source: string;
       target: string;
       createdAtIteration: number;
+      origin?: SOCInputs["newEdges"][number]["origin"];
     }>;
     iteration: number;
   }> = {},
@@ -73,7 +74,10 @@ function buildSyntheticInputs(
       return m as ReadonlyMap<string, number>;
     })();
 
-  const newEdges = opts.newEdges ?? [];
+  const newEdges = (opts.newEdges ?? []).map((edge) => ({
+    ...edge,
+    origin: edge.origin ?? ("accepted-discovery" as const),
+  }));
   const iteration = opts.iteration ?? 1;
 
   return {
@@ -281,7 +285,7 @@ describe("Surprising edge ratio (SOC-04)", () => {
     expect(metrics.surprisingEdgeRatio).toBe(0.0);
   });
 
-  it("T-SE-04: No new edges this iteration yields ratio = 0 (no division by zero)", () => {
+  it("T-SE-04: No eligible edges reports an explicit non-measurement", () => {
     const inputs = buildSyntheticInputs({
       newEdges: [], // no new edges
       iteration: 3,
@@ -290,7 +294,32 @@ describe("Surprising edge ratio (SOC-04)", () => {
     const tracker = new SOCTracker();
     const metrics = tracker.computeAndEmit(inputs);
 
-    expect(metrics.surprisingEdgeRatio).toBe(0);
+    expect(metrics).toMatchObject({
+      surprisingEdgeRatio: null,
+      eligibleNewEdgeCount: 0,
+      surprisingEdgeCount: 0,
+      surprisingEdgeStatus: "no-eligible-edges",
+    });
+  });
+
+  it("excludes ordinary co-occurrence edges and groups counts by origin", () => {
+    const metrics = new SOCTracker().computeAndEmit(
+      buildSyntheticInputs({
+        newEdges: [
+          {
+            source: "0",
+            target: "1",
+            createdAtIteration: 4,
+            origin: "corpus-cooccurrence",
+          },
+        ],
+        iteration: 4,
+      }),
+    );
+
+    expect(metrics.surprisingEdgeRatio).toBeNull();
+    expect(metrics.surprisingEdgeStatus).toBe("no-eligible-edges");
+    expect(metrics.newEdgeCountsByOrigin["corpus-cooccurrence"]).toBe(1);
   });
 
   it("T-SE-05: Per-iteration isolation — prior iteration edges do not count (Pitfall 3 guard)", () => {
@@ -637,7 +666,8 @@ describe("Event emission (SOC-03)", () => {
     expect(typeof ev["vonNeumannEntropy"]).toBe("number");
     expect(typeof ev["embeddingEntropy"]).toBe("number");
     expect(typeof ev["cdp"]).toBe("number");
-    expect(typeof ev["surprisingEdgeRatio"]).toBe("number");
+    expect(ev["surprisingEdgeRatio"]).toBeNull();
+    expect(ev["surprisingEdgeStatus"]).toBe("no-eligible-edges");
     expect(typeof ev["correlationCoefficient"]).toBe("number");
     expect(typeof ev["isPhaseTransition"]).toBe("boolean");
   });
@@ -646,7 +676,14 @@ describe("Event emission (SOC-03)", () => {
     const tracker = new SOCTracker();
 
     for (let i = 1; i <= 5; i++) {
-      tracker.computeAndEmit(buildSyntheticInputs({ iteration: i }));
+      tracker.computeAndEmit(
+        buildSyntheticInputs({
+          iteration: i,
+          newEdges: [
+            { source: "0", target: "1", createdAtIteration: i },
+          ],
+        }),
+      );
       expect(tracker.getMetricsHistory().length).toBe(i);
     }
 
@@ -769,11 +806,34 @@ describe("Phase 6: Regime validation integration", () => {
     // Feed 5 stable iterations with same graph and same embeddings
     // (zero variance in CDP and correlation)
     for (let i = 1; i <= 5; i++) {
-      tracker.computeAndEmit(buildSyntheticInputs({ iteration: i }));
+      tracker.computeAndEmit(
+        buildSyntheticInputs({
+          iteration: i,
+          newEdges: [
+            { source: "0", target: "1", createdAtIteration: i },
+          ],
+        }),
+      );
     }
 
     expect(lastClassification).not.toBeNull();
     expect(lastClassification!["regime"]).toBe("stable");
+    expect(lastClassification!["measurementStatus"]).toBe("measured");
+  });
+
+  it("keeps a low-variance non-growing run explicitly insufficient", () => {
+    const tracker = new SOCTracker({
+      regimeAnalyzerConfig: { persistenceThreshold: 2 },
+    });
+    for (let i = 1; i <= 5; i++) {
+      tracker.computeAndEmit(buildSyntheticInputs({ iteration: i, newEdges: [] }));
+    }
+
+    expect(tracker.getRegimeMetrics()).toMatchObject({
+      regime: "nascent",
+      measurementStatus: "insufficient-history",
+      eligibleGrowthCount: 0,
+    });
   });
 
   it('T-INT-4: "phase:transition-confirmed" NOT emitted without updateH1Dimension()', () => {

@@ -28,6 +28,14 @@
  */
 export type TextNodeId = string & { readonly __brand: "TextNodeId" };
 
+/** Provenance class for graph edges; verification never consumes projections. */
+export type EdgeOrigin =
+  | "corpus-cooccurrence"
+  | "phrase"
+  | "catalyst-proposal"
+  | "vdw-proposal"
+  | "accepted-discovery";
+
 // ---------------------------------------------------------------------------
 // Core graph types
 // ---------------------------------------------------------------------------
@@ -82,6 +90,7 @@ export interface TextEdge {
    * Prevents Pitfall 9: treating surprising-edge-ratio as cumulative.
    */
   readonly createdAtIteration: number;
+  readonly origin: EdgeOrigin;
 }
 
 // ---------------------------------------------------------------------------

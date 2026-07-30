@@ -100,6 +100,11 @@ define
     relates excluder @card(1),
     relates excluded @card(1);
 
+  # One subject cannot instantiate every member simultaneously. This is a
+  # genuine hyperedge: it must never be expanded into pairwise exclusions.
+  relation joint-incompatibility sub claim,
+    relates incompatible @card(2..);
+
   # #8: epiphenomenalism and interactionism are one causal claim at opposite
   # polarity. polarity is mandatory — an unsigned causal claim is meaningless.
   relation causal-claim sub claim,
@@ -138,6 +143,7 @@ define
     plays identity-claim:identified-with,
     plays exclusion:excluder,
     plays exclusion:excluded,
+    plays joint-incompatibility:incompatible,
     plays causal-claim:cause,
     plays causal-claim:effect,
     plays property-assertion:subject,

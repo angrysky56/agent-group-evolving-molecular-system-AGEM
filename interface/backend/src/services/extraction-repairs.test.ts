@@ -137,7 +137,7 @@ describe("extraction repair proposals", () => {
     expect(repairs.every(({ applied }) => applied === false)).toBe(true);
   });
 
-  it("uses abductive_explain only to rank and never applies a repair", async () => {
+  it("validates concrete patches on isolated copies and never applies them", async () => {
     const oracle = vi.fn(async () =>
       JSON.stringify({
         best_explanation: "repair_0",
@@ -151,31 +151,55 @@ describe("extraction repair proposals", () => {
 
     expect(report).toMatchObject({
       mode: "propose-only",
-      abductiveCalls: 5,
+      abductiveCalls: 0,
       oracleFailures: 0,
+      validatorCalls: 5,
       truncated: false,
     });
-    expect(report.proposals.every(({ status }) => status === "proposed")).toBe(true);
+    expect(report.proposals.map(({ status }) => status)).toEqual([
+      "unresolved",
+      "counterfactually-validated",
+      "counterfactually-validated",
+      "counterfactually-validated",
+      "unresolved",
+    ]);
     expect(report.proposals.every(({ applied }) => applied === false)).toBe(true);
     expect(input).toEqual(before);
-    expect(oracle).toHaveBeenCalledWith({
-      observation: "failure_resolved",
-      candidates: ["repair_0"],
-      background: ["repair_0 -> failure_resolved"],
-      max_complexity: 8,
+    expect(oracle).not.toHaveBeenCalled();
+    expect(report.proposals[1]).toMatchObject({
+      selectedBy: "counterfactual-validator",
+      candidates: [
+        {
+          counterfactual: {
+            status: "validated",
+            validator: "claim-integrity-v1",
+            afterFailures: [],
+          },
+        },
+      ],
     });
+    expect("explainsFailure" in report.proposals[1]!).toBe(false);
   });
 
-  it("surfaces an unavailable oracle instead of treating it as a repair", async () => {
-    const report = await proposeExtractionRepairs(context(), async () => {
+  it("does not manufacture failure resolution when the optional oracle is unavailable", async () => {
+    const oracle = vi.fn(async () => {
       throw new Error("mcp-logic unavailable");
     });
+    const report = await proposeExtractionRepairs(context(), oracle);
 
-    expect(report.oracleFailures).toBe(5);
+    expect(oracle).not.toHaveBeenCalled();
+    expect(report.oracleFailures).toBe(0);
     expect(report.proposals[0]).toMatchObject({
-      status: "oracle-failed",
+      status: "unresolved",
       applied: false,
-      oracleError: "mcp-logic unavailable",
+      candidates: [
+        {
+          counterfactual: {
+            status: "not-applicable",
+            reason: expect.stringMatching(/fresh extraction|concrete rejected claim/i),
+          },
+        },
+      ],
     });
   });
 });

@@ -20,6 +20,8 @@ export interface ModelInfo {
 }
 /** Role of a message participant. */
 export type MessageRole = "user" | "assistant" | "system" | "tool";
+export type RunIntent = "discover" | "verify" | "discover-then-verify";
+export type ReasoningArtifactStatus = "observation" | "discovery-candidate" | "typed-claim" | "verified-finding" | "repair-candidate" | "counterfactually-validated-repair" | "accepted-patch";
 /** A single chat message. */
 export interface ChatMessage {
     id: string;
@@ -146,7 +148,12 @@ export interface SOCSnapshot {
         von_neumann_entropy: number;
         embedding_entropy: number;
         cdp: number;
-        surprising_edge_ratio: number;
+        surprising_edge_ratio: number | null;
+        eligible_new_edge_count: number;
+        surprising_edge_count: number;
+        unmeasurable_edge_count: number;
+        surprising_edge_status: string;
+        new_edge_counts_by_origin: Record<string, number>;
         correlation_coefficient: number;
         is_phase_transition: boolean;
     } | null;
@@ -155,6 +162,8 @@ export interface SOCSnapshot {
         cdp_variance: number;
         correlation_consistency: number;
         persistence_iterations: number;
+        measurement_status: string;
+        eligible_growth_count: number;
     } | null;
     trend: {
         mean: number;
@@ -167,7 +176,12 @@ export interface SOCSnapshot {
         von_neumann_entropy: number;
         embedding_entropy: number;
         cdp: number;
-        surprising_edge_ratio: number;
+        surprising_edge_ratio: number | null;
+        eligible_new_edge_count: number;
+        surprising_edge_count: number;
+        unmeasurable_edge_count: number;
+        surprising_edge_status: string;
+        new_edge_counts_by_origin: Record<string, number>;
         correlation_coefficient: number;
         is_phase_transition: boolean;
     }>;
@@ -189,6 +203,25 @@ export interface CatalystQuestionResult {
     seed_node_b: string;
     semantic_distance: number;
     priority: number;
+    exploration_status: "context-supported" | "graph-only";
+    context_refs: Array<{
+        entry_id: string;
+        similarity: number;
+    }>;
+    proposed_edge: {
+        source: string;
+        target: string;
+        origin: "catalyst-proposal";
+        rationale: string;
+        provenance: {
+            gap_id: string;
+            question_text: string;
+            context_entry_ids: string[];
+        };
+        creator: "catalyst-question-generator";
+        verification_status: "propose-only";
+        applied: false;
+    };
 }
 /** A context search result from LCMGrep. */
 export interface ContextSearchResult {
@@ -205,6 +238,17 @@ export interface GraphSummary {
     edges: GraphEdge[];
     /** Concept-level graph — communities as super-nodes. */
     concept_graph?: ConceptGraphSummary;
+    centrality: {
+        topology_revision: number;
+        calculation_revision: number | null;
+        status: "current" | "not-computed";
+        top_nodes: Array<{
+            node_id: string;
+            score: number;
+            community: number | null;
+            trend: string;
+        }>;
+    };
 }
 export interface GraphNode {
     id: string;
@@ -218,6 +262,7 @@ export interface GraphEdge {
     source: string;
     target: string;
     weight?: number;
+    origin?: string;
 }
 /** A named concept community (aggregated from word-level TNA nodes). */
 export interface ConceptCommunitySummary {
@@ -301,6 +346,8 @@ export interface KnowledgeFile {
 }
 export interface ChatRequest {
     message: string;
+    /** Explicit epistemic boundary; defaults to discover-then-verify. */
+    intent?: RunIntent;
     session_id?: string;
     /** Hard boundary for automatic finding recall/write. Defaults to the session. */
     memory_namespace?: string;

@@ -56,7 +56,11 @@ export interface ContractEvaluation {
   items: ContractItem[];
 }
 
+import type { RunIntent } from "../../../shared/types.js";
+
 export interface WorkflowContractOptions {
+  /** The epistemic workflow selected for this run. */
+  intent?: RunIntent;
   /**
    * Reports whether the corpus is multi-position, i.e. whether logical
    * consistency must be verified. Called lazily at evaluation time so it sees
@@ -195,6 +199,7 @@ export class WorkflowContract {
       materialChars: 0,
       materialThreshold: 600,
       isClaimStoreAvailable: () => false,
+      intent: "discover-then-verify",
       ...options,
     };
   }
@@ -262,8 +267,14 @@ export class WorkflowContract {
   /** Evaluate κ against what the run has done so far. */
   evaluate(): ContractEvaluation {
     const analysisRun = this.#isAnalysisRun();
+    const discoveryRequired = this.#options.intent !== "verify";
+    const verificationRequired = this.#options.intent !== "discover";
     const ranCycle = INGEST_TOOLS.some((tool) => this.count(tool) > 0);
-    const contested = analysisRun && ranCycle && this.#safeIsContested();
+    const contested =
+      analysisRun &&
+      verificationRequired &&
+      (this.#options.intent === "verify" ||
+        (ranCycle && this.#safeIsContested()));
     const typedClaimsPossible = this.#safeClaimStoreAvailable();
 
     const items: ContractItem[] = [
@@ -272,14 +283,14 @@ export class WorkflowContract {
         requirement: "At least one AGEM cycle or sectioned corpus run",
         hint: "You have not ingested the material into the graph yet — call run_agem_cycle for one conceptual section, or run_agem_cycles_sectioned for a structured corpus.",
         satisfied: ranCycle,
-        applicable: analysisRun,
+        applicable: analysisRun && discoveryRequired,
       },
       {
         id: "inspect",
         requirement: "At least one get_graph_topology",
         hint: "You have not inspected the graph — call get_graph_topology to see the concept communities and bridges before answering.",
         satisfied: this.count("get_graph_topology") > 0,
-        applicable: analysisRun,
+        applicable: analysisRun && discoveryRequired,
       },
       {
         id: "verify",
@@ -370,6 +381,7 @@ export class WorkflowContract {
     const { satisfied, items } = this.evaluate();
     return {
       satisfied,
+      intent: this.#options.intent,
       analysisRun: this.#isAnalysisRun(),
       nudges: this.#nudgeCount,
       items: items.map((i) => ({

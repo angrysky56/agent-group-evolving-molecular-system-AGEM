@@ -18,6 +18,7 @@ describe("run logger", () => {
     temporaryPaths.push(basePath);
     const logger = createRunLogger({
       model: "test-model",
+      provider: "test-provider",
       message: "test",
       basePath,
     });
@@ -34,6 +35,13 @@ describe("run logger", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+    expect(events[0]).toMatchObject({
+      type: "run_start",
+      model: "test-model",
+      provider: "test-provider",
+      codeProvenance: "current-worktree",
+    });
+    expect(events[0].gitCommit).toMatch(/^(?:[a-f0-9]{40}|unknown)$/);
     expect(events.at(-1)).toMatchObject({
       type: "turn",
       turn: 3,

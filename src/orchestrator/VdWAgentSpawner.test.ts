@@ -147,7 +147,7 @@ describe("VdWAgent", () => {
     expect(agent.status).toBe("terminated");
   });
 
-  it("T7: getResults() returns accumulated queries, entities, and relations", async () => {
+  it("T7: getResults() returns queries and non-applied proposals", async () => {
     const agent = new VdWAgent("test-7", makeParams(2, 5));
     agent.activate();
     await agent.executeStep(); // step 1: creates bridge entity
@@ -155,8 +155,15 @@ describe("VdWAgent", () => {
 
     const results = agent.getResults();
     expect(results.synthQueries).toHaveLength(2);
-    expect(results.entitiesAdded).toHaveLength(1); // only 1 entity (created on step 1)
-    expect(results.relationsAdded).toHaveLength(1);
+    expect(results.entitiesAdded).toEqual([]);
+    expect(results.relationsAdded).toEqual([]);
+    expect(results.proposals).toEqual([
+      expect.objectContaining({
+        origin: "vdw-proposal",
+        verificationStatus: "propose-only",
+        applied: false,
+      }),
+    ]);
     expect(results.stepsExecuted).toBe(2);
     expect(results.success).toBe(true);
   });
@@ -169,18 +176,19 @@ describe("VdWAgent", () => {
     expect(result).toBe(false);
   });
 
-  it("T9: First executeStep() creates bridge entity", async () => {
+  it("T9: First executeStep() never creates a placeholder bridge entity", async () => {
     const agent = new VdWAgent("test-9", makeParams(3, 7));
     agent.activate();
     await agent.executeStep();
 
     const results = agent.getResults();
-    expect(results.entitiesAdded).toHaveLength(1);
-    expect(results.entitiesAdded[0]).toContain("vdw-bridge");
-    expect(results.entitiesAdded[0]).toContain("gap-3-7");
-    expect(results.relationsAdded).toHaveLength(1);
-    expect(results.relationsAdded[0]!.type).toBe("vdw-bridge");
-    expect(results.relationsAdded[0]!.to).toBe("community-3");
+    expect(results.entitiesAdded).toEqual([]);
+    expect(results.relationsAdded).toEqual([]);
+    expect(results.proposals[0]).toMatchObject({
+      gapId: "gap-3-7",
+      verificationStatus: "propose-only",
+      applied: false,
+    });
   });
 });
 
@@ -580,7 +588,7 @@ describe("VdWAgentSpawner", () => {
       expect(completeEvents).toHaveLength(1);
     });
 
-    it("T35: Complete event contains synthQueries and entitiesAdded", async () => {
+    it("T35: Complete event contains synthQueries and proposals", async () => {
       const { spawner, events } = createSpawner({ agentMaxIterations: 2 });
       spawner.updateRegime("transitioning");
       sustainH1(spawner, 3, 2);
@@ -597,7 +605,9 @@ describe("VdWAgentSpawner", () => {
       expect(synthQueries.length).toBeGreaterThan(0);
       const entitiesAdded = completeEvent["entitiesAdded"] as string[];
       expect(Array.isArray(entitiesAdded)).toBe(true);
-      expect(entitiesAdded.length).toBeGreaterThan(0);
+      expect(entitiesAdded).toEqual([]);
+      const proposals = completeEvent["proposals"] as unknown[];
+      expect(proposals.length).toBeGreaterThan(0);
       expect(completeEvent["success"]).toBe(true);
     });
   });

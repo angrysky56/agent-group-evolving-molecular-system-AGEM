@@ -195,6 +195,19 @@ describe("LouvainDetector", () => {
     }
   });
 
+  it("publishes assignments to the graph for gap and SOC consumers", () => {
+    const detector = new LouvainDetector(twoCliqueGraph);
+    const result = detector.detect(42);
+
+    for (const [nodeId, communityId] of result.assignments) {
+      expect(twoCliqueGraph.getNode(nodeId)?.communityId).toBe(communityId);
+      expect(
+        twoCliqueGraph.getGraph().getNodeAttribute(nodeId, "communityId"),
+      ).toBe(communityId);
+    }
+    expect(twoCliqueGraph.getCommunityRevision()).toBeGreaterThan(0);
+  });
+
   // --------------------------------------------------------------------------
   // T9b: Different seeds produce different assignments
   // Confirms the seed actually controls behavior, not just ignored.

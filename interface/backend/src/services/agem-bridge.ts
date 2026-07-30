@@ -345,6 +345,8 @@ class AgemBridge {
       cdp_variance: regime.cdpVariance,
       correlation_consistency: regime.correlationConsistency,
       persistence_iterations: regime.persistenceIterations,
+      measurement_status: regime.measurementStatus,
+      eligible_growth_count: regime.eligibleGrowthCount,
     };
   }
 
@@ -398,8 +400,33 @@ class AgemBridge {
         source,
         target,
         weight: (attrs as { weight?: number }).weight,
+        origin: (attrs as { origin?: string }).origin,
       });
     });
+
+    const topologyRevision = orch.tnaGraph.getTopologyRevision();
+    // The backend project consumes the root project through a declaration
+    // reference that can lag one build while watch mode is running. Keep the
+    // structural contract local so the new revision API remains type-safe.
+    const centrality = orch.tnaCentrality as typeof orch.tnaCentrality & {
+      getCalculationRevision(): number | null;
+    };
+    if (
+      graph.order > 0 &&
+      centrality.getCalculationRevision() !== topologyRevision
+    ) {
+      centrality.compute();
+    }
+    const calculationRevision = centrality.getCalculationRevision();
+    const topCentralNodes = centrality.getTopNodes(10).map((entry) => ({
+      node_id: entry.nodeId,
+      score: entry.score,
+      community:
+        (graph.getNodeAttribute(entry.nodeId, "communityId") as
+          | number
+          | undefined) ?? null,
+      trend: centrality.getTimeSeries(entry.nodeId)?.trend ?? "stable",
+    }));
 
     // Build concept-level summary if communities exist
     let concept_graph = undefined;
@@ -440,6 +467,12 @@ class AgemBridge {
       nodes,
       edges,
       concept_graph,
+      centrality: {
+        topology_revision: topologyRevision,
+        calculation_revision: calculationRevision,
+        status: calculationRevision === null ? "not-computed" : "current",
+        top_nodes: topCentralNodes,
+      },
     };
   }
 
@@ -549,7 +582,7 @@ class AgemBridge {
                 `- Von Neumann Entropy: ${latestSOC.vonNeumannEntropy.toFixed(4)}`,
                 `- Embedding Entropy: ${latestSOC.embeddingEntropy.toFixed(4)}`,
                 `- CDP: ${latestSOC.cdp.toFixed(4)}`,
-                `- Surprising Edge Ratio: ${latestSOC.surprisingEdgeRatio.toFixed(4)}`,
+                `- Surprising Edge Ratio: ${latestSOC.surprisingEdgeRatio === null ? `not measured (${latestSOC.surprisingEdgeStatus})` : latestSOC.surprisingEdgeRatio.toFixed(4)}`,
                 `- Correlation: ${latestSOC.correlationCoefficient.toFixed(4)}`,
                 `- Phase Transition: ${latestSOC.isPhaseTransition ? "YES" : "No"}`,
               ].join("\n")
@@ -748,6 +781,12 @@ class AgemBridge {
           embedding_entropy: h.embeddingEntropy,
           cdp: h.cdp,
           surprising_edge_ratio: h.surprisingEdgeRatio,
+          eligible_new_edge_count: h.eligibleNewEdgeCount ?? 0,
+          surprising_edge_count: h.surprisingEdgeCount ?? 0,
+          unmeasurable_edge_count: h.unmeasurableEdgeCount ?? 0,
+          surprising_edge_status:
+            h.surprisingEdgeStatus ?? "legacy-unknown",
+          new_edge_counts_by_origin: h.newEdgeCountsByOrigin ?? {},
           correlation_coefficient: h.correlationCoefficient,
           is_phase_transition: h.isPhaseTransition,
         });
@@ -762,6 +801,11 @@ class AgemBridge {
           embedding_entropy: h.embeddingEntropy,
           cdp: h.cdp,
           surprising_edge_ratio: h.surprisingEdgeRatio,
+          eligible_new_edge_count: h.eligibleNewEdgeCount,
+          surprising_edge_count: h.surprisingEdgeCount,
+          unmeasurable_edge_count: h.unmeasurableEdgeCount,
+          surprising_edge_status: h.surprisingEdgeStatus,
+          new_edge_counts_by_origin: { ...h.newEdgeCountsByOrigin },
           correlation_coefficient: h.correlationCoefficient,
           is_phase_transition: h.isPhaseTransition,
         });
@@ -776,6 +820,11 @@ class AgemBridge {
             embedding_entropy: latest.embeddingEntropy,
             cdp: latest.cdp,
             surprising_edge_ratio: latest.surprisingEdgeRatio,
+            eligible_new_edge_count: latest.eligibleNewEdgeCount,
+            surprising_edge_count: latest.surprisingEdgeCount,
+            unmeasurable_edge_count: latest.unmeasurableEdgeCount,
+            surprising_edge_status: latest.surprisingEdgeStatus,
+            new_edge_counts_by_origin: { ...latest.newEdgeCountsByOrigin },
             correlation_coefficient: latest.correlationCoefficient,
             is_phase_transition: latest.isPhaseTransition,
           }
@@ -788,6 +837,8 @@ class AgemBridge {
             cdp_variance: regime.cdpVariance,
             correlation_consistency: regime.correlationConsistency,
             persistence_iterations: regime.persistenceIterations,
+            measurement_status: regime.measurementStatus,
+            eligible_growth_count: regime.eligibleGrowthCount,
           }
         : null,
       trend: { mean: trend.mean, slope: trend.slope, window: trend.window },
@@ -821,7 +872,11 @@ class AgemBridge {
   /* ─────────────── Catalyst Questions ─────────────── */
 
   /** Generate bridging questions for gaps. */
-  generateCatalystQuestions(gapId?: string): CatalystQuestionResult[] {
+  async generateCatalystQuestions(
+    gapId?: string,
+    maxProposals = 6,
+    signal?: AbortSignal,
+  ): Promise<CatalystQuestionResult[]> {
     const orch = this.#orchestrator;
     if (orch.tnaGraph.order === 0) return [];
 
@@ -838,9 +893,28 @@ class AgemBridge {
       : gaps;
 
     const results: CatalystQuestionResult[] = [];
+    const boundedMax = Number.isFinite(maxProposals)
+      ? Math.max(1, Math.min(12, Math.floor(maxProposals)))
+      : 6;
     for (const gap of targetGaps) {
       const questions = orch.tnaCatalystGenerator.generateQuestions(gap);
       for (const q of questions) {
+        if (results.length >= boundedMax) return results;
+        signal?.throwIfAborted();
+        let context: ContextSearchResult[] = [];
+        try {
+          context = await this.searchContext(q.questionText, 2, signal);
+        } catch (error) {
+          signal?.throwIfAborted();
+          console.warn("[AgemBridge] Catalyst context lookup unavailable:", error);
+        }
+        const contextRefs = context.map((entry) => ({
+          entry_id: entry.entry_id,
+          similarity: entry.similarity,
+        }));
+        const rationale =
+          `Structural gap ${q.gapId} links representative concepts ` +
+          `${q.seedNodeA} and ${q.seedNodeB}; the edge is a proposal, not evidence.`;
         results.push({
           gap_id: q.gapId,
           question_text: q.questionText,
@@ -848,6 +922,23 @@ class AgemBridge {
           seed_node_b: q.seedNodeB,
           semantic_distance: q.semanticDistance,
           priority: q.priority,
+          exploration_status:
+            contextRefs.length > 0 ? "context-supported" : "graph-only",
+          context_refs: contextRefs,
+          proposed_edge: {
+            source: q.seedNodeA,
+            target: q.seedNodeB,
+            origin: "catalyst-proposal",
+            rationale,
+            provenance: {
+              gap_id: q.gapId,
+              question_text: q.questionText,
+              context_entry_ids: contextRefs.map((entry) => entry.entry_id),
+            },
+            creator: "catalyst-question-generator",
+            verification_status: "propose-only",
+            applied: false,
+          },
         });
       }
     }
@@ -981,6 +1072,11 @@ class AgemBridge {
       embeddingEntropy: h.embeddingEntropy,
       cdp: h.cdp,
       surprisingEdgeRatio: h.surprisingEdgeRatio,
+      eligibleNewEdgeCount: h.eligibleNewEdgeCount,
+      surprisingEdgeCount: h.surprisingEdgeCount,
+      unmeasurableEdgeCount: h.unmeasurableEdgeCount,
+      surprisingEdgeStatus: h.surprisingEdgeStatus,
+      newEdgeCountsByOrigin: { ...h.newEdgeCountsByOrigin },
       correlationCoefficient: h.correlationCoefficient,
       isPhaseTransition: h.isPhaseTransition,
       timestamp: h.timestamp,

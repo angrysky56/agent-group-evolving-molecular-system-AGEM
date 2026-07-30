@@ -17,6 +17,14 @@
 // SOCInputs — what SOCTracker receives each iteration
 // ---------------------------------------------------------------------------
 
+export type SOCEdgeOrigin =
+  | "corpus-cooccurrence"
+  | "phrase"
+  | "catalyst-proposal"
+  | "vdw-proposal"
+  | "accepted-discovery"
+  | "unknown";
+
 /**
  * SOCInputs — typed contract for all metric computation inputs.
  *
@@ -77,6 +85,7 @@ export interface SOCInputs {
     readonly source: string;
     readonly target: string;
     readonly createdAtIteration: number;
+    readonly origin: SOCEdgeOrigin;
   }>;
 
   /**
@@ -143,7 +152,15 @@ export interface SOCMetrics {
    * below δ_surprising (SOCConfig.surprisingEdgeSimilarityThreshold, default 0.3).
    * Value is 0 if newEdges.length === 0 (no new edges, no ratio to compute).
    */
-  readonly surprisingEdgeRatio: number;
+  readonly surprisingEdgeRatio: number | null;
+  readonly eligibleNewEdgeCount: number;
+  readonly surprisingEdgeCount: number;
+  readonly unmeasurableEdgeCount: number;
+  readonly surprisingEdgeStatus:
+    | "measured"
+    | "no-eligible-edges"
+    | "incomplete-data";
+  readonly newEdgeCountsByOrigin: Readonly<Record<SOCEdgeOrigin, number>>;
 
   /**
    * Pearson correlation coefficient between rolling VN entropy and rolling embedding entropy.
@@ -303,6 +320,9 @@ export interface RegimeMetrics {
 
   /** The iteration number at which this analysis was computed. */
   readonly iteration: number;
+  /** Prevents a low-variance startup window from masquerading as maturity. */
+  readonly measurementStatus: "measured" | "insufficient-history";
+  readonly eligibleGrowthCount: number;
 }
 
 /**

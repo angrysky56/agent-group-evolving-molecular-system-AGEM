@@ -34,6 +34,27 @@ export type FindingSemanticVerdictKind =
   | "no-contradiction"
   | "inconclusive";
 
+export interface VerificationDependencies {
+  corpusHash: string;
+  segmentationVersion: string;
+  supportingClaimIds: string[];
+  normalizedClaimKeys: string[];
+  ontologyVersion: string;
+  extractionSchemaVersion: string;
+  sourceSemanticValidatorVersion: string;
+  formalizerVersion: string;
+  proverVersion: string;
+  solverSettings: Record<string, string | number | boolean | null>;
+}
+
+export type VerificationDependencyName = keyof VerificationDependencies;
+
+export interface VerificationDependencyChange {
+  dependency: VerificationDependencyName;
+  before: unknown;
+  after: unknown;
+}
+
 export interface FindingInput {
   verdict: string;
   /**
@@ -76,6 +97,8 @@ export interface FindingInput {
   supportingClaims: string[];
   /** Concrete TypeDB claim occurrence ids used to construct evidences. */
   supportingClaimRefs?: string[];
+  /** Exact semantic inputs needed to decide whether this result is still current. */
+  verificationDependencies?: VerificationDependencies;
 }
 
 export interface StoredFinding extends FindingInput {
@@ -87,9 +110,28 @@ export interface StoredFinding extends FindingInput {
   lastRecalledAt?: string;
   lastCitedAt?: string;
   /** conflict-held stays resolvable but is excluded from per-run cosine scans. */
-  status: "active" | "conflict-held" | "superseded";
+  status:
+    | "active"
+    | "conflict-held"
+    | "revalidation-required"
+    | "superseded";
   supersededBy?: string;
+  verificationFingerprint?: string;
+  revalidationRequiredAt?: string;
+  revalidationChanges?: VerificationDependencyChange[];
   fingerprint: string;
+}
+
+export interface RevalidationAuditResult {
+  scanned: number;
+  marked: number;
+  unchanged: number;
+  truncated: boolean;
+  findings: Array<{
+    findingId: string;
+    verificationFingerprint: string;
+    changes: VerificationDependencyChange[];
+  }>;
 }
 
 export interface ConflictCandidate {
@@ -126,6 +168,7 @@ export interface FindingGraph {
     loserFindingId: string,
     reason: string,
   ): Promise<void>;
+  recordRevalidationRequired?(finding: StoredFinding): Promise<void>;
 }
 
 interface FindingIndex {
@@ -253,6 +296,9 @@ export class FindingStore {
         recallCount: 0,
         citationCount: 0,
         status: "active",
+        verificationFingerprint: normalizedInput.verificationDependencies
+          ? verificationFingerprint(normalizedInput.verificationDependencies)
+          : undefined,
         fingerprint,
       };
 
@@ -371,6 +417,73 @@ export class FindingStore {
     });
   }
 
+  /**
+   * Compare a bounded number of current findings with semantic dependency
+   * overrides. Omitted fields keep their recorded value, so callers can audit
+   * a runtime/schema upgrade without fabricating corpus-specific inputs.
+   */
+  async auditVerificationDependencies(
+    overrides: Partial<VerificationDependencies>,
+    options: { limit?: number; memoryNamespace?: string } = {},
+  ): Promise<RevalidationAuditResult> {
+    const limit = Math.max(1, Math.min(500, Math.floor(options.limit ?? 100)));
+    return this.#serial(async () => {
+      const index = await this.#readIndex();
+      const eligible = index.findings
+        .filter(
+          (finding) =>
+            finding.method === "derived-from-claims" &&
+            finding.status !== "superseded" &&
+            finding.status !== "revalidation-required" &&
+            !!finding.verificationDependencies &&
+            (!options.memoryNamespace ||
+              finding.memoryNamespace === options.memoryNamespace),
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const selected = eligible.slice(0, limit);
+      const findings: RevalidationAuditResult["findings"] = [];
+      let unchanged = 0;
+      for (const finding of selected) {
+        const before = finding.verificationDependencies!;
+        const after = normalizeVerificationDependencies({
+          ...before,
+          ...overrides,
+        });
+        const changes = verificationDependencyChanges(before, after);
+        if (changes.length === 0) {
+          unchanged++;
+          continue;
+        }
+        finding.status = "revalidation-required";
+        finding.revalidationRequiredAt = this.#now().toISOString();
+        finding.revalidationChanges = changes;
+        const nextFingerprint = verificationFingerprint(after);
+        findings.push({
+          findingId: finding.id,
+          verificationFingerprint: nextFingerprint,
+          changes,
+        });
+      }
+      if (findings.length > 0) {
+        await this.#writeIndex(index);
+        for (const finding of selected.filter(
+          (item) => item.status === "revalidation-required",
+        )) {
+          await this.#mirror(() =>
+            this.#graph?.recordRevalidationRequired?.(finding),
+          );
+        }
+      }
+      return {
+        scanned: selected.length,
+        marked: findings.length,
+        unchanged,
+        truncated: eligible.length > selected.length,
+        findings,
+      };
+    });
+  }
+
   /** Count only explicit `[finding:<id>]` citations from this run's recalls. */
   async recordCitations(
     text: string,
@@ -482,7 +595,11 @@ export class FindingStore {
     return this.#serial(async () => {
       const index = await this.#readIndex();
       return {
-        active: index.findings.filter((f) => f.status !== "superseded").length,
+        active: index.findings.filter(
+          (f) =>
+            f.status !== "superseded" &&
+            f.status !== "revalidation-required",
+        ).length,
         archived: index.archivedCount,
         openConflicts: index.conflicts.filter((c) => c.status === "open").length,
       };
@@ -639,6 +756,17 @@ export class FindingStore {
           // available retrieval boundary; never promote them to global scope.
           memoryNamespace:
             finding.memoryNamespace?.trim() || finding.corpusId,
+          // A legacy typed finding without a semantic dependency receipt is
+          // history, not current evidence. Keep it, label it, and exclude it
+          // from ordinary recall until a fresh verification creates a new
+          // finding.
+          ...(finding.method === "derived-from-claims" &&
+          !finding.verificationDependencies
+            ? {
+                status: "revalidation-required" as const,
+                revalidationChanges: finding.revalidationChanges ?? [],
+              }
+            : {}),
         })),
         conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
         archivedCount: Number(parsed.archivedCount ?? 0),
@@ -689,6 +817,12 @@ function publicFinding(
     supportingClaimRefs: rest.supportingClaimRefs
       ? [...rest.supportingClaimRefs]
       : undefined,
+    verificationDependencies: rest.verificationDependencies
+      ? normalizeVerificationDependencies(rest.verificationDependencies)
+      : undefined,
+    revalidationChanges: rest.revalidationChanges?.map((change) => ({
+      ...change,
+    })),
   };
 }
 
@@ -736,6 +870,59 @@ function findingFingerprint(input: FindingInput): string {
       "utf8",
     )
     .digest("hex");
+}
+
+export function verificationFingerprint(
+  dependencies: VerificationDependencies,
+): string {
+  return createHash("sha256")
+    .update(stableJson(normalizeVerificationDependencies(dependencies)), "utf8")
+    .digest("hex");
+}
+
+export function verificationDependencyChanges(
+  before: VerificationDependencies,
+  after: VerificationDependencies,
+): VerificationDependencyChange[] {
+  const normalizedBefore = normalizeVerificationDependencies(before);
+  const normalizedAfter = normalizeVerificationDependencies(after);
+  return (Object.keys(normalizedBefore) as VerificationDependencyName[])
+    .filter(
+      (dependency) =>
+        stableJson(normalizedBefore[dependency]) !==
+        stableJson(normalizedAfter[dependency]),
+    )
+    .map((dependency) => ({
+      dependency,
+      before: normalizedBefore[dependency],
+      after: normalizedAfter[dependency],
+    }));
+}
+
+function normalizeVerificationDependencies(
+  dependencies: VerificationDependencies,
+): VerificationDependencies {
+  return {
+    ...dependencies,
+    supportingClaimIds: [...new Set(dependencies.supportingClaimIds)].sort(),
+    normalizedClaimKeys: [...new Set(dependencies.normalizedClaimKeys)].sort(),
+    solverSettings: Object.fromEntries(
+      Object.entries(dependencies.solverSettings).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+    ),
+  };
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function isConclusive(

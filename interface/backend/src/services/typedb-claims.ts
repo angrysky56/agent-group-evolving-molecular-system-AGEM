@@ -50,6 +50,14 @@ export interface ClaimStoreStatus {
   note?: string;
 }
 
+export interface StoredJointIncompatibility {
+  claimId: string;
+  claimKey: string;
+  scope: "corpus" | "position";
+  incompatible: string[];
+  sourceSegmentIds: string[];
+}
+
 /**
  * Connection settings. Defaults come from config; overrides exist so the
  * degradation path is testable — `settings` parses process.env once at module
@@ -186,6 +194,29 @@ export class TypeDBClaimStore {
     return this.#query(query, "read", false);
   }
 
+  /** Read an n-ary claim without projecting it into pairwise edges. */
+  async readJointIncompatibility(
+    claimId: string,
+  ): Promise<StoredJointIncompatibility | null> {
+    if (!claimId.trim()) return null;
+    const response = await this.read(`match
+  $claim isa joint-incompatibility,
+    has claim-id "${escapeTypeQLString(claimId)}",
+    has claim-key $claimKey,
+    has claim-scope $scope,
+    links (incompatible: $member, source: $source);
+  $member has label $label;
+  $source has segment-id $segmentId;
+fetch {
+  "claimId": "${escapeTypeQLString(claimId)}",
+  "claimKey": $claimKey,
+  "scope": $scope,
+  "member": $label,
+  "sourceSegmentId": $segmentId
+};`);
+    return parseStoredJointIncompatibility(response, claimId);
+  }
+
   async #query(
     query: string,
     kind: TransactionType,
@@ -206,6 +237,53 @@ export class TypeDBClaimStore {
     console.warn(`[TypeDBClaimStore] unavailable — ${note}`);
     return this.status();
   }
+}
+
+export function parseStoredJointIncompatibility(
+  response: ApiResponse | null,
+  expectedClaimId: string,
+): StoredJointIncompatibility | null {
+  if (!response || !isOkResponse(response)) return null;
+  const ok = response.ok as {
+    answerType?: string;
+    answers?: Array<Record<string, unknown>>;
+  };
+  if (ok.answerType !== "conceptDocuments" || !Array.isArray(ok.answers)) {
+    return null;
+  }
+  const rows = ok.answers;
+  if (rows.length === 0) return null;
+  const strings = (key: string) =>
+    rows
+      .map((row) => row[key])
+      .filter((value): value is string => typeof value === "string");
+  const claimIds = [...new Set(strings("claimId"))];
+  const claimKeys = [...new Set(strings("claimKey"))];
+  const scopes = [...new Set(strings("scope"))];
+  const incompatible = [...new Set(strings("member"))].sort();
+  const sourceSegmentIds = [...new Set(strings("sourceSegmentId"))].sort();
+  if (
+    claimIds.length !== 1 ||
+    claimIds[0] !== expectedClaimId ||
+    claimKeys.length !== 1 ||
+    scopes.length !== 1 ||
+    (scopes[0] !== "corpus" && scopes[0] !== "position") ||
+    incompatible.length < 2 ||
+    sourceSegmentIds.length < 1
+  ) {
+    return null;
+  }
+  return {
+    claimId: expectedClaimId,
+    claimKey: claimKeys[0]!,
+    scope: scopes[0],
+    incompatible,
+    sourceSegmentIds,
+  };
+}
+
+function escapeTypeQLString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 /** Pull a readable message out of a driver error response. */

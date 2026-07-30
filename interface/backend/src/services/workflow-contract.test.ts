@@ -67,6 +67,35 @@ describe("WorkflowContract — completion", () => {
   });
 });
 
+describe("WorkflowContract — run intent", () => {
+  it("does not demand verification tools during discovery", () => {
+    const c = createWorkflowContract({
+      intent: "discover",
+      isContested: contested,
+      isClaimStoreAvailable: () => true,
+      materialChars: 5000,
+    });
+    c.record("run_agem_cycle");
+    c.record("get_graph_topology");
+    expect(c.evaluate().satisfied).toBe(true);
+    expect(c.evaluate().items.find((item) => item.id === "verify")?.applicable).toBe(false);
+  });
+
+  it("does not demand graph ingestion during verification", () => {
+    const c = createWorkflowContract({
+      intent: "verify",
+      isContested: contested,
+      isClaimStoreAvailable: () => true,
+      materialChars: 5000,
+    });
+    c.record("extract_and_verify_claims", undefined, { semanticsValidated: true });
+    const evaluation = c.evaluate();
+    expect(evaluation.items.find((item) => item.id === "ingest")?.applicable).toBe(false);
+    expect(evaluation.items.find((item) => item.id === "inspect")?.applicable).toBe(false);
+    expect(evaluation.satisfied).toBe(true);
+  });
+});
+
 describe("WorkflowContract — dormant on non-analysis runs", () => {
   it("does not nudge a bare maintenance command (regression)", () => {
     // Replay of run 2026-07-24T23-08-48_rd0eal: a 73-char "reset the engine"

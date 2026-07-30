@@ -19,7 +19,14 @@ describe("SOCTracker Snapshot & Rehydration", () => {
       edges: [{ source: 0, target: 1, weight: 1.5 }],
       embeddings,
       communityAssignments: new Map([["a", 0], ["b", 1]]),
-      newEdges: [{ source: "a", target: "b", createdAtIteration: 1 }],
+      newEdges: [
+        {
+          source: "a",
+          target: "b",
+          createdAtIteration: 1,
+          origin: "accepted-discovery",
+        },
+      ],
       iteration: 1,
     };
 

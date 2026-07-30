@@ -16,6 +16,7 @@ import {
   parseClosedGlossary,
   parseSegmentProposal,
   schemaClaimFact,
+  sourceRequiresJointIncompatibility,
   type ExtractedClaim,
 } from "./claim-extractor.js";
 import { SCHEMA_RELATIVE_PATHS } from "./typedb-claims.js";
@@ -46,6 +47,39 @@ describe("claim identity for finding evidence", () => {
     expect(claimIdentity(claim, "segment-1").claimId).not.toBe(
       claimIdentity(claim, "segment-2").claimId,
     );
+  });
+
+  it("preserves a joint incompatibility as one order-independent n-ary claim", () => {
+    const joint: ExtractedClaim = {
+      kind: "joint-incompatibility",
+      roles: { incompatible: ["locality", "hidden-variables", "measurement-independence"] },
+      scope: "corpus",
+    };
+    const reordered: ExtractedClaim = {
+      ...joint,
+      roles: { incompatible: ["measurement-independence", "locality", "hidden-variables"] },
+    };
+
+    expect(claimSchemaIssue(joint)).toBeNull();
+    expect(claimIdentity(joint, "bell-1").claimKey).toBe(
+      claimIdentity(reordered, "bell-2").claimKey,
+    );
+    expect(claimToTypeQL(joint, "bell-1")?.claim).toContain(
+      "incompatible: $c0, incompatible: $c1, incompatible: $c2",
+    );
+    expect(claimToPropositions(joint)?.propositions).toEqual([
+      "all x ((hidden_variables(x) & locality(x)) -> -measurement_independence(x))",
+    ]);
+  });
+
+  it("rejects a joint incompatibility with fewer than two distinct members", () => {
+    expect(
+      claimSchemaIssue({
+        kind: "joint-incompatibility",
+        roles: { incompatible: ["locality", "locality"] },
+        scope: "corpus",
+      }),
+    ).toMatch(/at least 2 distinct values.*found 1/i);
   });
 
   it("writes both structural and concrete ids onto claim relations", () => {
@@ -611,13 +645,49 @@ describe("claim identity for finding evidence", () => {
         claim,
         "No position can hold all of: locality, hidden variables, measurement independence, and empirical adequacy.",
       ),
-    ).toMatch(/joint incompatibility.*pairwise exclusions/i);
+    ).toMatch(/joint incompatibility.*binary exclusions/i);
     expect(
       claimSourceSemanticIssue(
         claim,
         "No position can hold all three of: universal quantum theory, agent consistency, and single outcomes.",
       ),
     ).toMatch(/joint incompatibility/i);
+    expect(
+      claimSourceSemanticIssue(
+        {
+          kind: "property-assertion",
+          roles: { subject: "theory", property: "locality" },
+          scope: "corpus",
+          polarity: "denies",
+        },
+        "No position can hold all of: locality, hidden variables, and measurement independence.",
+      ),
+    ).toMatch(/unary properties/i);
+    expect(
+      claimSourceSemanticIssue(
+        {
+          kind: "entailment",
+          roles: { antecedent: "locality", consequent: "hidden-variables" },
+          scope: "corpus",
+        },
+        "No position can hold all three of: locality, hidden variables, and measurement independence.",
+      ),
+    ).toMatch(/chained entailments/i);
+    expect(
+      claimSourceSemanticIssue(
+        {
+          kind: "joint-incompatibility",
+          roles: { incompatible: ["locality", "hidden-variables", "measurement-independence"] },
+          scope: "corpus",
+        },
+        "No position can hold all three of: locality, hidden variables, and measurement independence.",
+      ),
+    ).toBeNull();
+    expect(
+      sourceRequiresJointIncompatibility(
+        "No model can simultaneously satisfy all of: A, B, and C.",
+      ),
+    ).toBe(true);
     expect(
       claimSourceSemanticIssue(
         claim,
@@ -667,5 +737,32 @@ describe("claim extraction lifecycle", () => {
       fallbackSegmentCalls: 0,
     });
     expect(report.telemetry.totalMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("emits a lossless deduplicated source table and replay manifest even offline", async () => {
+    const report = await extractIntoStore(
+      [
+        { id: "s-1", text: "Exact source sentence." },
+        { id: "s-2", text: "Exact source sentence." },
+      ],
+      "corpus-provenance",
+    );
+
+    expect(report.sourceSegments).toHaveLength(1);
+    expect(report.sourceSegments[0]).toMatchObject({
+      segmentIds: ["s-1", "s-2"],
+      text: "Exact source sentence.",
+      chars: 22,
+      truncated: false,
+      redacted: false,
+    });
+    expect(report.sourceSegments[0]?.sourceSegmentId).toMatch(/^source-segment:/);
+    expect(report.replayManifest).toMatchObject({
+      corpusId: "corpus-provenance",
+      segmentationVersion: "assertion-segments-v2",
+      promptVersion: "closed-glossary-v3-joint-incompatibility",
+      schemaVersion: "claims-typeql-v3-joint-incompatibility",
+    });
+    expect(report.replayManifest.corpusHash).toMatch(/^[a-f0-9]{64}$/);
   });
 });
