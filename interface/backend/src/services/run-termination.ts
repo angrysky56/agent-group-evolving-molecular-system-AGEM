@@ -29,6 +29,15 @@ export interface TypedVerificationFinalization {
    * See `isStructuralMismatch` for why the distinction has to be drawn here.
    */
   evidentialPathOffered: boolean;
+  /**
+   * True when no repair candidate could be constructed for ANY reported
+   * failure, so the typed path is not recoverable by re-running. The
+   * distinction matters to the reader: "repairs pending" invites a retry,
+   * "repair route closed" asks for a human decision.
+   */
+  repairRouteExhausted: boolean;
+  /** What a person would have to do, one line per closed proposal. */
+  humanActionRequired: string[];
 }
 
 /**
@@ -119,9 +128,30 @@ export function typedVerificationFinalization(
     : [];
   const structuralMismatch = isStructuralMismatch(causes);
 
+  /*
+   * Is the repair route open, or already closed?
+   *
+   * A defect-caused abort is only recoverable if something can actually be
+   * repaired. On the quantum-mind-genesis run the answer was no — three
+   * proposals, zero candidates, `validatorCalls: 0` — and the run still told
+   * the user that "unresolved proposals are flagged in the output", which
+   * reads as pending work. Nothing was pending. Report a closed route as
+   * closed, and name what a person would have to do instead.
+   */
+  const repairReport =
+    parsed.repairReport && typeof parsed.repairReport === "object"
+      ? (parsed.repairReport as Record<string, unknown>)
+      : undefined;
+  const repairRouteExhausted = repairReport?.repairRouteExhausted === true;
+  const humanActionRequired = Array.isArray(repairReport?.humanActionRequired)
+    ? (repairReport.humanActionRequired as unknown[]).map(String)
+    : [];
+
   return {
     reason,
     evidentialPathOffered: structuralMismatch,
+    repairRouteExhausted,
+    humanActionRequired,
     fallbackContent: [
       "INCONCLUSIVE — typed claim verification did not produce a validated corpus verdict.",
       verdict,
@@ -168,6 +198,18 @@ export function typedVerificationFinalization(
           "Typed claim verification is inconclusive. Do not call or request more tools.",
           "Write the final user-facing response now and label it INCONCLUSIVE.",
           "Name the actual reported failure causes. Do not substitute or present hand-authored logic as corpus evidence.",
+          ...(repairRouteExhausted
+            ? [
+                "",
+                "REPAIR ROUTE IS CLOSED. No repair candidate could be constructed for any reported",
+                "failure — the proposals in the output are EMPTY, and the counterfactual validator",
+                "never ran. Do NOT describe them as unresolved, pending, flagged for review, or as a",
+                "starting point for a repair attempt. There is nothing in them to act on.",
+                "State that re-running will reproduce this result unchanged, and report exactly what",
+                "a person would have to change:",
+                ...humanActionRequired.map((action) => `  - ${action}`),
+              ]
+            : []),
         ].join("\n"),
   };
 }

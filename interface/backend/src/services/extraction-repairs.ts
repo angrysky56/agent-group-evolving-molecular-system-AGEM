@@ -52,10 +52,28 @@ export interface ExtractionRepairProposal {
   candidates: ExtractionRepairCandidate[];
   selectedCandidateId?: string;
   selectedBy?: "counterfactual-validator" | "mcp-logic:abductive_explain";
-  status: "counterfactually-validated" | "unresolved" | "oracle-failed";
+  status:
+    | "counterfactually-validated"
+    | "unresolved"
+    | "no-candidate"
+    | "oracle-failed";
   /** Repairs are suggestions until a human or audited ontology approves them. */
   applied: false;
   oracleError?: string;
+  /**
+   * Why no candidate could even be constructed, when `status` is
+   * `no-candidate`.
+   *
+   * An empty proposal used to be reported as `unresolved`, which is the same
+   * word used for "candidates were built and none of them validated". Those are
+   * completely different situations and only one of them is waiting on a
+   * decision. Observed live on the quantum-mind-genesis run
+   * (2026-07-30T19-27-27): three proposals, zero candidates between them,
+   * `validatorCalls: 0` — reported to the user as "three unresolved proposals
+   * are flagged in the output", which reads as work in progress. There was
+   * nothing there. The repair route was already closed and nobody was told.
+   */
+  noCandidateReason?: string;
 }
 
 export interface ExtractionRepairReport {
@@ -65,6 +83,48 @@ export interface ExtractionRepairReport {
   oracleFailures: number;
   validatorCalls: number;
   truncated: boolean;
+  /** Proposals for which no candidate could be constructed at all. */
+  candidatelessProposals: number;
+  /**
+   * True when the repair route is CLOSED, not pending: every proposal is
+   * empty, so there is nothing for a human or an ontology to approve. The
+   * caller must say so plainly rather than implying repairs are outstanding.
+   */
+  repairRouteExhausted: boolean;
+  /** One line per closed proposal, naming what a person would have to do. */
+  humanActionRequired: string[];
+}
+
+/**
+ * Why a proposal ended up with no candidates.
+ *
+ * These are not failures of the repair engine so much as the boundary of its
+ * patch vocabulary, and naming the boundary is more useful than an empty list.
+ * `attributionCandidates` can only propose a holder that the segment TEXT
+ * already names; when a corpus speaks in its own voice — "the corpus notes the
+ * asymmetry" — there is no such holder, and the real fix is to introduce a
+ * narrator position, which is not something a claim-level patch can express.
+ */
+function noCandidateReason(kind: ExtractionRepairKind): string {
+  switch (kind) {
+    case "attribution-holder":
+      return (
+        "no glossary entity is named in this segment, so no holder can be proposed from the text. " +
+        "If the corpus is speaking in its own voice, the fix is a corpus-narrator position, which " +
+        "is outside the claim-level patch vocabulary and needs a human or an audited ontology."
+      );
+    case "glossary-addition":
+      return (
+        "the extractor proposed no candidate label for this unmappable claim, so there is nothing " +
+        "to add to a reviewed glossary. Decide whether the claim is expressible in this corpus at all."
+      );
+    case "distinction-value":
+      return "no closed-glossary axis defines two opposed values that this segment mentions.";
+    case "axis-value-choice":
+      return "the segment states no value of the offending axis, so no source-grounded substitution exists.";
+    case "predicate-bridge":
+      return "no alias target was proposed for this predicate.";
+  }
 }
 
 export interface ExtractionRepairContext {
@@ -567,12 +627,29 @@ export async function proposeExtractionRepairs(
       repair.selectedCandidateId = validated[0]!.id;
       repair.selectedBy = "counterfactual-validator";
       repair.status = "counterfactually-validated";
+    } else if (repair.candidates.length === 0) {
+      // Nothing was ever built. Do not call that "unresolved" — see
+      // ExtractionRepairProposal.noCandidateReason.
+      repair.status = "no-candidate";
+      repair.noCandidateReason = noCandidateReason(repair.kind);
     } else {
       repair.status = "unresolved";
     }
     if (validatorBudgetExhausted) break;
   }
 
+  // Proposals beyond the query cap were never examined, so they are neither
+  // validated nor closed; leave them alone and let `truncated` say so.
+  for (const repair of all.slice(ranked.length)) {
+    if (repair.candidates.length === 0) {
+      repair.status = "no-candidate";
+      repair.noCandidateReason = noCandidateReason(repair.kind);
+    }
+  }
+
+  const candidateless = all.filter(
+    (repair) => repair.status === "no-candidate",
+  );
   return {
     mode: "propose-only",
     proposals: all,
@@ -580,5 +657,12 @@ export async function proposeExtractionRepairs(
     oracleFailures,
     validatorCalls,
     truncated: all.length > ranked.length || validatorBudgetExhausted,
+    candidatelessProposals: candidateless.length,
+    repairRouteExhausted:
+      all.length > 0 && candidateless.length === all.length,
+    humanActionRequired: candidateless.map(
+      (repair) =>
+        `${repair.kind}${repair.segmentId ? ` @ ${repair.segmentId}` : ""}: ${repair.noCandidateReason}`,
+    ),
   };
 }

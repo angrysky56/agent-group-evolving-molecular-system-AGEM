@@ -219,6 +219,50 @@ describe("structural mismatch vs defect", () => {
     expect(finalization?.instruction).toMatch(/Do not call or request more tools/);
   });
 
+  it("reports a closed repair route as closed, not as pending work", () => {
+    // Reproduces quantum-mind-genesis 2026-07-30T19-27-27: three proposals,
+    // zero candidates between them, validatorCalls 0 — reported to the user as
+    // "unresolved proposals flagged in the output", i.e. as work in progress.
+    const finalization = typedVerificationFinalization(
+      JSON.stringify({
+        preflightAborted: true,
+        semanticsValidated: false,
+        inconclusiveCauses: [
+          { code: "attribution-issues", count: 2 },
+          { code: "schema-rejections", count: 2 },
+        ],
+        repairReport: {
+          mode: "propose-only",
+          validatorCalls: 0,
+          candidatelessProposals: 3,
+          repairRouteExhausted: true,
+          humanActionRequired: [
+            "attribution-holder @ seg-20: no glossary entity is named in this segment",
+          ],
+        },
+      }),
+    );
+    expect(finalization?.repairRouteExhausted).toBe(true);
+    expect(finalization?.instruction).toMatch(/REPAIR ROUTE IS CLOSED/);
+    expect(finalization?.instruction).toMatch(
+      /Do NOT describe them as unresolved, pending/,
+    );
+    expect(finalization?.instruction).toMatch(/no glossary entity is named/);
+  });
+
+  it("stays quiet about repairs when some candidate does exist", () => {
+    const finalization = typedVerificationFinalization(
+      JSON.stringify({
+        preflightAborted: true,
+        semanticsValidated: false,
+        inconclusiveCauses: [{ code: "schema-rejections", count: 1 }],
+        repairReport: { repairRouteExhausted: false, humanActionRequired: [] },
+      }),
+    );
+    expect(finalization?.repairRouteExhausted).toBe(false);
+    expect(finalization?.instruction).not.toMatch(/REPAIR ROUTE IS CLOSED/);
+  });
+
   it("does not offer it when no causes were reported at all", () => {
     expect(isStructuralMismatch([])).toBe(false);
   });
