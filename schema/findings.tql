@@ -17,7 +17,13 @@ define
   attribute not-ruled-out, value string;
   attribute run-log-id, value string;
   attribute produced-by-model, value string;
-  attribute method, value string @values("derived-from-claims", "hand-authored");
+  # "evidential" records a defeasible claim built by defensible-claim.ts from
+  # checkable, provenance-bearing grounds. It carries no logical verdict and is
+  # excluded from conflict detection — see conflictEvidence in finding-store.ts.
+  # Widening this @values set on a live database requires
+  # scripts/widen-finding-method-typedb.ts first; an aborted define takes the
+  # whole store offline.
+  attribute method, value string @values("derived-from-claims", "hand-authored", "evidential");
   attribute condensed-narrative, value string;
   attribute reason, value string;
   attribute finding-outcome, value string @values("contradiction", "no-contradiction", "inconclusive");

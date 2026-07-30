@@ -135,11 +135,30 @@ const ANALYSIS_SURFACE = new Set([
   "extract_and_verify_claims",
   "mcp-logic/prove",
   "mcp-logic/find_counterexample",
+  /*
+   * The abductive and evidential engines are analysis, so they activate the
+   * contract — but note what that means on a contested corpus: a run that
+   * explains an anomaly or builds an evidential claim and then stops STILL
+   * owes a formal check, and will be nudged for one. That is deliberate.
+   * These are additional instruments, not a way around verification, and the
+   * cheapest way to make them one would be to leave them off this list.
+   */
+  "abduce_best_explanation",
+  "build_defensible_claim",
 ]);
 
 const INGEST_TOOLS = ["run_agem_cycle", "run_agem_cycles_sectioned"] as const;
 
-/** Tool names that satisfy the "verify logical consistency" requirement. */
+/**
+ * Tool names that satisfy the "verify logical consistency" requirement.
+ *
+ * `abduce_best_explanation` and `build_defensible_claim` are deliberately
+ * absent and must stay absent. Abduction's conclusion is a hypothesis adopted
+ * for testing; an evidential claim is defeasible by construction. Admitting
+ * either here would let a run satisfy a verification demand with something
+ * that verified nothing — and it would do so silently, because the contract
+ * summary only reports which items were met, not how.
+ */
 const LOGIC_TOOLS = new Set([
   "evaluate_logical_consistency",
   "extract_and_verify_claims",

@@ -48,6 +48,9 @@ export const PURE_TOOLS: ReadonlySet<string> = new Set([
   "generate_catalyst_questions",
   "search_context",
   "read_skill",
+  // Ranks supplied hypotheses through the prover. Reads engine state, writes
+  // nothing, and stores no finding — abduction concludes nothing storable.
+  "abduce_best_explanation",
   "list_scenarios",
   "load_scenario",
   "list_mcp_servers",

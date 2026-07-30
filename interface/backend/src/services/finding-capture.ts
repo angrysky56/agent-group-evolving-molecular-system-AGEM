@@ -174,6 +174,116 @@ export function captureFindingFromTool(
   };
 }
 
+/**
+ * Capture an evidential finding from `build_defensible_claim` output.
+ *
+ * Kept separate from `captureFindingFromTool` on purpose. That function's first
+ * act is to refuse every tool but the typed path, and that refusal is load
+ * bearing — it is what stops hand-authored logic reaching long-term memory
+ * automatically. Threading a second, differently-gated method through it would
+ * put the two sets of receipts in one branchy conditional where a later edit
+ * could weaken the formal gate while meaning to relax the evidential one.
+ *
+ * The gate here is its own: the claim must have survived calibration
+ * (`cannotStand === false`), rest on at least one checkable ground, and carry a
+ * real disconfirming-search receipt. A claim the evidence cannot carry is a
+ * report about the evidence, and reports are not findings.
+ */
+export function captureEvidentialFindingFromTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  output: string,
+  context: FindingCaptureContext,
+): FindingInput | null {
+  if (toolName !== "build_defensible_claim") return null;
+
+  let result: Record<string, any>;
+  try {
+    result = JSON.parse(output) as Record<string, any>;
+  } catch {
+    return null;
+  }
+  if (
+    result.error ||
+    result.cannotStand !== false ||
+    typeof result.statement !== "string" ||
+    !Array.isArray(result.grounds) ||
+    result.grounds.length === 0
+  ) {
+    return null;
+  }
+
+  const search = result.disconfirmingSearch;
+  const searchedIn = Array.isArray(search?.searchedIn)
+    ? search.searchedIn.map(String).filter(Boolean)
+    : [];
+  if (typeof search?.query !== "string" || !search.query.trim() || searchedIn.length === 0) {
+    return null;
+  }
+
+  const calibration = result.calibration ?? {};
+  const groundKeys = [
+    ...new Set(
+      result.grounds
+        .map((ground: unknown) =>
+          ground && typeof ground === "object"
+            ? String((ground as Record<string, unknown>).id ?? "")
+            : "",
+        )
+        .filter(Boolean),
+    ),
+  ].sort() as string[];
+  if (groundKeys.length === 0) return null;
+
+  const corpusId =
+    typeof args.corpusId === "string" && args.corpusId.trim()
+      ? args.corpusId.trim()
+      : `evidential:${digest(groundKeys.join("\n")).slice(0, 24)}`;
+
+  const counterCount = Array.isArray(result.contradicting)
+    ? result.contradicting.length
+    : 0;
+  const caveats = [
+    `Defeasible: this is an evidential claim, not a logical verdict. New evidence can defeat it.`,
+    counterCount > 0
+      ? `${counterCount} standing counter-item(s) were not dissolved; they narrowed the scope instead.`
+      : `The disconfirming query "${search.query}" found nothing, which bounds the claim to the sources actually consulted.`,
+    typeof result.strongestObjection === "string"
+      ? `Strongest objection: ${result.strongestObjection}`
+      : "",
+  ].filter(Boolean);
+
+  return {
+    verdict: result.statement,
+    topicKey: buildTopicKey(args, corpusId, result),
+    coverage:
+      typeof result.coverage === "string" && result.coverage.trim()
+        ? result.coverage
+        : `Coverage: ${result.grounds.length} checkable ground(s) survived filtering out of ` +
+          `${result.grounds.length + (Array.isArray(result.dropped) ? result.dropped.length : 0)} statement(s) considered.`,
+    notRuledOut: caveats.join(" "),
+    runLogId:
+      typeof result.runLogId === "string" ? result.runLogId : context.runLogId,
+    producedByModel: context.producedByModel,
+    method: "evidential",
+    // No logical check ran, so no contradiction claim is available either way.
+    outcome: "inconclusive",
+    corpusId,
+    memoryNamespace: context.memoryNamespace,
+    supportingClaims: groundKeys,
+    evidentialReceipts: {
+      disconfirmingQuery: search.query,
+      disconfirmingSearchedIn: searchedIn,
+      groundCount: result.grounds.length,
+      counterCount,
+      scope: String(result.scope ?? ""),
+      certainty: String(result.certainty ?? ""),
+      groundsStrength: Number(calibration.groundsStrength ?? 0),
+      scopeDemand: Number(calibration.scopeDemand ?? 1),
+    },
+  };
+}
+
 function buildVerificationDependencies(
   result: Record<string, any>,
   supportingClaimKeys: string[],

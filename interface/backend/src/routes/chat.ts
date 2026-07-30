@@ -45,6 +45,24 @@ import {
   inconclusiveFormalizationVerdict,
 } from "../services/extraction-verdict.js";
 import { proposeExtractionRepairs } from "../services/extraction-repairs.js";
+import {
+  executeAbductiveLeap,
+  hypothesisId,
+  leapsOfFaith,
+  predicateSymbols,
+  type AnomalySource,
+  type Hypothesis,
+  type Observation,
+  type ProofOracle,
+} from "../services/abductive-engine.js";
+import {
+  constructClaim,
+  DisconfirmingSearchRequired,
+  type CandidateStatement,
+  type ClaimCertainty,
+  type ClaimScope,
+  type DisconfirmingSearch,
+} from "../services/defensible-claim.js";
 import { ProviderEmbedder } from "../services/provider-embedder.js";
 import { segmentText } from "#agem/tna/CooccurrenceGraph.js";
 import { createRunLogger } from "../services/run-logger.js";
@@ -54,6 +72,7 @@ import {
 } from "../services/run-memory.js";
 import {
   attachFindingMemory,
+  captureEvidentialFindingFromTool,
   captureFindingFromTool,
   captureFindingNarrativeFromTool,
   currentVerificationDependencyOverrides,
@@ -877,6 +896,100 @@ ${skillContent}`,
       {
         type: "function" as const,
         function: {
+          name: "abduce_best_explanation",
+          description:
+            "Inference to the best explanation for a SURPRISING FACT ABOUT THE CORPUS — an assertion the corpus's other claims do not entail, an outlying inter-community bridge, a structural gap, an H¹ obstruction, or a proved incompatibility. Ranks the candidate causes YOU supply by coherence with the corpus (counter-abduction), whether the observation would follow if the cause were true, explanatory depth, and Ockham penalty on introduced entities. Returns a PROVISIONAL hypothesis adopted for testing. It establishes nothing, stores no finding, and does not satisfy logical verification. Do not use it to diagnose AGEM itself.",
+          parameters: {
+            type: "object",
+            properties: {
+              observation: {
+                type: "object",
+                description:
+                  "The surprising fact. Requires phenomenon, source (unexplained-assertion | community-bridge | structural-gap | cohomology-obstruction | logical-conflict), and segmentIds. Supply formula (FOL) and constituentFormulas to make it testable, plus signals for the source's own criterion (e.g. {h1: 1} or {links: 128, meanInterCommunityLinks: 31}).",
+              },
+              hypotheses: {
+                type: "array",
+                description:
+                  "Candidate causes. Each needs proposedCause and formula (FOL). State them in the corpus's own vocabulary where possible; terms the corpus does not contain are counted as leaps of faith and penalised.",
+                items: { type: "object" },
+              },
+              background: {
+                type: "array",
+                description:
+                  "The corpus's own asserted formulas. Not the model's beliefs about the world.",
+                items: { type: "string" },
+              },
+              existenceWitnesses: {
+                type: "array",
+                description:
+                  "Existence assertions for what the background quantifies over, e.g. 'exists x (organism(x))'. Omit these and the coherence check may be satisfied by the empty world; the result will say so.",
+                items: { type: "string" },
+              },
+              maxProverCalls: {
+                type: "number",
+                description: "Prover call ceiling. Default 64.",
+              },
+            },
+            required: ["observation", "hypotheses"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "build_defensible_claim",
+          description:
+            "Build an EVIDENTIAL (defeasible) claim anchored to checkable grounds, for corpora that support a recommendation without supporting a theorem. Filters opinions and unbacked assertions out of the grounds, weighs what remains on relevance/reliability/coverage/verifiability, and SHRINKS THE SCOPE until the claim fits the evidence rather than hedging the wording. Requires a disconfirming-search receipt — the query you ran asking what would prove the recommendation wrong, and where — and refuses to build without one. Result is stored as a finding with method 'evidential'; it never satisfies formal verification.",
+          parameters: {
+            type: "object",
+            properties: {
+              decision: {
+                type: "object",
+                description:
+                  "{question, subQuestions?}. Evidence is weighed against THIS decision; a weight computed for another question is not reusable.",
+              },
+              recommendation: {
+                type: "string",
+                description: "The point you want accepted, before calibration.",
+              },
+              statements: {
+                type: "array",
+                description:
+                  "Everything gathered, supporting AND disconfirming. Per item: text, bearing ('supports'|'contradicts'), sourceRef (a resolvable locator such as 'segment:s12' or a DOI/URL — items without one are dropped as unbacked assertions), category, instanceCount (1 marks an anecdote, which cannot carry a claim alone), reliabilityTier, addresses.",
+                items: { type: "object" },
+              },
+              disconfirmingSearch: {
+                type: "object",
+                description:
+                  "{query, searchedIn[], found}. Mandatory. Finding nothing is a valid result; not looking is not.",
+              },
+              initialScope: {
+                type: "string",
+                description:
+                  "universal | general | typical | some | at-least-one. Default 'general'. Calibration only moves down this ladder.",
+              },
+              initialCertainty: {
+                type: "string",
+                description:
+                  "is | indicates | appears | is-consistent-with. Default 'is'.",
+              },
+              corpusId: {
+                type: "string",
+                description: "Corpus identity for the stored finding.",
+              },
+            },
+            required: [
+              "decision",
+              "recommendation",
+              "statements",
+              "disconfirmingSearch",
+            ],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "spawn_agem_agent",
           description:
             "Request the engine to spawn a new agent with a given persona. Note: agent spawning is currently triggered automatically by H¹ obstructions.",
@@ -1239,6 +1352,12 @@ ${skillContent}`,
       | undefined;
     let typedFinalization: TypedVerificationFinalization | undefined;
     let finalResponsePending = false;
+    /**
+     * One evidential turn may be granted after a STRUCTURAL typed-path failure.
+     * Granted at most once per run, so this cannot become an unbounded retry
+     * loop dressed up as adaptation.
+     */
+    let evidentialPathGranted = false;
 
     // Bounded recovery ladder (L1 retry → L2 patch → L3 escalate) shared by
     // every tool call in this run, so the retry budget is per-run, not per-call.
@@ -2334,6 +2453,234 @@ ${skillContent}`,
                 requestDeadline.signal,
               );
               output = JSON.stringify(results, null, 2);
+            } else if (fnName === "abduce_best_explanation") {
+              /*
+               * Peirce's middle premise is a prover call, not an assertion.
+               * `prove` is used rather than the SatOracle used elsewhere in
+               * this file because abduction asks whether the observation would
+               * FOLLOW from a cause, which is entailment, not satisfiability.
+               */
+              const proofOracle: ProofOracle = async (premises, goal) => {
+                try {
+                  const raw = await mcpManager.executeTool(
+                    "mcp-logic",
+                    "prove",
+                    { premises: [...premises], conclusion: goal },
+                    requestDeadline.signal,
+                  );
+                  let parsed: any;
+                  try {
+                    parsed = JSON.parse(raw);
+                  } catch {
+                    parsed = { result: "", complete_output: raw };
+                  }
+                  /*
+                   * Response shapes verified against the live mcp-logic server
+                   * on 2026-07-30, not inferred from its docs:
+                   *   proved       → { result, proof, stats, method }
+                   *   unprovable   → { result, reason, hint, method }
+                   *   syntax_error → { result, validation: { formula_results } }
+                   */
+                  const result = String(parsed.result ?? "");
+                  if (result === "proved") {
+                    return {
+                      outcome: "proved",
+                      detail:
+                        String(parsed.proof ?? "").slice(0, 400) || undefined,
+                    };
+                  }
+                  if (result === "unprovable") {
+                    return { outcome: "unprovable" };
+                  }
+                  /*
+                   * A malformed formula is NOT an undecided one, and collapsing
+                   * the two hides the only failure the caller can actually fix.
+                   * Without this branch a hypothesis with an unmatched paren
+                   * comes back as `undecided` — "the prover could not settle
+                   * it" — which reads as a hard logical problem rather than a
+                   * typo. Name the offending formula and the parser's reason.
+                   */
+                  if (result === "syntax_error") {
+                    const bad = (parsed.validation?.formula_results ?? [])
+                      .filter((entry: any) => entry?.valid === false)
+                      .map(
+                        (entry: any) =>
+                          `${entry.formula}: ${(entry.errors ?? []).join("; ")}`,
+                      );
+                    const setErrors = parsed.validation?.set_errors ?? [];
+                    return {
+                      outcome: "error",
+                      detail: `syntax_error — ${[...bad, ...setErrors].join(" | ") || "malformed input"}`.slice(
+                        0,
+                        400,
+                      ),
+                    };
+                  }
+                  return {
+                    outcome: "error",
+                    detail: String(
+                      parsed.error ?? (result || "unrecognised prover response"),
+                    ).slice(0, 400),
+                  };
+                } catch (error) {
+                  return {
+                    outcome: "error",
+                    detail: error instanceof Error ? error.message : String(error),
+                  };
+                }
+              };
+
+              const rawObservation = (args.observation ?? {}) as Record<string, unknown>;
+              const background = Array.isArray(args.background)
+                ? args.background.map(String).filter(Boolean)
+                : [];
+              const corpusVocabulary = (
+                agemBridge.getGraphSummary().concept_graph?.communities ?? []
+              ).flatMap((community: { members?: string[] }) => community.members ?? []);
+
+              const observation: Observation = {
+                id: String(rawObservation.id ?? "obs-1"),
+                phenomenon: String(rawObservation.phenomenon ?? ""),
+                source: String(
+                  rawObservation.source ?? "unexplained-assertion",
+                ) as AnomalySource,
+                segmentIds: Array.isArray(rawObservation.segmentIds)
+                  ? rawObservation.segmentIds.map(String).filter(Boolean)
+                  : [],
+                formula: rawObservation.formula
+                  ? String(rawObservation.formula)
+                  : undefined,
+                constituentFormulas: Array.isArray(
+                  rawObservation.constituentFormulas,
+                )
+                  ? rawObservation.constituentFormulas.map(String).filter(Boolean)
+                  : undefined,
+                signals: (rawObservation.signals ?? {}) as Record<string, never>,
+              };
+
+              const hypotheses: Hypothesis[] = (
+                Array.isArray(args.hypotheses) ? args.hypotheses : []
+              )
+                .map((raw: unknown) => {
+                  const item = (raw ?? {}) as Record<string, unknown>;
+                  const formula = String(item.formula ?? "").trim();
+                  if (!formula) return null;
+                  const leaps = leapsOfFaith(formula, corpusVocabulary, background);
+                  return {
+                    id: String(item.id ?? "") || hypothesisId(formula),
+                    proposedCause: String(item.proposedCause ?? formula),
+                    formula,
+                    vocabulary: Array.isArray(item.vocabulary)
+                      ? item.vocabulary.map(String)
+                      : predicateSymbols(formula),
+                    leapsOfFaith: leaps,
+                    provenance:
+                      leaps.length === 0
+                        ? ("corpus-vocabulary" as const)
+                        : ("exogenous" as const),
+                  };
+                })
+                .filter((item: Hypothesis | null): item is Hypothesis => item !== null);
+
+              const abduction = await executeAbductiveLeap(
+                observation,
+                hypotheses,
+                {
+                  background,
+                  existenceWitnesses: Array.isArray(args.existenceWitnesses)
+                    ? args.existenceWitnesses.map(String).filter(Boolean)
+                    : [],
+                  oracle: proofOracle,
+                  maxProverCalls: Number(args.maxProverCalls ?? 64),
+                },
+              );
+
+              runLog.event("abduction", {
+                runLogId: runLog.runId,
+                observationId: observation.id,
+                source: observation.source,
+                isAnomalous: abduction.assessment.isAnomalous,
+                criterion: abduction.assessment.criterion,
+                candidates: hypotheses.length,
+                proverCalls: abduction.proverCalls,
+                proverFailures: abduction.proverFailures,
+                bestHypothesisId: abduction.best?.hypothesis.id,
+              });
+
+              output = JSON.stringify(
+                {
+                  runLogId: runLog.runId,
+                  inferenceKind: "abduction",
+                  // Restated at the top of the payload so a reader who skims
+                  // cannot mistake the ranking for a verdict.
+                  epistemicStatus:
+                    "PROVISIONAL — abduction justifies adopting a hypothesis for testing. It establishes nothing, no finding is stored, and formal verification is not satisfied.",
+                  ...abduction,
+                },
+                null,
+                2,
+              );
+            } else if (fnName === "build_defensible_claim") {
+              try {
+                const claim = await constructClaim({
+                  decision: (args.decision ?? {
+                    question: "",
+                  }) as { question: string; subQuestions?: string[] },
+                  recommendation: String(args.recommendation ?? ""),
+                  statements: Array.isArray(args.statements)
+                    ? (args.statements as CandidateStatement[])
+                    : [],
+                  disconfirmingSearch:
+                    args.disconfirmingSearch as DisconfirmingSearch,
+                  initialScope: args.initialScope as ClaimScope | undefined,
+                  initialCertainty: args.initialCertainty as
+                    | ClaimCertainty
+                    | undefined,
+                  embed: async (text: string) =>
+                    Array.from(
+                      await claimBlockEmbedder.embed(
+                        text,
+                        requestDeadline.signal,
+                      ),
+                    ),
+                });
+
+                runLog.event("evidential_claim", {
+                  runLogId: runLog.runId,
+                  scope: claim.scope,
+                  certainty: claim.certainty,
+                  grounds: claim.grounds.length,
+                  contradicting: claim.contradicting.length,
+                  dropped: claim.dropped.length,
+                  calibrationSteps: claim.calibration.steps.length,
+                  groundsStrength: claim.calibration.groundsStrength,
+                  cannotStand: claim.cannotStand,
+                });
+
+                output = JSON.stringify(
+                  {
+                    runLogId: runLog.runId,
+                    inferenceKind: "evidential",
+                    epistemicStatus:
+                      "DEFEASIBLE — an evidential claim from checkable grounds. It is not a logical verdict, does not satisfy formal verification, and can be defeated by new evidence.",
+                    disconfirmingSearch: args.disconfirmingSearch,
+                    ...claim,
+                  },
+                  null,
+                  2,
+                );
+              } catch (error) {
+                if (error instanceof DisconfirmingSearchRequired) {
+                  output = JSON.stringify({
+                    error: error.message,
+                    inferenceKind: "evidential",
+                    remedy:
+                      "Run the disconfirming search first — search_context or the corpus segments, asking what would show the recommendation is false — then call again with {query, searchedIn, found}.",
+                  });
+                } else {
+                  throw error;
+                }
+              }
             } else if (fnName === "spawn_agem_agent") {
               const persona =
                 args.persona ?? args.agent_persona ?? args.role ?? "General";
@@ -2764,16 +3111,33 @@ ${skillContent}`,
               : outcome.output;
             if (outcome.ok) {
               try {
-                const finding = captureFindingFromTool(
-                  fnName,
-                  args,
-                  effectiveOutput,
-                  {
-                    runLogId: runLog.runId,
-                    producedByModel: effectiveModel,
-                    memoryNamespace,
-                  },
-                );
+                const findingContext = {
+                  runLogId: runLog.runId,
+                  producedByModel: effectiveModel,
+                  memoryNamespace,
+                };
+                /*
+                 * Two capture gates, tried in order, never merged. The typed
+                 * gate refuses every tool but `extract_and_verify_claims`, and
+                 * that refusal is what keeps hand-authored logic out of
+                 * long-term memory. The evidential gate has its own receipts —
+                 * a real disconfirming search, checkable grounds, a claim that
+                 * survived calibration — and is reached only when the typed
+                 * gate has already declined.
+                 */
+                const finding =
+                  captureFindingFromTool(
+                    fnName,
+                    args,
+                    effectiveOutput,
+                    findingContext,
+                  ) ??
+                  captureEvidentialFindingFromTool(
+                    fnName,
+                    args,
+                    effectiveOutput,
+                    findingContext,
+                  );
                 if (finding) {
                   let densificationResult: DensificationResult | undefined;
                   const narrativeRequest = captureFindingNarrativeFromTool(
@@ -2992,7 +3356,49 @@ ${skillContent}`,
           .find((finalization): finalization is TypedVerificationFinalization =>
             finalization !== null,
           );
-        if (typedFinalization && turnCount < maxTurns) {
+        const evidentialClaimBuilt = executed.some(
+          (call) => call.fnName === "build_defensible_claim" && call.ok,
+        );
+        if (
+          typedFinalization &&
+          typedFinalization.evidentialPathOffered &&
+          !evidentialPathGranted &&
+          turnCount < maxTurns
+        ) {
+          /*
+           * The typed path failed because the corpus is not formalizable, not
+           * because anything is broken. Hard-stopping here is what produced a
+           * run that mapped 746 concepts into 14 communities and then reported
+           * only that verification had aborted.
+           *
+           * So grant ONE turn on a narrowed tool surface instead. The surface
+           * is the point: extract_and_verify_claims and
+           * evaluate_logical_consistency are absent, so this cannot become a
+           * retry of the thing that structurally cannot work, and the model
+           * cannot author logic by hand to fill the gap. What remains can only
+           * produce a defeasible, provenance-bearing claim that is labelled as
+           * such and still fails the verify/derive contract items.
+           */
+          evidentialPathGranted = true;
+          tools = tools.filter((tool: any) =>
+            ["search_context", "build_defensible_claim"].includes(
+              tool?.function?.name,
+            ),
+          );
+          historyMessages.push({
+            role: "user",
+            content: typedFinalization.instruction,
+          });
+          runLog.event("evidential_path_granted", {
+            reason: typedFinalization.reason,
+            causeKind: "structural-mismatch",
+            allowedTools: tools.map((tool: any) => tool?.function?.name),
+          });
+        } else if (
+          typedFinalization &&
+          turnCount < maxTurns &&
+          !evidentialPathGranted
+        ) {
           finalResponsePending = true;
           tools = [];
           terminalStatus = "contract-unmet";
@@ -3004,6 +3410,26 @@ ${skillContent}`,
           runLog.event("finalization_required", {
             reason: typedFinalization.reason,
             tool: "extract_and_verify_claims",
+          });
+        } else if (evidentialPathGranted && evidentialClaimBuilt) {
+          // The granted turn has been spent. Close the run rather than leaving
+          // the narrowed surface open for further calls.
+          finalResponsePending = true;
+          tools = [];
+          terminalStatus = "contract-unmet";
+          sendEvent("final_start", { status: terminalStatus });
+          historyMessages.push({
+            role: "user",
+            content: [
+              "The evidential claim is built. Do not call any more tools.",
+              "Write the final response now. Label the FORMAL result INCONCLUSIVE and name its",
+              "reported failure causes; present the evidential claim as defeasible and clearly",
+              "separate from any logical verdict; report the graph results as structural.",
+            ].join("\n"),
+          });
+          runLog.event("finalization_required", {
+            reason: "evidential-path-complete",
+            tool: "build_defensible_claim",
           });
         } else if (deferredTool && turnCount < maxTurns) {
           finalResponsePending = true;

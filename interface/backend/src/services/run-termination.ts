@@ -22,6 +22,64 @@ export interface TypedVerificationFinalization {
     | "typed-verification-inconclusive";
   fallbackContent: string;
   instruction: string;
+  /**
+   * Whether the failure was a STRUCTURAL MISMATCH rather than a defect, and the
+   * evidential path is therefore offered as the one permitted alternative.
+   *
+   * See `isStructuralMismatch` for why the distinction has to be drawn here.
+   */
+  evidentialPathOffered: boolean;
+}
+
+/**
+ * Did the typed path fail because the corpus is not first-order formalizable,
+ * or because the extraction is broken?
+ *
+ * This distinction decides whether AGEM may switch instruments, so it must not
+ * be a judgement call.
+ *
+ * A DEFECT — unparseable output, schema violations, attribution failures — means
+ * the typed path could have worked and did not. Offering an alternative there
+ * papers over a fixable bug, and the corpus stops being the thing under study.
+ *
+ * A STRUCTURAL MISMATCH — claims that no closed vocabulary can express — means
+ * the typed path was the wrong instrument for this material. Observed live on
+ * the Peirce/Einstein run (2026-07-30T07-03-12): 7 unmappable claims and 18
+ * vocabulary rejections, for content like Einstein describing "pure thinking"
+ * as playing violin and smoking a pipe, and abduction "shedding light" on
+ * itself. Those are not extraction bugs. Minting `playing_violin(einstein)` to
+ * satisfy the extractor would produce a formula that proves nothing about a
+ * paper whose argument is genuinely about metaphor and method.
+ *
+ * The run had already produced 746 concepts, 14 communities and modularity 0.52
+ * before it hit this, and reported none of it as a result.
+ */
+export function isStructuralMismatch(
+  causes: ReadonlyArray<{ code: string; count: number }>,
+): boolean {
+  const total = causes.reduce((sum, cause) => sum + cause.count, 0);
+  if (total === 0) return false;
+  const structural = causes
+    .filter(
+      (cause) =>
+        cause.code === "unmappable-claims" ||
+        cause.code === "vocabulary-rejections",
+    )
+    .reduce((sum, cause) => sum + cause.count, 0);
+  const defects = causes
+    .filter((cause) =>
+      [
+        "parse-failures",
+        "schema-rejections",
+        "glossary-failure",
+        "attribution-guard-rejections",
+        "attribution-issues",
+        "storage-rejections",
+      ].includes(cause.code),
+    )
+    .reduce((sum, cause) => sum + cause.count, 0);
+  // A fixable defect anywhere in the run keeps the typed path on the hook.
+  return structural > 0 && defects === 0;
 }
 
 /**
@@ -51,18 +109,66 @@ export function typedVerificationFinalization(
       : preflightAborted
         ? "Formalization preflight found critical defects before any prover call."
         : "Typed claim verification did not produce a semantically validated verdict.";
+  const causes = Array.isArray(parsed.inconclusiveCauses)
+    ? (parsed.inconclusiveCauses as Array<{ code?: unknown; count?: unknown }>)
+        .filter((cause) => cause && typeof cause === "object")
+        .map((cause) => ({
+          code: String(cause.code ?? ""),
+          count: Number(cause.count ?? 0),
+        }))
+    : [];
+  const structuralMismatch = isStructuralMismatch(causes);
+
   return {
     reason,
+    evidentialPathOffered: structuralMismatch,
     fallbackContent: [
       "INCONCLUSIVE — typed claim verification did not produce a validated corpus verdict.",
       verdict,
       "No hand-authored proof is a substitute for the failed provenance-bearing path.",
+      ...(structuralMismatch
+        ? [
+            "The failure was a structural mismatch, not a defect: the corpus's claims are not " +
+              "expressible in a closed first-order vocabulary. Discovery-phase results stand, and " +
+              "an evidential (defeasible) claim remains available.",
+          ]
+        : []),
     ].join("\n\n"),
-    instruction: [
-      "Typed claim verification is inconclusive. Do not call or request more tools.",
-      "Write the final user-facing response now and label it INCONCLUSIVE.",
-      "Name the actual reported failure causes. Do not substitute or present hand-authored logic as corpus evidence.",
-    ].join("\n"),
+    /*
+     * The original instruction banned ALL further tools. That is the right
+     * guard against one specific substitution — hand-authored FOL presented as
+     * corpus evidence — but it over-generalised into "stop", and a run that had
+     * mapped 746 concepts reported nothing.
+     *
+     * The ban is therefore narrowed to what it was actually protecting: no
+     * hand-authored logic, no claim of verification. When the failure is a
+     * structural mismatch, exactly one alternative is permitted, and it is one
+     * that CANNOT counterfeit the failed path — build_defensible_claim is
+     * provenance-bearing, is labelled defeasible in its own output, and does
+     * not satisfy the verify or derive contract items.
+     */
+    instruction: structuralMismatch
+      ? [
+          "Typed claim verification is inconclusive because the corpus's claims do not fit a closed",
+          "first-order vocabulary. This is a mismatch of instrument, not a defect to retry.",
+          "",
+          "Do NOT call extract_and_verify_claims or evaluate_logical_consistency again, and do NOT",
+          "author logic by hand — neither can produce the verdict this corpus was unable to support.",
+          "",
+          "You MAY call build_defensible_claim once, if the corpus carries checkable grounds for a",
+          "claim worth making. Run the disconfirming search first (search_context) and pass the",
+          "receipt. Its result is EVIDENTIAL and defeasible: it is not a logical verdict and must",
+          "not be described as one.",
+          "",
+          "Then write the final response. Label the FORMAL result INCONCLUSIVE, name the actual",
+          "reported failure causes, and report the discovery-phase findings as what they are —",
+          "structural results about the concept graph, not logical ones.",
+        ].join("\n")
+      : [
+          "Typed claim verification is inconclusive. Do not call or request more tools.",
+          "Write the final user-facing response now and label it INCONCLUSIVE.",
+          "Name the actual reported failure causes. Do not substitute or present hand-authored logic as corpus evidence.",
+        ].join("\n"),
   };
 }
 

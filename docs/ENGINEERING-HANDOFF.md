@@ -192,6 +192,53 @@ Start at the chat store's SSE handling in `interface/frontend/src`.
 
 ---
 
+## 3.5 ACTION REQUIRED — widen `method` before the next backend start
+
+Two epistemic engines were added: `abduce_best_explanation` (inference to the
+best explanation over corpus anomalies) and `build_defensible_claim` (evidential
+claims from checkable grounds). The second stores findings with a new method,
+`evidential`, and `schema/findings.tql` was widened to admit it.
+
+**DONE on 2026-07-30 against 127.0.0.1:8100** — recorded here for other
+environments and for the rebuild-from-scratch case.
+
+`findings.tql` is re-defined on every backend start, and a rejected define
+aborts the WHOLE define — the exact failure mode that took the claim store
+offline in §5. The script must be run **from `interface/backend`**, not the repo
+root; that is where its `../src/config.js` import resolves:
+
+```bash
+cd interface/backend
+npx tsx scripts/widen-finding-method-typedb.ts           # dry run; lists stored values
+npx tsx scripts/widen-finding-method-typedb.ts --apply
+```
+
+**The script uses `redefine`, not `define`, and that distinction is the whole
+point.** TypeDB 3.x `define` is add-only: changing an annotation a type already
+carries fails with DEX15 — *"a different 'method @values(...)' is already
+defined. Try redefine instead?"* Once the redefine has landed, the boot-time
+`define` in `findings.tql` is asking for an annotation that already matches, so
+it is a clean no-op. Verified by re-running the entire `findings.tql` through a
+schema transaction after the migration.
+
+The local JSON index is authoritative for availability, so an un-migrated
+TypeDB degrades to a mirror warning rather than an outage — but the structural
+mirror will silently stop receiving evidential findings until this runs.
+
+**What `evidential` may never do**, pinned by `evidential-finding.test.ts`:
+satisfy the `verify` or `derive` contract items, carry
+`semanticsValidated` / `attributionValidated` / `semanticVerdictKind`, or raise
+a conflict candidate against a logical verdict. The last one is deliberate —
+a proof about consistency and a defeasible claim about what the evidence favours
+are incommensurable, and pairing them as rivals invites retiring one on the
+strength of the other.
+
+Note also that both tools are on `ANALYSIS_SURFACE`. A contested corpus that
+gets only an abduction or an evidential claim is still nudged for a formal
+check. They are additional instruments, not a route around verification.
+
+---
+
 ## 4. Smaller items
 
 **4.1 `check_well_formed` cannot see cross-formula defects.** Verified against
@@ -228,9 +275,14 @@ despite its incomplete extraction. Incomplete extraction now aborts before
 cohomology with `proverCalls: 0`; a propose-only repair loop can rank bounded
 same-segment candidates through `mcp-logic.abductive_explain`, but never applies
 them. Joint no-go statements such as “no position can hold all of A, B, C” are
-also rejected rather than falsely split into three pairwise exclusions. The
-current binary claim schema still needs an n-ary joint-incompatibility relation
-before the QM `mustFind` contract can pass.
+also rejected rather than falsely split into three pairwise exclusions.
+
+> **STALE — superseded by `docs/functionalize-agem-plan.md`.** This paragraph
+> used to end "the current binary claim schema still needs an n-ary
+> joint-incompatibility relation before the QM `mustFind` contract can pass."
+> That relation shipped: see `claim-extractor.ts` (`joint-incompatibility` claim
+> kind) and `schema/claims.tql`. Read the acceptance ledger in
+> `functionalize-agem-plan.md` before trusting anything below as current.
 
 **4.3 Output token cap is not exposed in the UI.** `OPENROUTER_MAX_TOKENS` is
 now 32768 in `.env` (was a hardcoded-feeling 16384 default). The configured

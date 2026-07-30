@@ -23,7 +23,20 @@ import { join, resolve } from "node:path";
 import type { IEmbedder } from "#agem/lcm/interfaces.js";
 import { settings } from "../config.js";
 
-export type FindingMethod = "derived-from-claims" | "hand-authored";
+/**
+ * How a finding was reached.
+ *
+ * `evidential` is not a weaker version of the other two. It records a
+ * defeasible claim built from checkable, provenance-bearing grounds by
+ * `defensible-claim.ts` — the instrument for corpora that support a
+ * recommendation without supporting a theorem. It carries no logical verdict,
+ * never satisfies a verification contract item, and is deliberately excluded
+ * from conflict detection (see `conflictEvidence`).
+ */
+export type FindingMethod =
+  | "derived-from-claims"
+  | "hand-authored"
+  | "evidential";
 export type FindingOutcome =
   | "contradiction"
   | "no-contradiction"
@@ -99,6 +112,33 @@ export interface FindingInput {
   supportingClaimRefs?: string[];
   /** Exact semantic inputs needed to decide whether this result is still current. */
   verificationDependencies?: VerificationDependencies;
+  /** Required receipts for `method: "evidential"`. See EvidentialReceipts. */
+  evidentialReceipts?: EvidentialReceipts;
+}
+
+/**
+ * What an evidential finding must show before it may be stored.
+ *
+ * The formal path has attribution and semantic-validation receipts; without an
+ * equivalent, "evidential" would become the channel through which unchecked
+ * prose reaches long-term memory. These three are the load-bearing ones from
+ * `defensible-claim.ts`: the claim survived calibration, it rests on checkable
+ * grounds, and somebody actually went looking for what would refute it.
+ */
+export interface EvidentialReceipts {
+  /** The disconfirming query that was run, and where. Never a bare boolean. */
+  disconfirmingQuery: string;
+  disconfirmingSearchedIn: string[];
+  /** Count of surviving checkable supporting grounds. Must be > 0. */
+  groundCount: number;
+  /** Count of standing counter-evidence. Zero is allowed; hiding it is not. */
+  counterCount: number;
+  /** Calibrated scope and certainty, after shrinking to fit the grounds. */
+  scope: string;
+  certainty: string;
+  /** Grounds strength in [0,1] and the demand the final scope makes. */
+  groundsStrength: number;
+  scopeDemand: number;
 }
 
 export interface StoredFinding extends FindingInput {
@@ -257,6 +297,33 @@ export class FindingStore {
       throw new Error(
         "A derived finding requires attribution and semantic-validation receipts.",
       );
+    }
+    if (input.method === "evidential") {
+      const receipts = input.evidentialReceipts;
+      if (
+        !receipts?.disconfirmingQuery?.trim() ||
+        receipts.disconfirmingSearchedIn.length === 0 ||
+        receipts.groundCount <= 0
+      ) {
+        throw new Error(
+          "An evidential finding requires a disconfirming-search receipt and at least one checkable ground.",
+        );
+      }
+      if (receipts.scopeDemand > receipts.groundsStrength) {
+        throw new Error(
+          "An evidential finding may not be stored while its scope still exceeds what its grounds carry. " +
+            "Calibrate it down, or report insufficient grounds.",
+        );
+      }
+      if (
+        input.semanticsValidated === true ||
+        input.attributionValidated === true ||
+        input.semanticVerdictKind
+      ) {
+        throw new Error(
+          "An evidential finding must not carry formal-verification receipts; it establishes no logical verdict.",
+        );
+      }
     }
 
     return this.#serial(async () => {
@@ -946,6 +1013,22 @@ function conflictEvidence(
 ): Pick<ConflictCandidate, "basis" | "sharedClaims" | "sharedCorpusId"> | null {
   if (newer.memoryNamespace !== older.memoryNamespace) return null;
   if (newer.outcome === older.outcome) return null;
+  /*
+   * Evidential claims are incommensurable with logical verdicts and never
+   * conflict with them.
+   *
+   * A proof that a corpus contains no contradiction and a defeasible claim
+   * that the corpus's evidence favours some recommendation can both be
+   * correct — they answer different questions. Raising a supersedes candidate
+   * between them would invite a reviewer to retire one on the strength of the
+   * other, which is the category error this method exists to keep out of the
+   * store. Two evidential claims are likewise not in conflict: new evidence
+   * defeating an older claim is how defeasible reasoning is supposed to work,
+   * and is handled by recency and citation, not by a conflict record.
+   */
+  if (newer.method === "evidential" || older.method === "evidential") {
+    return null;
+  }
   if (
     newer.method === "derived-from-claims" &&
     older.method === "derived-from-claims" &&
