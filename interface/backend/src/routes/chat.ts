@@ -49,6 +49,7 @@ import {
   assessMaterial,
   assessmentBriefing,
 } from "../services/material-assessment.js";
+import { anomalyBlock, censusAnomalies } from "../services/anomaly-census.js";
 import {
   executeAbductiveLeap,
   hypothesisId,
@@ -1793,6 +1794,21 @@ ${skillContent}`,
                 }
               }
             } else if (fnName === "get_cohomology") {
+              /*
+               * Deliberately NOT wired to the anomaly census.
+               *
+               * A first version attached an H¹ obstruction here. There is no H¹
+               * in this snapshot — `CohomologySnapshot` reports `h0_dimension`
+               * and `cycle_topology_dimension`, and the engine's own warnings
+               * say cycle topology carries no semantic or logical meaning.
+               * Reading an obstruction out of it would have manufactured an
+               * anomaly from a field name, which is the failure this census is
+               * supposed to catch, not commit.
+               *
+               * Real H¹ obstructions come from the LOGICAL cohomology computed
+               * over claim blocks (`evaluate_logical_consistency` and
+               * `extract_and_verify_claims`), and are surfaced there.
+               */
               output = JSON.stringify(agemBridge.getCohomology(), null, 2);
             } else if (fnName === "evaluate_logical_consistency") {
               // Logic-based H⁰/H¹ over agent-supplied blocks. The ENGINE builds
@@ -2317,11 +2333,34 @@ ${skillContent}`,
                                     )
                                   : `INCONCLUSIVE — ${result.truncationNote ?? "a logical check was undetermined or the search was truncated. Review formalizationWarnings."}`
                               : `No contradiction within ${evaluated} evaluated assertion context(s) up to arity ${result.searchedToArity}.`;
+                  /*
+                   * A proved conflict is the least speculative anomaly the
+                   * system can hold, and the one where an explanation is most
+                   * clearly owed. Previously the verdict was the end of the
+                   * run; the analytic question — WHY does this corpus hold
+                   * incompatible commitments — was never put to anyone.
+                   */
+                  const conflictAnomalies = anomalyBlock(
+                    censusAnomalies({
+                      communities: graphCommunities.map((c) => ({
+                        id: Number(c.id),
+                        label: String(c.label ?? ""),
+                        members: c.members as string[] | undefined,
+                      })),
+                      logicVerdict: {
+                        verdictKind: semantic.verdictKind,
+                        arity: semantic.semanticFrustrations[0]?.arity,
+                      },
+                    }),
+                  );
                   output = JSON.stringify(
                     {
                       runLogId: runLog.runId,
                       capNote,
                       coverage,
+                      ...(conflictAnomalies
+                        ? { unexplained: conflictAnomalies }
+                        : {}),
                       corpusCompletenessValidated: extractionComplete,
                       verdictScope: extractionComplete
                         ? "whole-corpus"
@@ -2451,12 +2490,26 @@ ${skillContent}`,
               } else {
                 // Concept-level: just communities + bridges + summary stats
                 const cg = full.concept_graph;
+                // An outlying bridge is the topology reporting a connection the
+                // partition says should not be there. That is the shape of the
+                // Peirce/Einstein result, which was printed and never explained.
+                const bridgeAnomalies = cg
+                  ? anomalyBlock(
+                      censusAnomalies({
+                        communities: cg.communities,
+                        conceptEdges: cg.edges,
+                      }),
+                    )
+                  : null;
                 output = cg
                   ? JSON.stringify(
                       {
                         ...cg,
                         total_nodes: full.node_count,
                         total_edges: full.edge_count,
+                        ...(bridgeAnomalies
+                          ? { unexplained: bridgeAnomalies }
+                          : {}),
                       },
                       null,
                       2,
@@ -2474,7 +2527,25 @@ ${skillContent}`,
             } else if (fnName === "get_soc_metrics") {
               output = JSON.stringify(agemBridge.getSOCMetrics(), null, 2);
             } else if (fnName === "detect_gaps") {
-              output = JSON.stringify(agemBridge.detectGaps(), null, 2);
+              /*
+               * A gap printed as a number is not a prompt to explain anything.
+               * The census turns the measurement into a named candidate so
+               * abduction is reachable without anyone remembering it exists —
+               * it was called in zero runs before this.
+               */
+              const gaps = agemBridge.detectGaps();
+              const anomalies = anomalyBlock(
+                censusAnomalies({
+                  communities:
+                    agemBridge.getGraphSummary().concept_graph?.communities,
+                  gaps,
+                }),
+              );
+              output = JSON.stringify(
+                anomalies ? { gaps, unexplained: anomalies } : gaps,
+                null,
+                2,
+              );
             } else if (fnName === "generate_catalyst_questions") {
               const gapId = args.gap_id ?? args.gapId ?? args.gap ?? undefined;
               output = JSON.stringify(

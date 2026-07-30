@@ -222,13 +222,26 @@ export async function assessAnomaly(
   observation: Observation,
   options: Pick<AbductionOptions, "background" | "oracle">,
 ): Promise<AnomalyAssessment> {
+  /*
+   * Provenance, at either granularity.
+   *
+   * The requirement exists so an observation is a fact about the corpus rather
+   * than an invention — not to insist on one id format. A structural anomaly's
+   * provenance IS the graph, and the graph's provenance is the concepts in the
+   * communities involved, so `concept:` locators trace it just as a `segment:`
+   * id traces a sentence. Rejecting them would have made every anomaly the
+   * discovery phase finds unexplainable, which is how abduction ended up with
+   * five anomaly sources and zero live calls.
+   *
+   * What stays refused is an observation with NO trace at all.
+   */
   if (observation.segmentIds.length === 0) {
     return {
       observation,
       isAnomalous: false,
       criterion: "corpus-provenance",
       basis:
-        "the observation cites no source segment, so there is no corpus fact to explain",
+        "the observation cites no source segment or concept, so there is no corpus fact to explain",
     };
   }
 
