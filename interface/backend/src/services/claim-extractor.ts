@@ -160,6 +160,20 @@ export interface ExtractionReport {
   glossaryFailure?: string;
   /** True when pass one's JSON needed syntactic repair to be usable. */
   glossaryRepaired?: boolean;
+  /**
+   * The one vocabulary-extension round, when claims arrived that the first
+   * glossary could not express. Reported in full: what was asked for, what was
+   * added, what was refused and why. An extended vocabulary changes the
+   * ontology fingerprint in `verificationDependencies`, so a finding derived
+   * under it remains distinguishable from one derived under the original.
+   */
+  glossaryExtension?: {
+    requested: number;
+    additions: Array<{ label: string; kind: string; definition: string }>;
+    rejected: Array<{ label: string; why: string }>;
+    /** Claims still unmappable after the extension. */
+    remapped?: number;
+  };
   /** Explicit claims the model could not map without inventing a symbol. */
   unmappableClaims: UnmappableClaim[];
   telemetry: ExtractionTelemetry;
@@ -1375,6 +1389,160 @@ export function repairGlossaryJson(raw: string): unknown | null {
   return null;
 }
 
+/**
+ * Ask pass one to EXTEND the vocabulary it already proposed.
+ *
+ * Why this is not a hole in the closed-vocabulary guard
+ * ----------------------------------------------------
+ * The guard exists because pass two used to mint predicates mid-claim and
+ * produced junk: `this(x)` from a pronoun, `causes_makes_the_comparison_
+ * quantitative(x)` from a run-on verb phrase. The rule that fixed it is "pass
+ * two may only use labels a glossary pass produced", and that rule is intact
+ * here — this IS a glossary pass. It simply runs second, knowing what pass two
+ * discovered it needed.
+ *
+ * The asymmetry it removes: pass one's labels are generated unsupervised from
+ * the corpus and auto-accepted (43 of them on the QM run), while pass two's
+ * requests — each carrying a specific claim that needs it and a source segment
+ * to ground it — required a human. The second set has strictly more evidence
+ * than the first. Gating it on a person meant every new subject needed a
+ * hand-made ontology, which is not a system that reasons about its material.
+ *
+ * Bounds, all of them load-bearing:
+ *   - ADD ONLY. Never redefines or aliases an existing label; merging two
+ *     concepts the first pass kept apart manufactures contradictions.
+ *   - ONE round, by construction — this function is called once. If claims are
+ *     still unmappable afterwards, that is a real finding about the corpus and
+ *     not something to keep grinding at.
+ *   - Source-grounded. An addition whose surface forms appear nowhere in the
+ *     segment that asked for it is rejected, so the model cannot invent
+ *     vocabulary the corpus does not use.
+ */
+export async function extendClosedGlossary(
+  needs: ReadonlyArray<{ segmentId: string; text: string; reason: string; candidateLabels?: string[] }>,
+  existing: readonly ClosedGlossaryEntry[],
+  ontology: Readonly<Record<string, string>> = {},
+  signal?: AbortSignal,
+): Promise<{ additions: ClosedGlossaryEntry[]; rejected: Array<{ label: string; why: string }> }> {
+  signal?.throwIfAborted();
+  if (needs.length === 0) return { additions: [], rejected: [] };
+
+  const existingLabels = new Set(existing.map((entry) => entry.label));
+  const provider = getActiveProvider();
+  const res = await provider.chat({
+    messages: [
+      { role: "user", content: buildGlossaryExtensionPrompt(needs, existing, ontology) },
+    ],
+    maxTokens: BATCH_MAX_TOKENS,
+    reasoning: { enabled: false },
+    responseFormat: { type: "json_object" },
+    temperature: 0,
+    signal,
+  });
+  if (res.finishReason === "length") return { additions: [], rejected: [] };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(res.content);
+  } catch {
+    parsed = repairGlossaryJson(res.content);
+    if (parsed === null) return { additions: [], rejected: [] };
+  }
+  const proposed = parseClosedGlossary(parsed);
+  if (!proposed) return { additions: [], rejected: [] };
+
+  const textBySegment = new Map(needs.map((need) => [need.segmentId, need.text]));
+  const allText = needs.map((need) => need.text).join("\n").toLocaleLowerCase();
+  const additions: ClosedGlossaryEntry[] = [];
+  const rejected: Array<{ label: string; why: string }> = [];
+
+  for (const entry of proposed) {
+    if (existingLabels.has(entry.label)) {
+      // Add-only. A redefinition would silently change what every earlier
+      // accepted claim means.
+      rejected.push({
+        label: entry.label,
+        why: "label already exists; extension may only add, never redefine",
+      });
+      continue;
+    }
+    const audited = ontology[entry.label];
+    if (audited && formalSymbol(audited) !== formalSymbol(entry.label)) {
+      rejected.push({
+        label: entry.label,
+        why: "the audited ontology maps this label to a different canonical symbol",
+      });
+      continue;
+    }
+    const grounded = [entry.label, ...entry.sourceForms].some((form) =>
+      allText.includes(form.replace(/[-_]+/g, " ").toLocaleLowerCase()) ||
+      allText.includes(form.toLocaleLowerCase()),
+    );
+    if (!grounded) {
+      rejected.push({
+        label: entry.label,
+        why: "no surface form of this label appears in the segments that requested it",
+      });
+      continue;
+    }
+    additions.push(entry);
+    existingLabels.add(entry.label);
+  }
+  void textBySegment;
+  return { additions, rejected };
+}
+
+export function buildGlossaryExtensionPrompt(
+  needs: ReadonlyArray<{ segmentId: string; text: string; reason: string; candidateLabels?: string[] }>,
+  existing: readonly ClosedGlossaryEntry[],
+  ontology: Readonly<Record<string, string>> = {},
+): string {
+  const current = existing
+    .map((entry) => `- ${entry.label} (${entry.kind}): ${entry.definition}`)
+    .join("\n");
+  const gaps = needs
+    .map(
+      (need, index) =>
+        `[${index}] (segmentId=${need.segmentId})\nSOURCE: ${need.text}\nWHY UNMAPPABLE: ${need.reason}` +
+        (need.candidateLabels?.length
+          ? `\nEXTRACTOR SUGGESTED: ${need.candidateLabels.join(", ")}`
+          : ""),
+    )
+    .join("\n\n");
+  const audited = Object.entries(ontology)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([alias, canonical]) => `- ${alias} -> ${canonical}`)
+    .join("\n");
+
+  return `A closed vocabulary was proposed for this corpus, then claim extraction
+found explicit claims it could not express. EXTEND the vocabulary so those claims
+become expressible. Output JSON only.
+
+EXISTING VOCABULARY (do not redefine, do not repeat):
+${current}
+${audited ? `\nAUDITED ALIAS MAP (mandatory; use its canonical values):\n${audited}\n` : ""}
+CLAIMS THAT COULD NOT BE EXPRESSED:
+${gaps}
+
+Return the same shape as the original glossary, containing ONLY NEW entries:
+{"glossary":[{"label":"framework-relativity","kind":"axis","axisEncoding":"categorical","definition":"whether probabilities are stated relative to a chosen framework","sourceForms":["relative to a framework"],"values":["framework-relative","framework-absolute"]}]}
+
+Rules:
+- ADD ONLY. Never emit a label that already exists above, and never merge two
+  existing concepts into one — the earlier pass separated them deliberately.
+- Every new label must be grounded: at least one of its sourceForms must appear
+  in the source text of the segment that requested it. Do not invent vocabulary
+  the corpus does not use.
+- A label names one concept, lowercase, hyphenated or underscored — never a
+  sentence fragment or a lightly slugified noun phrase.
+- If a gap needs a two-way distinction, mint BOTH poles as axis-values of a
+  categorical axis. A signed-property axis carries one label and expresses the
+  other side through polarity; do not use it where the corpus states two named
+  alternatives.
+- If a claim genuinely cannot be expressed by any well-formed addition, omit it.
+  An honest gap is a finding; a fabricated label is not.`;
+}
+
 /** Ask the model for claims in one segment. Returns null on unparseable output. */
 export async function proposeClaims(
   segment: string,
@@ -1659,6 +1827,109 @@ export async function extractIntoStore(
         proposals.push({ seg, proposal: results[w].get(idx) ?? null });
       });
     });
+  }
+  /*
+   * ONE glossary extension round.
+   *
+   * Pass two has now told us exactly which claims its vocabulary could not
+   * express, and for most of them it named the labels it wanted. Previously
+   * that was where extraction stopped and a person was asked to hand-author
+   * ontology — which meant every new subject needed a bespoke glossary before
+   * AGEM could reason about it at all.
+   *
+   * So: ask the glossary pass to extend itself, validate the additions, and
+   * re-run pass two on ONLY the segments that failed. Bounded to a single
+   * round; anything still unmappable afterwards is a genuine finding about the
+   * corpus rather than a budget to keep spending.
+   */
+  const gaps = proposals.flatMap(({ seg, proposal }) =>
+    (proposal?.unmappable ?? []).map((unmappable) => ({
+      segmentId: seg.id,
+      text: seg.text,
+      reason: unmappable.reason,
+      candidateLabels: unmappable.candidateLabels,
+    })),
+  );
+  if (gaps.length > 0 && report.glossary.length > 0) {
+    options.signal?.throwIfAborted();
+    report.telemetry.glossaryCalls++;
+    try {
+      const { additions, rejected } = await extendClosedGlossary(
+        gaps,
+        report.glossary,
+        options.ontology,
+        options.signal,
+      );
+      report.glossaryExtension = {
+        requested: gaps.length,
+        additions: additions.map(({ label, kind, definition }) => ({
+          label,
+          kind,
+          definition,
+        })),
+        rejected,
+      };
+      if (additions.length > 0) {
+        report.glossary = [...report.glossary, ...additions];
+        const gapSegmentIds = new Set(gaps.map((gap) => gap.segmentId));
+        const retryable = proposals.filter(({ seg }) => gapSegmentIds.has(seg.id));
+        const retryBatches: Array<Array<{ id: string; text: string }>> = [];
+        for (let i = 0; i < retryable.length; i += BATCH_SIZE) {
+          retryBatches.push(retryable.slice(i, i + BATCH_SIZE).map(({ seg }) => seg));
+        }
+        for (let i = 0; i < retryBatches.length; i += BATCH_CONCURRENCY) {
+          options.signal?.throwIfAborted();
+          const wave = retryBatches.slice(i, i + BATCH_CONCURRENCY);
+          const results = await Promise.all(
+            wave.map((batch) =>
+              proposeClaimsBatch(
+                batch,
+                report.glossary,
+                report.telemetry,
+                options.signal,
+              ),
+            ),
+          );
+          wave.forEach((batch, w) => {
+            batch.forEach((seg, idx) => {
+              const reproposed = results[w].get(idx);
+              if (!reproposed) return;
+              // Replace the original proposal only when the retry actually
+              // improved it. A retry that maps nothing keeps the honest first
+              // result rather than overwriting it with a second failure.
+              const target = proposals.find((p) => p.seg.id === seg.id);
+              if (
+                target &&
+                reproposed.unmappable.length <
+                  (target.proposal?.unmappable.length ?? 0)
+              ) {
+                target.proposal = reproposed;
+              }
+            });
+          });
+        }
+        report.glossaryExtension.remapped = proposals
+          .filter(({ seg }) => gapSegmentIds.has(seg.id))
+          .reduce(
+            (count, { proposal }) => count + (proposal?.unmappable.length ?? 0),
+            0,
+          );
+      }
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      // A failed extension leaves the first-pass result untouched. The run
+      // reports the original gaps, which is where it would have stopped anyway.
+      report.glossaryExtension = {
+        requested: gaps.length,
+        additions: [],
+        rejected: [
+          {
+            label: "(extension pass)",
+            why: error instanceof Error ? error.message : String(error),
+          },
+        ],
+      };
+    }
   }
   report.telemetry.proposalMs = performance.now() - proposalStartedAt;
 

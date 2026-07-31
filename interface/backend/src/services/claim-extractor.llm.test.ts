@@ -214,10 +214,20 @@ describe("claim extraction generation profile", () => {
       }),
     ]);
     expect(report.claimsRejected).toBe(1);
+    /*
+     * An unmappable claim now triggers ONE vocabulary-extension attempt, so
+     * the glossary pass is called twice. Here the extension has no mocked
+     * response and therefore fails — which is the case worth pinning: a failed
+     * extension must leave the first-pass result exactly as it was. The
+     * glossary above is still just ["dominance"], the unmappable claim is
+     * still reported, and the vocabulary rejection still stands.
+     */
     expect(report.telemetry).toMatchObject({
-      glossaryCalls: 1,
+      glossaryCalls: 2,
       batchCalls: 1,
     });
+    expect(report.glossaryExtension?.requested).toBe(1);
+    expect(report.glossaryExtension?.additions).toEqual([]);
     expect(storeWrite).toHaveBeenCalledTimes(1);
   });
 });
