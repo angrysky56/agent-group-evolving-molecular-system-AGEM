@@ -158,6 +158,36 @@ describe("the recommendation does not become a loophole", () => {
     expect(permitsSkippingFormalPath(assessment)).toBe(false);
   });
 
+  /*
+   * REGRESSION PIN. Run 2026-07-30T23-36-00 called extract_and_verify_claims as
+   * its ONLY tool and built no graph, because the briefing said "the right
+   * FIRST instrument". The model quoted it back: "I'll proceed with
+   * extract_and_verify_claims, the preferred formal path."
+   */
+  it.each([
+    ["peirce-abduction-einstein.md", "evidential"],
+    ["quantum-mind-genesis/corpus.md", "formal-verification"],
+  ])("never tells a run to skip ingestion for %s", async (file) => {
+    const corpora = new URL("../../../../corpora/", import.meta.url).pathname;
+    const assessment = await assessMaterial(readFileSync(corpora + file, "utf8"));
+    const briefing = assessmentBriefing(assessment);
+    expect(briefing).toMatch(/WORKFLOW UNCHANGED/);
+    expect(briefing).toMatch(/ingest the material and inspect the graph first/);
+    // The exact phrasing that caused the regression must not come back.
+    expect(briefing).not.toMatch(/first instrument|first choice/i);
+  });
+
+  it("only says 'do not ingest' when there is genuinely nothing to ingest", async () => {
+    const question = assessmentBriefing(
+      await assessMaterial("Why is the genetic code optimal?"),
+    );
+    expect(question).toMatch(/Do not ingest/);
+    const corpus = assessmentBriefing(
+      await assessMaterial(readFileSync(PEIRCE, "utf8")),
+    );
+    expect(corpus).not.toMatch(/Do not ingest/);
+  });
+
   it("states that it is a recommendation, not a verdict", async () => {
     const briefing = assessmentBriefing(
       await assessMaterial(readFileSync(PEIRCE, "utf8")),

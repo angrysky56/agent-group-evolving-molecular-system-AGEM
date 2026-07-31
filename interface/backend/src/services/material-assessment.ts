@@ -417,15 +417,30 @@ export function assessmentBriefing(assessment: MaterialAssessment): string {
         "Build the corpus first: search, gather sources, reason the problem out, or run an experiment. Ingest what you GATHER, then analyse.",
       );
       break;
+    /*
+     * THE WORKFLOW IS NOT NEGOTIABLE FROM HERE.
+     *
+     * The first version of these two branches said "the right FIRST instrument"
+     * and "the better FIRST choice". A live run read that literally, skipped
+     * ingestion entirely, called extract_and_verify_claims as its only tool and
+     * built no graph at all — the model's own words were "I'll proceed with
+     * extract_and_verify_claims, the preferred formal path".
+     *
+     * This assessment answers ONE question: which verification instrument fits
+     * the material. It has no view on whether to ingest or inspect, and saying
+     * anything that sounds like sequencing advice overrides a workflow that is
+     * not its business. Ingest and inspect first, always.
+     */
     case "evidential":
       lines.push(
-        "This material is unlikely to support a formal verdict. You may still attempt the formal path, but if it aborts on unmappable claims that is the expected outcome and not a defect to repair.",
-        "The evidential path (build_defensible_claim) is the better first choice. Say which you chose and why.",
+        "WORKFLOW UNCHANGED: ingest the material and inspect the graph first, exactly as normal. This assessment is only about which VERIFICATION instrument to reach for afterwards.",
+        "When you get to verification: this material is unlikely to support a formal verdict. You may still attempt the formal path, but if it aborts on unmappable claims that is the expected outcome and not a defect to repair. The evidential path (build_defensible_claim) is the better choice here. Say which you chose and why.",
       );
       break;
     case "formal-verification":
       lines.push(
-        "This material looks like it can carry attributable propositional claims. The formal path is the right first instrument.",
+        "WORKFLOW UNCHANGED: ingest the material and inspect the graph first, exactly as normal. This assessment is only about which VERIFICATION instrument to reach for afterwards.",
+        "When you get to verification: this material looks like it can carry attributable propositional claims, so the formal path is the right instrument.",
       );
       break;
     case "no-analysis":

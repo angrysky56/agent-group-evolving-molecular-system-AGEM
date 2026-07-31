@@ -26,6 +26,7 @@
  */
 
 import { getActiveProvider } from "./llm.js";
+import { convertSingleQuotedStrings } from "#agem/lcm/jsonRepair.js";
 import { claimStore } from "./typedb-claims.js";
 import { settings } from "../config.js";
 import { isOkResponse } from "@typedb/driver-http";
@@ -156,6 +157,8 @@ export interface ExtractionReport {
   glossary: ClosedGlossaryEntry[];
   /** Set when pass one could not establish a closed vocabulary. */
   glossaryFailure?: string;
+  /** True when pass one's JSON needed syntactic repair to be usable. */
+  glossaryRepaired?: boolean;
   /** Explicit claims the model could not map without inventing a symbol. */
   unmappableClaims: UnmappableClaim[];
   telemetry: ExtractionTelemetry;
@@ -1096,12 +1099,58 @@ export async function storeSegment(
   return !!res && isOkResponse(res);
 }
 
+/**
+ * Why pass one failed, when it did.
+ *
+ * `null` used to be the only answer, so a model that emitted 8 KB of valid
+ * JSON with one stray comma was indistinguishable from one that hit the token
+ * ceiling mid-object. Those need opposite responses — the first is repairable,
+ * the second means the corpus is too large for a single glossary call — and
+ * the run reported both as "an invalid or truncated corpus glossary", which
+ * named neither.
+ */
+export type GlossaryFailureKind =
+  | "truncated"
+  | "unparseable"
+  | "schema-invalid"
+  | "ontology-conflict";
+
+export interface GlossaryAttempt {
+  glossary: ClosedGlossaryEntry[] | null;
+  failure?: GlossaryFailureKind;
+  /** Human-readable detail naming what to do about it. */
+  detail?: string;
+  /** Whether a JSON repair was applied to get here. */
+  repaired?: boolean;
+}
+
 /** Pass one: propose the only labels pass two will be allowed to emit. */
 export async function proposeClosedGlossary(
   segments: readonly { id: string; text: string }[],
   ontology: Readonly<Record<string, string>> = {},
   signal?: AbortSignal,
 ): Promise<ClosedGlossaryEntry[] | null> {
+  return (await attemptClosedGlossary(segments, ontology, signal)).glossary;
+}
+
+/**
+ * The same pass, reporting WHY it failed and repairing what is repairable.
+ *
+ * A single malformed response used to end the entire run: one call, no retry,
+ * no repair, and `jsonRepair.ts` sitting unused elsewhere in the codebase.
+ * Observed live on 2026-07-30T23-36-00 — 64 segments, 28 seconds, glossary
+ * size 0, whole run terminal.
+ *
+ * Repair is bounded and honest: it fixes syntax the model got wrong, never
+ * content. A repaired glossary that still fails the schema is still a failure,
+ * and the fact that a repair was applied is reported so nobody mistakes a
+ * salvaged response for a clean one.
+ */
+export async function attemptClosedGlossary(
+  segments: readonly { id: string; text: string }[],
+  ontology: Readonly<Record<string, string>> = {},
+  signal?: AbortSignal,
+): Promise<GlossaryAttempt> {
   signal?.throwIfAborted();
   const provider = getActiveProvider();
   const res = await provider.chat({
@@ -1117,26 +1166,113 @@ export async function proposeClosedGlossary(
     temperature: 0,
     signal,
   });
-  if (res.finishReason === "length") return null;
+  if (res.finishReason === "length") {
+    /*
+     * Not repairable here. The model ran out of tokens mid-glossary, so the
+     * missing entries were never generated — repairing the syntax would
+     * produce a SHORTER closed vocabulary that silently excludes real corpus
+     * concepts, and pass two would then reject every claim that needed one.
+     * A quietly narrowed vocabulary is worse than an honest failure.
+     */
+    return {
+      glossary: null,
+      failure: "truncated",
+      detail:
+        `pass one hit the ${BATCH_MAX_TOKENS}-token ceiling across ${segments.length} segments and stopped mid-glossary. ` +
+        "The missing entries were never generated, so this cannot be repaired without narrowing the vocabulary. " +
+        "Section the corpus and extract per section, or raise the output cap.",
+    };
+  }
+  let parsed: unknown;
+  let repaired = false;
   try {
-    const glossary = parseClosedGlossary(JSON.parse(res.content) as unknown);
-    if (!glossary) return null;
+    parsed = JSON.parse(res.content);
+  } catch {
+    /*
+     * Syntax the model got wrong, with the content all present. This is what
+     * jsonRepair exists for, and it was never wired in — one stray comma ended
+     * a 28-second pass and the whole run with it.
+     */
+    const salvaged = repairGlossaryJson(res.content);
+    if (salvaged === null) {
+      return {
+        glossary: null,
+        failure: "unparseable",
+        detail:
+          "pass one returned content that is not JSON and could not be repaired. The response was complete, so this is a formatting failure rather than a size limit.",
+      };
+    }
+    parsed = salvaged;
+    repaired = true;
+  }
+  try {
+    const glossary = parseClosedGlossary(parsed);
+    if (!glossary) {
+      return {
+        glossary: null,
+        failure: "schema-invalid",
+        repaired,
+        detail:
+          "pass one returned parseable JSON that is not a valid closed glossary — entries are missing required fields or use an unknown entry kind.",
+      };
+    }
     const audited = new Map(
       Object.entries(ontology).map(([alias, canonical]) => [
         formalSymbol(alias),
         formalSymbol(canonical),
       ]),
     );
-    return glossary.every(({ label }) => {
+    const respectsOntology = glossary.every(({ label }) => {
       const labelSymbol = formalSymbol(label);
       const requiredCanonical = audited.get(labelSymbol);
       return !requiredCanonical || requiredCanonical === labelSymbol;
-    })
-      ? glossary
-      : null;
-  } catch {
-    return null;
+    });
+    return respectsOntology
+      ? { glossary, repaired }
+      : {
+          glossary: null,
+          failure: "ontology-conflict",
+          repaired,
+          detail:
+            "pass one minted a label that the supplied ontology maps to a different canonical symbol. Accepting it would merge two concepts the ontology keeps apart.",
+        };
+  } catch (error) {
+    return {
+      glossary: null,
+      failure: "schema-invalid",
+      repaired,
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
+}
+
+/**
+ * Repair JSON syntax without touching content.
+ *
+ * Deliberately narrow: strips code fences and trailing commas, and converts
+ * single-quoted strings, all of which are formatting mistakes a model makes
+ * while emitting complete content. It does NOT close unterminated structures —
+ * that would invent entries the model never wrote, and a fabricated glossary
+ * label becomes a predicate the corpus does not contain.
+ */
+export function repairGlossaryJson(raw: string): unknown | null {
+  const fenced = raw
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+  const candidates = [
+    fenced,
+    fenced.replace(/,(\s*[}\]])/g, "$1"),
+    convertSingleQuotedStrings(fenced).replace(/,(\s*[}\]])/g, "$1"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // try the next repair
+    }
+  }
+  return null;
 }
 
 /** Ask the model for claims in one segment. Returns null on unparseable output. */
@@ -1366,16 +1502,21 @@ export async function extractIntoStore(
     const glossaryStartedAt = performance.now();
     report.telemetry.glossaryCalls++;
     try {
-      const glossary = await proposeClosedGlossary(
+      const attempt = await attemptClosedGlossary(
         segments,
         options.ontology,
         options.signal,
       );
-      if (!glossary) {
-        report.glossaryFailure =
-          "pass one returned an invalid or truncated corpus glossary";
+      if (!attempt.glossary) {
+        // Name the failure and what to do about it. "Invalid or truncated"
+        // described two opposite problems and pointed at neither.
+        report.glossaryFailure = `pass one failed (${attempt.failure}): ${attempt.detail}`;
       } else {
-        report.glossary = glossary;
+        report.glossary = attempt.glossary;
+        if (attempt.repaired) {
+          // A salvaged response is usable but must not look pristine.
+          report.glossaryRepaired = true;
+        }
       }
     } catch (error) {
       options.signal?.throwIfAborted();
