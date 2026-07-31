@@ -1,0 +1,99 @@
+{
+  "_README": [
+    "The machine-readable form of answer-key.md, which the prose key already",
+    "refers to (`mustFind`, `mustNotFind.ontic_vs_epistemic_alone`) but which",
+    "never existed.",
+    "",
+    "VOCABULARY RULE: conjuncts are named as THE CORPUS names them, and each",
+    "cites the corpus line it was taken from. The key says WHICH commitments",
+    "constitute the theorem — that comes from the published result and is not",
+    "negotiable — but it must say so in the language of the text being read.",
+    "Naming them in the key-writer's private vocabulary forces the engine to",
+    "reproduce someone's paraphrase, which is teaching to the test rather than",
+    "reading the corpus.",
+    "",
+    "This matters concretely. answer-key.md lists `measurement_independence` as",
+    "a Brukner conjunct; the corpus at line 148 says `free choice`. They may",
+    "well be the same commitment, but that is a judgement about physics for a",
+    "person to record in ontology.json — not something a scorer should decide",
+    "silently while marking its own work."
+  ],
+  "corpusId": "qm-interpretations",
+  "source": "corpora/qm-interpretations/answer-key.md",
+  "mustFind": [
+    {
+      "id": "bell",
+      "sourceLine": 108,
+      "corpusPhrase": "No position can hold **all** of: locality, hidden variables assigning definite pre-existing outcomes, measurement independence, and empirical adequacy to quantum predictions.",
+      "stances": [
+        "locality",
+        "hidden-variables",
+        "measurement-independence",
+        "empirical-adequacy"
+      ]
+    },
+    {
+      "id": "kochen_specker",
+      "sourceLine": 118,
+      "corpusPhrase": "No position can hold all of: noncontextual value assignment to all observables, value-definiteness for all observables, and empirical adequacy, in Hilbert spaces of dimension three or higher.",
+      "stances": ["noncontextuality", "value-definiteness", "empirical-adequacy"]
+    },
+    {
+      "id": "pbr",
+      "sourceLine": 125,
+      "corpusPhrase": "No position can hold all of: ψ-epistemic (distinct pure states have overlapping distributions over λ), preparation independence (independently prepared systems have independent ontic states), and empirical adequacy.",
+      "stances": ["psi-epistemic", "preparation-independence", "empirical-adequacy"]
+    },
+    {
+      "id": "frauchiger_renner",
+      "sourceLine": 133,
+      "corpusPhrase": "No position can hold all three of: universal applicability of quantum theory including to agents who themselves use it (Q), self-consistency of the conclusions different agents reach (C), and single outcomes (S).",
+      "stances": ["universal-applicability", "self-consistency", "single-outcome"]
+    },
+    {
+      "id": "leggett_garg",
+      "sourceLine": 141,
+      "corpusPhrase": "No position can hold all of: macrorealism (a macroscopic system is at all times in one of its available definite states), noninvasive measurability (that state can in principle be determined without disturbing the subsequent dynamics), and empirical adequacy.",
+      "stances": ["macrorealism", "noninvasive-measurability", "empirical-adequacy"]
+    },
+    {
+      "id": "brukner_wigners_friend",
+      "sourceLine": 148,
+      "corpusPhrase": "No position can hold all of: observer-independent facts, locality, free choice, and universal applicability of quantum theory to observers.",
+      "stances": [
+        "observer-independent-facts",
+        "locality",
+        "free-choice",
+        "universal-applicability"
+      ]
+    }
+  ],
+  "mustNotFind": [
+    {
+      "id": "ontic_vs_epistemic_alone",
+      "why": "the psi-ontic / psi-epistemic split alone is not a contradiction. Flagging it is the tripwire for an engine that is detecting negation rather than reckoning.",
+      "sourceLine": 28
+    },
+    {
+      "id": "bohm",
+      "why": "survives Bell by giving up locality. Calling it contradictory means the escape routes are not encoded.",
+      "sourceLine": 112
+    },
+    {
+      "id": "qbism",
+      "why": "gives up definite pre-existing values, and escapes PBR by denying there is a lambda at all.",
+      "sourceLine": 112
+    },
+    {
+      "id": "everett",
+      "why": "gives up single outcomes (S), which is its escape from Frauchiger-Renner.",
+      "sourceLine": 135
+    },
+    {
+      "id": "relational-qm",
+      "why": "gives up self-consistency in its absolute form, and observer-independent facts for Brukner.",
+      "sourceLine": 135
+    }
+  ],
+  "passCondition": "Pass requires all six in mustFind reproduced and all five mustNotFind entries reported consistent. Reproducing Bell while also calling Bohm contradictory is a fail — it means the escape routes aren't encoded and the engine is just detecting negation."
+}

@@ -40,7 +40,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  VERDICT_ANSWER_KEYS,
+  loadVerdictAnswerKeys,
   INVERTED_SCORING_CORPORA,
   type VerdictAnswerKey,
 } from "../src/services/baseline-keys.js";
@@ -65,6 +65,8 @@ interface RunFacts {
   proverCalls: number;
   verdictKind?: string;
   frustrations: Array<{ kind: string; blocks: string[]; arity: number }>;
+  /** Accepted n-ary claims — the artefact a published impossibility lands in. */
+  jointClaims: string[][];
   evidentialPathGranted: boolean;
   terminalStatus?: string;
   toolsCalled: string[];
@@ -100,6 +102,7 @@ function readRunFacts(path: string): RunFacts {
     rejectionKinds: {},
     proverCalls: 0,
     frustrations: [],
+    jointClaims: [],
     evidentialPathGranted: false,
     toolsCalled: [],
   };
@@ -133,6 +136,11 @@ function readRunFacts(path: string): RunFacts {
         }
         facts.unmappableClaims = (record.unmappable ?? []).length;
         for (const outcome of record.outcomes ?? []) {
+          if (outcome.accepted && outcome.claim?.kind === "joint-incompatibility") {
+            const raw = outcome.claim.roles?.incompatible;
+            const members = Array.isArray(raw) ? raw.map(String) : [];
+            if (members.length > 0) facts.jointClaims.push(members);
+          }
           if (outcome.accepted) facts.claimsAccepted++;
           else {
             facts.claimsRejected++;
@@ -180,6 +188,54 @@ function runSymbols(facts: RunFacts): Set<string> {
   return symbols;
 }
 
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+
+/**
+ * Match a key theorem against the n-ary claims the run extracted.
+ *
+ * The right artefact. A published impossibility is not DISCOVERED by the MUS
+ * search — the corpus STATES it, so reproducing one means extracting it
+ * faithfully as an n-ary claim with the right conjuncts. Scoring against
+ * `semanticFrustrations` looked for it where it was never going to be.
+ *
+ * Names are compared exactly. The key and the corpus use different
+ * vocabularies for the same conjuncts — the key says `empirically_adequate`
+ * and `definite_prior_values`, the corpus says `empirical-adequacy` and
+ * `hidden-variables` — and deciding those are equal is a judgement about the
+ * subject matter, not a string operation. So a set of the right size whose
+ * names differ is reported as `review` WITH BOTH VOCABULARIES SHOWN, and the
+ * person who wrote the key decides. A scorer that resolves that itself has
+ * appointed itself the arbiter it was built to defer to.
+ */
+function matchJointClaim(
+  entry: VerdictAnswerKey["mustFind"][number],
+  facts: RunFacts,
+): { verdict: StanceVerdict; matched: string[]; near: string[] } {
+  const want = entry.stances.map(norm);
+  let best: { hit: string[]; miss: string[]; got: string[] } | null = null;
+  for (const claim of facts.jointClaims) {
+    const got = claim.map(norm);
+    const hit = want.filter((stance) => got.includes(stance));
+    if (!best || hit.length > best.hit.length) {
+      best = { hit, miss: want.filter((s) => !got.includes(s)), got };
+    }
+  }
+  if (!best) return { verdict: "missed", matched: [], near: [] };
+  if (best.hit.length === want.length && best.got.length === want.length) {
+    return { verdict: "reproduced", matched: best.hit, near: [] };
+  }
+  // Same arity and some overlap: the theorem is plausibly there under other
+  // names. Reported for adjudication, scored as a miss.
+  if (best.got.length === want.length && best.hit.length > 0) {
+    return { verdict: "review", matched: best.hit, near: best.got };
+  }
+  return {
+    verdict: best.hit.length > 0 ? "review" : "missed",
+    matched: best.hit,
+    near: best.got,
+  };
+}
+
 type StanceVerdict = "reproduced" | "review" | "missed";
 
 /**
@@ -214,7 +270,7 @@ interface CorpusScore {
   corpusId: string;
   facts: RunFacts;
   mustFind: Array<{ name: string; verdict: StanceVerdict; matched: string[]; near: string[] }>;
-  mustNotFindViolations: Array<{ name: string; why: string }>;
+  mustNotFindViolations: Array<{ id: string; why: string }>;
   surplusFrustrations: number;
   pass: boolean;
   blockedBefore: string | null;
@@ -235,13 +291,17 @@ function scoreCorpus(key: VerdictAnswerKey, facts: RunFacts): CorpusScore {
         : null;
 
   const mustFind = key.mustFind.map((entry) => ({
-    name: entry.name,
-    ...scoreMustFind(entry, facts),
+    name: entry.id,
+    // Prefer the extracted n-ary claim; fall back to frustrated blocks for
+    // keys whose mustFind really is a search result rather than a statement.
+    ...(facts.jointClaims.length > 0
+      ? matchJointClaim(entry, facts)
+      : scoreMustFind(entry, facts)),
   }));
 
   const symbols = runSymbols(facts);
   const mustNotFindViolations = key.mustNotFind.filter((entry) => {
-    const normalised = entry.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const normalised = entry.id.toLowerCase().replace(/[^a-z0-9]+/g, "_");
     return [...symbols].some((symbol) => symbol === normalised);
   });
 
@@ -298,6 +358,7 @@ function renderReport(scores: CorpusScore[]): string {
       `| Extension round | ${f.extensionRequested} gaps → ${f.extensionAdded.length} added${f.extensionAdded.length ? ` (${f.extensionAdded.join(", ")})` : ""}, ${f.extensionRejected} refused |`,
       `| Claims | ${f.claimsAccepted} accepted, ${f.claimsRejected} rejected${Object.keys(f.rejectionKinds).length ? ` (${Object.entries(f.rejectionKinds).map(([k, n]) => `${k}: ${n}`).join(", ")})` : ""}, ${f.unmappableClaims} unmappable |`,
       `| Prover | ${f.proverCalls} checks · verdict: ${f.verdictKind ?? "none"} |`,
+      `| n-ary claims extracted | ${f.jointClaims.length}${f.jointClaims.length ? ` — ${f.jointClaims.map((c) => `{${c.join(" + ")}}`).join("; ")}` : ""} |`,
       `| Evidential path | ${f.evidentialPathGranted ? "granted" : "not granted"} |`,
       `| Tools | ${f.toolsCalled.join(", ") || "none"} |`,
     );
@@ -310,7 +371,7 @@ function renderReport(scores: CorpusScore[]): string {
     }
 
     if (score.mustFind.length > 0) {
-      lines.push("", "### mustFind", "", "| Theorem | Verdict | Matched | Near (not counted) |", "|---|---|---|---|");
+      lines.push("", "### mustFind", "", "| Theorem | Verdict | Key stances matched | What the run actually extracted |", "|---|---|---|---|");
       for (const m of score.mustFind) {
         lines.push(
           `| ${m.name} | ${m.verdict} | ${m.matched.join(", ") || "—"} | ${m.near.join(", ") || "—"} |`,
@@ -320,7 +381,7 @@ function renderReport(scores: CorpusScore[]): string {
     if (score.mustNotFindViolations.length > 0) {
       lines.push("", "### mustNotFind VIOLATIONS", "");
       for (const v of score.mustNotFindViolations) {
-        lines.push(`- **${v.name}** flagged as contradictory. ${v.why}`);
+        lines.push(`- **${v.id}** flagged as contradictory. ${v.why}`);
       }
     }
     if (INVERTED_SCORING_CORPORA.has(score.corpusId) && score.surplusFrustrations > 0) {
@@ -345,7 +406,15 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const scoreOnly = args.includes("--score-only");
   const only = args.filter((a) => !a.startsWith("--"));
-  const keys = VERDICT_ANSWER_KEYS.filter(
+  const allKeys = await loadVerdictAnswerKeys();
+  if (allKeys.length === 0) {
+    console.error(
+      "No answer keys found. Each calibration corpus needs corpora/<id>/answer-key.json —\n" +
+      "the machine-readable form the prose answer-key.md files already refer to.",
+    );
+    process.exit(1);
+  }
+  const keys = allKeys.filter(
     (k) => only.length === 0 || only.includes(k.corpusId),
   );
 

@@ -675,7 +675,14 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
   if (
     normalized.scope === undefined &&
     !normalized.positionId &&
-    (normalized.kind === "distinction" || normalized.kind === "dissociation")
+    (normalized.kind === "distinction" ||
+      normalized.kind === "dissociation" ||
+      // A joint incompatibility is a claim about the SPACE of positions — the
+      // same reason it is exempt from the attribution guard. Frauchiger–Renner
+      // was extracted correctly and then rejected for "scope is missing or
+      // invalid", the only one of the six theorems lost to a field with
+      // exactly one legal value.
+      normalized.kind === "joint-incompatibility")
   ) {
     normalized.scope = "corpus";
   }
