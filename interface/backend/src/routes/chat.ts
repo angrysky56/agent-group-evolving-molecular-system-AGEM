@@ -2103,7 +2103,55 @@ ${skillContent}`,
                   derivation,
                 );
 
-                if (!extractionComplete) {
+                /*
+                 * May the prover reckon over what we DID extract?
+                 *
+                 * `extractionComplete` conflates two different things: claims
+                 * that are MISSING, and claims that are CORRUPT. Aborting on
+                 * both meant 55 good claims were discarded because 15 others
+                 * failed — and the baseline run showed the prover firing on
+                 * exactly one corpus of four, the only one with zero
+                 * rejections (quantum-mind-genesis: 28 accepted, 0 rejected,
+                 * 18 checks; qm-interpretations: 55 accepted, 15 rejected, 0
+                 * checks).
+                 *
+                 * `applyExtractionCoverage` already encodes the correct rule —
+                 * "missing claims cannot invalidate an UNSAT witness over
+                 * accepted claims, but they do invalidate a clean whole-corpus
+                 * result" — and the abort made it unreachable for the one case
+                 * it was written for.
+                 *
+                 * So: missingness proceeds, corruption still aborts.
+                 *   - no glossary at all → nothing to reckon with.
+                 *   - no blocks → nothing to reckon over.
+                 *   - rejected / unmappable / unparsed / unattributable claims
+                 *     → MISSING. The accepted ones remain exactly as true as
+                 *     they were.
+                 *
+                 * A first version also required `attributionComplete`, on the
+                 * theory that unattributed claims are corrupt rather than
+                 * missing. That was wrong twice over. The flag means "some
+                 * claims were DROPPED for want of an assertion context", so
+                 * the blocks that survive are the attributable ones — and
+                 * `classifyClaimVerdict` already sets
+                 * `semanticsValidated = attributionComplete && !vacuous`, so
+                 * an attribution-incomplete run is marked inconclusive by
+                 * existing code no matter what the prover finds. The extra
+                 * gate bought nothing and cost decision-theory its reckoning:
+                 * 72 accepted claims, 0 prover checks.
+                 *
+                 * Running anyway yields the frustrations, correctly labelled
+                 * inconclusive. That is strictly more than silence.
+                 *
+                 * The verdict scope below already reports "accepted-claims"
+                 * rather than "whole-corpus" when extraction was incomplete,
+                 * and a clean result is downgraded to inconclusive. Only a
+                 * contradiction found over real claims stands.
+                 */
+                const reckonableOverAccepted =
+                  !extraction.glossaryFailure && blocks.length > 0;
+
+                if (!extractionComplete && !reckonableOverAccepted) {
                   const repairReport = await proposeExtractionRepairs(
                     {
                       segments: segs,
