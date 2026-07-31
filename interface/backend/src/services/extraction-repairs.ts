@@ -4,6 +4,8 @@ import {
   claimSourceSemanticIssue,
   claimVocabularyIssue,
   normalizeClaimExtras,
+  sourceNamesAHolder,
+  CORPUS_NARRATOR_LABEL,
   type ExtractedClaim,
   ClosedGlossaryEntry,
   type ExtractionOutcome,
@@ -280,8 +282,13 @@ function attributionCandidates(
   source: string,
   glossary: readonly ClosedGlossaryEntry[],
 ): ExtractionRepairCandidate[] {
-  return glossary
-    .filter((entry) => entry.kind === "entity" && entryMentioned(source, entry))
+  const named = glossary
+    .filter(
+      (entry) =>
+        entry.kind === "entity" &&
+        entry.label !== CORPUS_NARRATOR_LABEL &&
+        entryMentioned(source, entry),
+    )
     .map((entry) => ({
       id: "",
       description: `Attribute the claim to ${entry.label}`,
@@ -292,6 +299,43 @@ function attributionCandidates(
       },
       evidence: `the same segment names ${entry.sourceForms[0] ?? entry.label}`,
     }));
+  if (named.length > 0) return named;
+
+  /*
+   * Nobody is named — so the corpus is speaking for itself, and that IS a
+   * holder.
+   *
+   * This branch used to return nothing, which is how six attribution failures
+   * produced zero candidates and the run reported that fixing them "would
+   * require a human or an audited ontology — a corpus-narrator position". The
+   * narrator is entailed by there being a document; it does not need a person
+   * to authorise it.
+   *
+   * Guarded by the same test the attribution flattening guard uses: if the
+   * segment DOES name a holder, the narrator is the wrong answer and no
+   * candidate is offered, so a claim belonging to Bohm can never be quietly
+   * reassigned to the author.
+   */
+  if (
+    sourceNamesAHolder(source) ||
+    !glossary.some(({ label }) => label === CORPUS_NARRATOR_LABEL)
+  ) {
+    return [];
+  }
+  return [
+    {
+      id: "",
+      description:
+        "Attribute the claim to the corpus's own voice (corpus-narrator)",
+      patch: {
+        operation: "set-attribution" as const,
+        scope: "position" as const,
+        positionId: CORPUS_NARRATOR_LABEL,
+      },
+      evidence:
+        "the segment names no holder and carries no attribution cue, so the observation is the corpus's own",
+    },
+  ];
 }
 
 /**

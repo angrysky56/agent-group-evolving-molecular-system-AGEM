@@ -198,7 +198,12 @@ describe("claim extraction generation profile", () => {
       "decision-theory",
     );
 
-    expect(report.glossary.map(({ label }) => label)).toEqual(["dominance"]);
+    // Every corpus gets a narrator entity, minted deterministically so the
+    // document's own voice has a holder to be attributed to.
+    expect(report.glossary.map(({ label }) => label)).toEqual([
+      "dominance",
+      "corpus-narrator",
+    ]);
     expect(report.unmappableClaims).toEqual([
       {
         segmentId: "s1",
@@ -226,7 +231,14 @@ describe("claim extraction generation profile", () => {
       glossaryCalls: 2,
       batchCalls: 1,
     });
-    expect(report.glossaryExtension?.requested).toBe(1);
+    /*
+     * TWO gaps from this one segment, and that is the point: it declares one
+     * unmappable claim AND emits a claim using the minted label
+     * `theory-that-holds-dominance`. Both say the closed vocabulary cannot
+     * express the segment; the extension round now hears both, where it used
+     * to hear only the declared one.
+     */
+    expect(report.glossaryExtension?.requested).toBe(2);
     expect(report.glossaryExtension?.additions).toEqual([]);
     expect(storeWrite).toHaveBeenCalledTimes(1);
   });

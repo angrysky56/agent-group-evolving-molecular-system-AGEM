@@ -436,6 +436,45 @@ export function parseClosedGlossary(value: unknown): ClosedGlossaryEntry[] | nul
   return entries.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/**
+ * The role labels a claim used that are not in the closed glossary.
+ *
+ * `claimVocabularyIssue` returns prose for the rejection message; this returns
+ * the labels themselves, because they are exactly the vocabulary the extension
+ * round needs to consider.
+ *
+ * A minted label and an unmappable claim are the SAME signal wearing different
+ * clothes: both say the closed vocabulary cannot express what the segment
+ * asserts. The first says it by trying anyway, the second by declining. The
+ * consciousness run reported 18 of the first and the extension round ignored
+ * every one of them, because it only listened for the second.
+ */
+export function claimVocabularyOffenders(
+  claim: ExtractedClaim,
+  glossary: readonly ClosedGlossaryEntry[],
+): string[] {
+  const allowed = new Set(
+    glossary.filter(({ kind }) => kind !== "axis").map(({ label }) => label),
+  );
+  const axisLabels = new Set(
+    glossary.filter(({ kind }) => kind === "axis").map(({ label }) => label),
+  );
+  const roleValues = Object.values(claim.roles ?? {})
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map(String)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return [
+    ...new Set(
+      roleValues.filter(
+        // An axis label used as a role is a different mistake — the value
+        // exists, it was just the wrong one — so it is not a vocabulary gap.
+        (value) => !allowed.has(value) && !axisLabels.has(value),
+      ),
+    ),
+  ].sort();
+}
+
 /** Reject any claim that escaped pass two with a newly minted role label. */
 export function claimVocabularyIssue(
   claim: ExtractedClaim,
@@ -596,8 +635,73 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
   return normalized;
 }
 
-const ATTRIBUTED_ASSERTION_CUE =
-  /\b(?:positions?|theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b|\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
+/**
+ * The corpus's own voice, as a holder.
+ *
+ * A document has an author. That is a fact about documents, not a judgement
+ * call, so it does not need a person to decide it and it does not need the
+ * model to notice it — this entity is minted deterministically for every
+ * corpus.
+ *
+ * It exists because attribution failures had no repair candidate at all: the
+ * repair engine could only propose a holder the segment TEXT names, and a
+ * survey writing in its own voice ("the corpus notes the asymmetry") names
+ * nobody. The reported remedy was "a corpus-narrator position, which needs a
+ * human or an audited ontology" — a remedy the system could have supplied
+ * itself, since the narrator is entailed by there being a document.
+ */
+export const CORPUS_NARRATOR_LABEL = "corpus-narrator";
+
+/** The entity every corpus gets, so its own voice has somewhere to live. */
+export function corpusNarratorEntry(): ClosedGlossaryEntry {
+  return {
+    label: CORPUS_NARRATOR_LABEL,
+    kind: "entity",
+    definition:
+      "the corpus speaking in its own voice — the author's observations, framing and analytical apparatus, as distinct from any position the corpus reports",
+    sourceForms: ["the corpus", "this paper", "we", "the author"],
+  };
+}
+
+/**
+ * Does this segment name someone whose claim it is?
+ *
+ * Exported so the repair engine can ask the same question the attribution
+ * guard asks. The narrator may only be proposed when the answer is no: if the
+ * text says "Bohm holds that…", the holder is Bohm and attributing it to the
+ * corpus's own voice would be the flattening this guard exists to catch.
+ */
+export function sourceNamesAHolder(sourceText: string): boolean {
+  return (
+    ATTRIBUTED_ASSERTION_CUE.test(sourceText) &&
+    !GENERIC_POSITION_RULE_CUE.test(sourceText)
+  );
+}
+
+/*
+ * Split in two because the flags conflict.
+ *
+ * The common-noun and "according to" cues must be case-INSENSITIVE: a cue word
+ * is capitalised whenever it opens a sentence, which is most of the time.
+ * "Critics argue that…", "Proponents of the global workspace claim…",
+ * "According to the higher-order view…" all failed to match while the
+ * lowercase forms matched, so the attribution-flattening guard was silently
+ * under-firing on the most ordinary phrasing there is.
+ *
+ * The proper-noun cue must stay case-SENSITIVE — `[A-Z]` is how it recognises
+ * a name, and adding `i` would make it match any word followed by "argues".
+ */
+const ATTRIBUTED_COMMON_NOUN_CUE =
+  /\b(?:positions?|theorists?|theories|theory|views?|accounts?|models?|camps?|advocates?|proponents?|supporters?|critics?|authors?|researchers?)\b[^.!?]{0,100}\b(?:hold|holds|held|argue|argues|argued|claim|claims|claimed|maintain|maintains|maintained|identify|identifies|identified|deny|denies|denied|assert|asserts|asserted|propose|proposes|proposed|say|says|said)\b|\baccording\s+to\b/i;
+
+const ATTRIBUTED_PROPER_NOUN_CUE =
+  /\b[A-Z][\w-]+(?:\s+[A-Z][\w-]+)?\s+(?:argues|claims|maintains|identifies|denies|asserts|proposes|says)\b/;
+
+const ATTRIBUTED_ASSERTION_CUE = {
+  test: (text: string): boolean =>
+    ATTRIBUTED_COMMON_NOUN_CUE.test(text) ||
+    ATTRIBUTED_PROPER_NOUN_CUE.test(text),
+};
 /** A corpus-level rule about arbitrary positions is not attribution to one holder. */
 const GENERIC_POSITION_RULE_CUE =
   /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\b/i;
@@ -1780,7 +1884,20 @@ export async function extractIntoStore(
         // described two opposite problems and pointed at neither.
         report.glossaryFailure = `pass one failed (${attempt.failure}): ${attempt.detail}`;
       } else {
-        report.glossary = attempt.glossary;
+        /*
+         * Every corpus gets a narrator, minted here rather than asked for.
+         *
+         * Deterministic on purpose: whether a document has an authorial voice
+         * is not a question the model should get a vote on, and leaving it to
+         * the prompt would make attribution repair depend on model compliance.
+         * Appended only if the glossary pass did not already produce it.
+         */
+        const glossary = attempt.glossary;
+        report.glossary = glossary.some(
+          ({ label }) => label === CORPUS_NARRATOR_LABEL,
+        )
+          ? glossary
+          : [...glossary, corpusNarratorEntry()];
         if (attempt.repaired) {
           // A salvaged response is usable but must not look pristine.
           report.glossaryRepaired = true;
@@ -1842,14 +1959,45 @@ export async function extractIntoStore(
    * round; anything still unmappable afterwards is a genuine finding about the
    * corpus rather than a budget to keep spending.
    */
-  const gaps = proposals.flatMap(({ seg, proposal }) =>
-    (proposal?.unmappable ?? []).map((unmappable) => ({
+  const gaps = proposals.flatMap(({ seg, proposal }) => [
+    // Declared gaps: the model said it could not express the claim.
+    ...(proposal?.unmappable ?? []).map((unmappable) => ({
       segmentId: seg.id,
       text: seg.text,
       reason: unmappable.reason,
       candidateLabels: unmappable.candidateLabels,
     })),
-  );
+    /*
+     * Demonstrated gaps: the model expressed the claim anyway, using labels
+     * the glossary does not contain, and the vocabulary guard will reject it.
+     *
+     * This is the same signal as an unmappable claim — the closed vocabulary
+     * cannot say what the segment asserts — and it is the LOUDER of the two,
+     * because the model has already named the exact labels it needed. The
+     * consciousness run produced 18 of these ("global workspace", "pain",
+     * "higher-order state") and the extension round ignored all of them while
+     * dutifully handling the smaller pile of declared gaps.
+     */
+    ...(() => {
+      const offenders = [
+        ...new Set(
+          (proposal?.claims ?? []).flatMap((claim) =>
+            claimVocabularyOffenders(normalizeClaimExtras(claim), report.glossary),
+          ),
+        ),
+      ];
+      return offenders.length > 0
+        ? [
+            {
+              segmentId: seg.id,
+              text: seg.text,
+              reason: `the claim used role label(s) absent from the closed glossary: ${offenders.join(", ")}`,
+              candidateLabels: offenders,
+            },
+          ]
+        : [];
+    })(),
+  ]);
   if (gaps.length > 0 && report.glossary.length > 0) {
     options.signal?.throwIfAborted();
     report.telemetry.glossaryCalls++;
@@ -1894,15 +2042,27 @@ export async function extractIntoStore(
             batch.forEach((seg, idx) => {
               const reproposed = results[w].get(idx);
               if (!reproposed) return;
-              // Replace the original proposal only when the retry actually
-              // improved it. A retry that maps nothing keeps the honest first
-              // result rather than overwriting it with a second failure.
+              /*
+               * Replace the original only when the retry actually improved it.
+               * A retry that maps nothing keeps the honest first result rather
+               * than overwriting it with a second failure.
+               *
+               * "Improved" counts BOTH kinds of gap. Measuring only unmappable
+               * claims would score a retry as a success when it silently
+               * converted a declared gap into a minted label — which is not a
+               * fix, it is the same failure wearing the other costume.
+               */
+              const gapCount = (p: SegmentProposal | null | undefined) =>
+                (p?.unmappable.length ?? 0) +
+                (p?.claims ?? []).filter(
+                  (claim) =>
+                    claimVocabularyOffenders(
+                      normalizeClaimExtras(claim),
+                      report.glossary,
+                    ).length > 0,
+                ).length;
               const target = proposals.find((p) => p.seg.id === seg.id);
-              if (
-                target &&
-                reproposed.unmappable.length <
-                  (target.proposal?.unmappable.length ?? 0)
-              ) {
+              if (target && gapCount(reproposed) < gapCount(target.proposal)) {
                 target.proposal = reproposed;
               }
             });

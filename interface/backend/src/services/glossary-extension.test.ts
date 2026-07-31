@@ -140,6 +140,67 @@ describe("what the extension refuses", () => {
   });
 });
 
+describe("a minted label is a vocabulary gap, not just a violation", () => {
+  it("treats an out-of-glossary role label as a gap to consider", async () => {
+    const { claimVocabularyOffenders } = await import("./claim-extractor.js");
+    // Verbatim shapes from the consciousness run: the model needed labels the
+    // glossary lacked and used them anyway.
+    const offenders = claimVocabularyOffenders(
+      {
+        kind: "property-assertion",
+        polarity: "asserts",
+        scope: "corpus",
+        roles: { subject: "global-workspace", property: "consciousness" },
+      } as never,
+      EXISTING,
+    );
+    expect(offenders).toEqual(["consciousness", "global-workspace"]);
+  });
+
+  it("does not treat an in-glossary label as a gap", async () => {
+    const { claimVocabularyOffenders } = await import("./claim-extractor.js");
+    expect(
+      claimVocabularyOffenders(
+        {
+          kind: "property-assertion",
+          polarity: "asserts",
+          scope: "corpus",
+          roles: { subject: "observer-independence", property: "observer-independence" },
+        } as never,
+        EXISTING,
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not confuse an axis misuse with a missing label", async () => {
+    const { claimVocabularyOffenders } = await import("./claim-extractor.js");
+    // Using an axis heading as a role is the wrong VALUE, not absent
+    // vocabulary — minting a new label would be the wrong repair.
+    const withAxis: ClosedGlossaryEntry[] = [
+      ...EXISTING,
+      {
+        label: "collapse-status",
+        kind: "axis",
+        axisEncoding: "signed-property",
+        definition: "whether collapse occurs",
+        sourceForms: ["collapse"],
+        values: ["collapse"],
+      },
+    ];
+    expect(
+      claimVocabularyOffenders(
+        {
+          kind: "property-assertion",
+          polarity: "asserts",
+          scope: "corpus",
+          roles: { subject: "observer-independence", property: "collapse-status" },
+        } as never,
+        withAxis,
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe("the extension prompt", () => {
   const prompt = () => buildGlossaryExtensionPrompt(NEED, EXISTING);
 
