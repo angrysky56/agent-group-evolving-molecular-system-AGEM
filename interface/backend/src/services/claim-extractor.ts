@@ -797,9 +797,22 @@ const ATTRIBUTED_ASSERTION_CUE = {
     ATTRIBUTED_COMMON_NOUN_CUE.test(text) ||
     ATTRIBUTED_PROPER_NOUN_CUE.test(text),
 };
-/** A corpus-level rule about arbitrary positions is not attribution to one holder. */
+/**
+ * A corpus-level rule about arbitrary positions is not attribution to one holder.
+ *
+ * The noun list here MUST cover the noun list in ATTRIBUTED_ASSERTION_CUE, or a
+ * universal negative gets read as an attributed assertion. It did not include
+ * `position`, while the attribution cue did — so "No position can hold all of:
+ * locality, …" tripped the attribution guard and was refused as flattening.
+ *
+ * Every impossibility theorem in the qm-interpretations corpus is phrased that
+ * way. All six were extracted correctly as joint-incompatibility claims and all
+ * six were then rejected, by a guard whose two halves disagreed about which
+ * nouns count. This is the same failure as the missing `i` flag: two regexes
+ * that must agree, drifting apart.
+ */
 const GENERIC_POSITION_RULE_CUE =
-  /\b(?:any|every|each|no)\s+(?:theor(?:y|ies)|views?|accounts?|models?)\b/i;
+  /\b(?:any|every|each|no)\s+(?:positions?|theor(?:y|ies)|views?|accounts?|models?|camps?|subjects?|systems?|interpretations?)\b/i;
 
 /**
  * Deterministic guard against model-elected attribution flattening. The model
@@ -820,10 +833,22 @@ export function claimAttributionIssue(
   if (claim.scope === "corpus" && positionId) {
     return "corpus-scoped claim also names a positionId";
   }
+  /*
+   * `joint-incompatibility` joins distinction and dissociation as inherently
+   * corpus-scoped.
+   *
+   * "No position can hold all of: locality, definite values, measurement
+   * independence, empirical adequacy" is a claim about the SPACE of positions.
+   * It is not something a holder asserts, and there is no holder to attribute
+   * it to — which is why every published impossibility theorem reads as a
+   * universal negative. Treating it as attributable is a category error, and
+   * it cost this corpus all six of its theorems.
+   */
   if (
     claim.scope === "corpus" &&
     claim.kind !== "distinction" &&
     claim.kind !== "dissociation" &&
+    claim.kind !== "joint-incompatibility" &&
     sourceNamesAHolder(sourceText)
   ) {
     return (

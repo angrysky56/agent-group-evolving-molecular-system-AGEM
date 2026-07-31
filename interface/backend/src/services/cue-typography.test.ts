@@ -22,6 +22,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  claimAttributionIssue,
   sourceNamesAHolder,
   sourceRequiresJointIncompatibility,
   stripEmphasis,
@@ -88,6 +89,47 @@ describe("the attribution cue survives emphasis too", () => {
     expect(sourceNamesAHolder("The corpus notes the **asymmetry** here.")).toBe(
       false,
     );
+  });
+});
+
+describe("a universal negative is not an attributed assertion", () => {
+  it("does not read 'No position can hold' as a holder speaking", () => {
+    /*
+     * The attribution cue's noun list had `positions?`; the generic-rule
+     * exception did not. So every impossibility theorem in this corpus — all
+     * phrased "No position can hold all of: …" — tripped the flattening guard.
+     * All six were extracted correctly as joint-incompatibility claims and all
+     * six were rejected.
+     */
+    expect(sourceNamesAHolder(theoremSection("Bell"))).toBe(false);
+  });
+
+  it.each([
+    "No position can hold all of: a, b, c.",
+    "No interpretation holds that both can be true.",
+    "Every theory must give up one conjunct.",
+    "Any account that denies locality faces this.",
+  ])("treats the universal negative %s as corpus-level", (text) => {
+    expect(sourceNamesAHolder(text)).toBe(false);
+  });
+
+  it("still catches a genuinely attributed claim", () => {
+    expect(sourceNamesAHolder("The Bohmian position holds that psi is ontic.")).toBe(
+      true,
+    );
+  });
+
+  it("exempts joint-incompatibility from the flattening guard", () => {
+    // An n-ary impossibility is a claim about the SPACE of positions. There is
+    // no holder to attribute it to.
+    const claim = {
+      kind: "joint-incompatibility",
+      scope: "corpus",
+      roles: { incompatible: ["locality", "definite_values", "empirical_adequacy"] },
+    } as never;
+    expect(
+      claimAttributionIssue(claim, "The Bohmian position holds that psi is ontic."),
+    ).toBeNull();
   });
 });
 
