@@ -1552,24 +1552,55 @@ export async function extendClosedGlossary(
     parsed = repairGlossaryJson(res.content);
     if (parsed === null) return { additions: [], rejected: [] };
   }
-  const proposed = parseClosedGlossary(parsed);
-  if (!proposed) return { additions: [], rejected: [] };
-
-  const textBySegment = new Map(needs.map((need) => [need.segmentId, need.text]));
-  const allText = needs.map((need) => need.text).join("\n").toLocaleLowerCase();
-  const additions: ClosedGlossaryEntry[] = [];
+  /*
+   * Validate the additions AGAINST THE FULL VOCABULARY, not on their own.
+   *
+   * `parseClosedGlossary` enforces internal consistency: an `axis-value` must
+   * find its parent `axis` among the entries being parsed. Additions are by
+   * construction only the new entries, so any value hanging off an axis that
+   * already exists had no parent in the batch and the parser returned null —
+   * discarding the entire extension. Every useful extension has that shape,
+   * which is why the round ran and produced nothing.
+   *
+   * Parsing the union fixes it and is also the stricter check: the additions
+   * must be consistent with the vocabulary they are joining, not merely with
+   * each other.
+   */
+  const rawEntries = Array.isArray((parsed as { glossary?: unknown })?.glossary)
+    ? ((parsed as { glossary: unknown[] }).glossary as unknown[])
+    : [];
   const rejected: Array<{ label: string; why: string }> = [];
-
-  for (const entry of proposed) {
-    if (existingLabels.has(entry.label)) {
-      // Add-only. A redefinition would silently change what every earlier
-      // accepted claim means.
+  /*
+   * Catch redefinition attempts on the RAW entries, before the union.
+   *
+   * Two reasons this cannot wait: a duplicate label would collide inside the
+   * union parse, and — more importantly — the union filter drops anything
+   * whose label already exists, so a refused redefinition would vanish without
+   * ever being reported. A guard whose refusals are invisible looks exactly
+   * like a guard that was never reached.
+   */
+  const admissible = rawEntries.filter((raw) => {
+    const label = (raw as { label?: unknown })?.label;
+    if (typeof label === "string" && existingLabels.has(label)) {
       rejected.push({
-        label: entry.label,
+        label,
         why: "label already exists; extension may only add, never redefine",
       });
-      continue;
+      return false;
     }
+    return true;
+  });
+  const union = parseClosedGlossary({
+    glossary: [...existing, ...admissible],
+  });
+  if (!union) return { additions: [], rejected };
+  const existingLabelSet = new Set(existing.map(({ label }) => label));
+  const proposed = union.filter(({ label }) => !existingLabelSet.has(label));
+
+  const allText = needs.map((need) => need.text).join("\n").toLocaleLowerCase();
+  const additions: ClosedGlossaryEntry[] = [];
+
+  for (const entry of proposed) {
     const audited = ontology[entry.label];
     if (audited && formalSymbol(audited) !== formalSymbol(entry.label)) {
       rejected.push({
@@ -1592,7 +1623,6 @@ export async function extendClosedGlossary(
     additions.push(entry);
     existingLabels.add(entry.label);
   }
-  void textBySegment;
   return { additions, rejected };
 }
 

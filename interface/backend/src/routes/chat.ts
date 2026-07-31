@@ -2022,6 +2022,15 @@ ${skillContent}`,
                   unmappable: extraction.unmappableClaims,
                   glossarySize: extraction.glossary.length,
                   glossaryFailure: extraction.glossaryFailure,
+                  /*
+                   * The extension round's result was computed and never
+                   * recorded, so nobody — not the user, not a later diagnosis —
+                   * could tell whether it added anything, refused everything,
+                   * or silently threw. A fix that cannot be observed is a fix
+                   * that cannot be trusted.
+                   */
+                  glossaryRepaired: extraction.glossaryRepaired,
+                  glossaryExtension: extraction.glossaryExtension,
                   unmappableClaims: extraction.unmappableClaims.length,
                   ...extraction.telemetry,
                 });
@@ -2147,6 +2156,10 @@ ${skillContent}`,
                       claimsRejected: extraction.claimsRejected,
                       glossary: extraction.glossary,
                       glossaryFailure: extraction.glossaryFailure,
+                      // What the vocabulary did about its own gaps. Without
+                      // this the run reports rejections while staying silent
+                      // about the round that tried to fix them.
+                      glossaryExtension: extraction.glossaryExtension,
                       unmappableClaims: extraction.unmappableClaims,
                       parseFailures: extraction.parseFailures.length,
                       parseFailureOutcomes: extraction.parseFailureOutcomes,
@@ -3505,6 +3518,7 @@ ${skillContent}`,
           );
           historyMessages.push({
             role: "user",
+            engineDirective: true,
             content: typedFinalization.instruction,
           });
           runLog.event("evidential_path_granted", {
@@ -3523,6 +3537,7 @@ ${skillContent}`,
           sendEvent("final_start", { status: terminalStatus });
           historyMessages.push({
             role: "user",
+            engineDirective: true,
             content: typedFinalization.instruction,
           });
           runLog.event("finalization_required", {
@@ -3538,6 +3553,7 @@ ${skillContent}`,
           sendEvent("final_start", { status: terminalStatus });
           historyMessages.push({
             role: "user",
+            engineDirective: true,
             content: [
               "The evidential claim is built. Do not call any more tools.",
               "Write the final response now. Label the FORMAL result INCONCLUSIVE and name its",
@@ -3556,6 +3572,7 @@ ${skillContent}`,
           sendEvent("final_start", { status: terminalStatus });
           historyMessages.push({
             role: "user",
+            engineDirective: true,
             content: [
               `${deferredTool.name} was deferred because the request budget could not safely fund it.`,
               "Do not call or request more tools. Write the final user-facing response now.",
@@ -3592,7 +3609,7 @@ ${skillContent}`,
             unmet,
             contract: workflowContract.summary(),
           });
-          historyMessages.push({ role: "user", content: contractNudge });
+          historyMessages.push({ role: "user", engineDirective: true, content: contractNudge });
           const allowedNames = toolNamesForUnmetWorkflow(unmetIds);
           tools = tools.filter((tool) =>
             allowedNames.has(String(tool?.function?.name ?? "")),
@@ -3783,9 +3800,22 @@ ${skillContent}`,
       sendEvent("usage", lastResult.usage);
     }
 
-    // Save history (filter out the system messages, keep standard multi-turn)
+    /*
+     * Save history: drop system messages AND engine directives.
+     *
+     * Engine directives are sent to the provider with `role: "user"` because
+     * that is the turn shape the model must answer, but they are not things
+     * the PERSON said. Persisting them put text like "Typed claim verification
+     * is inconclusive. Do not call or request more tools." into the transcript
+     * as a user message, sitting immediately before the final summary — so any
+     * view that renders from the last user turn onward showed the summary and
+     * hid every tool call that produced it.
+     *
+     * The work was never lost; it was in the session file and the run log the
+     * whole time. It was hidden behind a message the user never wrote.
+     */
     const sessionMessagesToSave = historyMessages.filter(
-      (m) => m.role !== "system",
+      (m) => m.role !== "system" && !(m as { engineDirective?: boolean }).engineDirective,
     );
     sessionStore.update(sessionId, { messages: sessionMessagesToSave });
 

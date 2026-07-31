@@ -64,6 +64,48 @@ describe("what the extension accepts", () => {
     expect(rejected).toEqual([]);
   });
 
+  it("accepts a value hanging off an axis that already exists", async () => {
+    /*
+     * The bug that made the round useless. `parseClosedGlossary` requires an
+     * axis-value to find its parent axis among the entries it is parsing;
+     * additions contain only new entries, so a value attached to an existing
+     * axis had no parent and the WHOLE extension was discarded. Nearly every
+     * useful extension has exactly this shape.
+     */
+    const withAxis: ClosedGlossaryEntry[] = [
+      ...EXISTING,
+      {
+        label: "framework-status",
+        kind: "axis",
+        axisEncoding: "categorical",
+        definition: "how probabilities are indexed",
+        sourceForms: ["framework"],
+        values: ["framework-relative", "framework-absolute"],
+      },
+    ];
+    respond([
+      {
+        label: "framework-relative",
+        kind: "axis-value",
+        axis: "framework-status",
+        definition: "probabilities stated relative to a chosen framework",
+        sourceForms: ["relative to a framework"],
+      },
+      {
+        label: "framework-absolute",
+        kind: "axis-value",
+        axis: "framework-status",
+        definition: "probabilities stated without reference to a framework",
+        sourceForms: ["relative to a framework"],
+      },
+    ]);
+    const { additions } = await extendClosedGlossary(NEED, withAxis);
+    expect(additions.map((a) => a.label).sort()).toEqual([
+      "framework-absolute",
+      "framework-relative",
+    ]);
+  });
+
   it("does nothing at all when there are no gaps", async () => {
     const result = await extendClosedGlossary([], EXISTING);
     expect(result.additions).toEqual([]);
