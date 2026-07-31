@@ -764,9 +764,12 @@ export function corpusNarratorEntry(): ClosedGlossaryEntry {
  * corpus's own voice would be the flattening this guard exists to catch.
  */
 export function sourceNamesAHolder(sourceText: string): boolean {
+  // Same typography trap as the joint-incompatibility cue: "**Bohm** argues"
+  // must read as "Bohm argues". Every cue matches on words, never on markup.
+  const plain = stripEmphasis(sourceText);
   return (
-    ATTRIBUTED_ASSERTION_CUE.test(sourceText) &&
-    !GENERIC_POSITION_RULE_CUE.test(sourceText)
+    ATTRIBUTED_ASSERTION_CUE.test(plain) &&
+    !GENERIC_POSITION_RULE_CUE.test(plain)
   );
 }
 
@@ -821,8 +824,7 @@ export function claimAttributionIssue(
     claim.scope === "corpus" &&
     claim.kind !== "distinction" &&
     claim.kind !== "dissociation" &&
-    ATTRIBUTED_ASSERTION_CUE.test(sourceText) &&
-    !GENERIC_POSITION_RULE_CUE.test(sourceText)
+    sourceNamesAHolder(sourceText)
   ) {
     return (
       "attribution flattening detected: the source reports what a named holder " +
@@ -835,9 +837,42 @@ export function claimAttributionIssue(
 const JOINT_INCOMPATIBILITY_CUE =
   /\bno\s+(?:position|theor(?:y|ies)|view|account|model|subject|system)\s+can\s+(?:(?:simultaneously\s+)(?:hold|satisfy|possess|instantiate)(?:\s+all(?:\s+(?:three|four|five|six|\d+))?\s+(?:of\s*)?:?)?|(?:hold|satisfy|possess|instantiate)\s+all(?:\s+(?:three|four|five|six|\d+))?\s+(?:of\s*)?:?)/i;
 
+/**
+ * Markdown emphasis, removed before any cue is matched.
+ *
+ * The corpus states Bell as "No position can hold **all** of: locality, …" and
+ * the cue expects `hold\s+all`. ` **all**` is not `\s+all`, so the detector
+ * missed the single most important construct in the corpus — and missed it
+ * BECAUSE the author had bolded the load-bearing word. Of the five theorems in
+ * that file, Bell is the only one that emphasises `all`, and it was the only
+ * one not detected.
+ *
+ * The consequence was total: with no joint-incompatibility required, the model
+ * was free to decompose each theorem into unary property assertions, which is
+ * exactly what `claimSourceSemanticIssue` exists to forbid. The run extracted
+ * 48 property-assertions, 8 distinctions, 1 entailment and ZERO joint
+ * incompatibilities from a corpus whose entire subject is six impossibility
+ * theorems.
+ *
+ * Cues are about words, not typography. Strip the markup, then match.
+ */
+export function stripEmphasis(text: string): string {
+  /*
+   * Asterisks are safe to remove anywhere — they never appear inside a symbol.
+   * Underscores are NOT: `measurement_independence`, `psi_ontic` and `rt_n_k`
+   * are identifiers, and a first version of this function turned the first of
+   * those into `measurementindependence`. Markdown's own rule is the right one
+   * — an underscore between word characters is not emphasis — so `_` is
+   * stripped only at a word boundary.
+   */
+  return text
+    .replace(/\*{1,3}/g, "")
+    .replace(/(?<![A-Za-z0-9])_{1,3}(?=\S)|(?<=\S)_{1,3}(?![A-Za-z0-9])/g, "");
+}
+
 /** True when the source asserts that one subject cannot jointly satisfy a set. */
 export function sourceRequiresJointIncompatibility(sourceText = ""): boolean {
-  return JOINT_INCOMPATIBILITY_CUE.test(sourceText);
+  return JOINT_INCOMPATIBILITY_CUE.test(stripEmphasis(sourceText));
 }
 
 /** Reject a binary or unary decomposition of an irreducibly n-ary source. */

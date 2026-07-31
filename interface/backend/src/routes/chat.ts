@@ -50,7 +50,10 @@ import {
   assessmentBriefing,
 } from "../services/material-assessment.js";
 import { anomalyBlock, censusAnomalies } from "../services/anomaly-census.js";
-import { loadCorpusOntology } from "../services/glossary-store.js";
+import {
+  loadCorpusOntology,
+  resolveMemoryNamespace,
+} from "../services/glossary-store.js";
 import {
   executeAbductiveLeap,
   hypothesisId,
@@ -359,8 +362,21 @@ chatRouter.post("/completions", async (req, res) => {
       const session = sessionStore.create({ model, provider: providerType });
       sessionId = session.id;
     }
-    const memoryNamespace =
-      body.memory_namespace?.trim() || `session:${sessionId}`;
+    /*
+     * Scoped to the corpus, not the session.
+     *
+     * The namespace is a hard retrieval boundary, and defaulting it to the
+     * session meant every finding was written where no later run would look:
+     * a validated 17-block no-contradiction verdict stored at 06:39 was
+     * re-derived from scratch by the same corpus at 20:12, recalling nothing.
+     * Material with no document identity still gets session isolation — a
+     * conversation is not a corpus.
+     */
+    const memoryNamespace = await resolveMemoryNamespace(
+      typeof message === "string" ? message : "",
+      sessionId,
+      body.memory_namespace,
+    );
 
     sendEvent("session", { session_id: sessionId });
 
@@ -2027,7 +2043,7 @@ ${skillContent}`,
                  */
                 const ontology = Object.keys(suppliedOntology).length > 0
                   ? suppliedOntology
-                  : await loadCorpusOntology(corpusId);
+                  : await loadCorpusOntology(text);
                 const extraction = await extractIntoStore(segs, corpusId, {
                   signal: requestDeadline.signal,
                   ontology,

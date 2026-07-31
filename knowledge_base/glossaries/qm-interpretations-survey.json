@@ -1,0 +1,299 @@
+{
+  "corpusId": "qm-interpretations-survey",
+  "corpusHash": "512fd40d55d4ffd0efcce15c4b6487b92af18c24822303b1ac0695aa05520bd5",
+  "entries": [
+    {
+      "label": "bohmian",
+      "kind": "entity",
+      "definition": "the de Broglie–Bohm (pilot wave) interpretation of quantum mechanics",
+      "sourceForms": [
+        "Bohm",
+        "Bohmian position",
+        "de Broglie–Bohm (pilot wave)"
+      ]
+    },
+    {
+      "label": "collapse",
+      "kind": "property",
+      "definition": "a real dynamical collapse occurs",
+      "sourceForms": [
+        "a real dynamical process",
+        "collapse is a real, spontaneous, observer-independent physical process",
+        "collapse is nothing but that agent's Bayesian update",
+        "measurement induces a real collapse",
+        "no collapse at all",
+        "real collapse",
+        "there is no collapse"
+      ]
+    },
+    {
+      "label": "consistent-histories",
+      "kind": "entity",
+      "definition": "the Consistent Histories interpretation of quantum mechanics",
+      "sourceForms": [
+        "Consistent Histories",
+        "consistent-histories position"
+      ]
+    },
+    {
+      "label": "contextuality",
+      "kind": "property",
+      "definition": "measured values depend on the full experimental arrangement",
+      "sourceForms": [
+        "contextual",
+        "contextuality",
+        "values are contextual"
+      ]
+    },
+    {
+      "label": "copenhagen",
+      "kind": "entity",
+      "definition": "the Copenhagen (orthodox) interpretation of quantum mechanics",
+      "sourceForms": [
+        "Copenhagen",
+        "Copenhagen (orthodox)",
+        "Copenhagen position"
+      ]
+    },
+    {
+      "label": "empirical-adequacy",
+      "kind": "property",
+      "definition": "the theory is empirically adequate to quantum predictions",
+      "sourceForms": [
+        "empirical adequacy",
+        "empirical adequacy to quantum predictions"
+      ]
+    },
+    {
+      "label": "empirically-distinguishable",
+      "kind": "property",
+      "definition": "the theory makes predictions that differ from unmodified quantum mechanics at large mass scales",
+      "sourceForms": [
+        "it makes predictions that differ from unmodified quantum mechanics at large mass scales, so it is empirically distinguishable"
+      ]
+    },
+    {
+      "label": "everettian",
+      "kind": "entity",
+      "definition": "the Everettian / Many-Worlds interpretation of quantum mechanics",
+      "sourceForms": [
+        "Everett",
+        "Everettian / Many-Worlds",
+        "Everettian position",
+        "Everettians"
+      ]
+    },
+    {
+      "label": "framework-relativity",
+      "kind": "property",
+      "definition": "statements are only meaningful relative to a framework",
+      "sourceForms": [
+        "relative to a framework",
+        "statements are only meaningful relative to a framework"
+      ]
+    },
+    {
+      "label": "grw-csl",
+      "kind": "entity",
+      "definition": "the GRW / CSL (objective collapse) interpretation of quantum mechanics",
+      "sourceForms": [
+        "GRW / CSL (objective collapse)",
+        "objective-collapse position"
+      ]
+    },
+    {
+      "label": "hidden-variables",
+      "kind": "property",
+      "definition": "the state description is incomplete, there are further variables",
+      "sourceForms": [
+        "denies hidden variables",
+        "denies hidden variables in the usual sense",
+        "hidden variables",
+        "hidden variables assigning definite pre-existing outcomes",
+        "hidden variables exist",
+        "the state description is incomplete, there are further variables λ"
+      ]
+    },
+    {
+      "label": "locality",
+      "kind": "property",
+      "definition": "no influence propagates faster than light",
+      "sourceForms": [
+        "asserting locality",
+        "local",
+        "locality",
+        "locality is preserved",
+        "no influence propagates faster than light vs nonlocal influence"
+      ]
+    },
+    {
+      "label": "macrorealism",
+      "kind": "property",
+      "definition": "a macroscopic system is at all times in one of its available definite states",
+      "sourceForms": [
+        "a macroscopic system is at all times in one of its available definite states",
+        "macrorealism"
+      ]
+    },
+    {
+      "label": "measurement-independence",
+      "kind": "property",
+      "definition": "the settings chosen by experimenters are uncorrelated with the hidden state",
+      "sourceForms": [
+        "free choice",
+        "measurement independence",
+        "the settings chosen by experimenters are uncorrelated with the hidden state"
+      ]
+    },
+    {
+      "label": "noncontextuality",
+      "kind": "property",
+      "definition": "an observable's value is independent of which other compatible observables are measured alongside it",
+      "sourceForms": [
+        "an observable's value is independent of which other compatible observables are measured alongside it",
+        "noncontextual",
+        "noncontextual value assignment"
+      ]
+    },
+    {
+      "label": "noninvasive-measurability",
+      "kind": "property",
+      "definition": "the state of a macroscopic system can in principle be determined without disturbing the subsequent dynamics",
+      "sourceForms": [
+        "noninvasive measurability",
+        "that state can in principle be determined without disturbing the subsequent dynamics"
+      ]
+    },
+    {
+      "label": "nonlocality",
+      "kind": "property",
+      "definition": "influence propagates faster than light",
+      "sourceForms": [
+        "explicit nonlocality",
+        "nonlocal influence",
+        "nonlocality"
+      ]
+    },
+    {
+      "label": "observer-independence",
+      "kind": "property",
+      "definition": "measurement outcomes are absolute facts for all agents",
+      "sourceForms": [
+        "measurement outcomes are absolute facts for all agents",
+        "observer-independence",
+        "observer-independent facts"
+      ]
+    },
+    {
+      "label": "observer-relative-facts",
+      "kind": "property",
+      "definition": "facts are relative to an observer or agent",
+      "sourceForms": [
+        "facts are relative to an observer or agent",
+        "states and outcomes are relative to a physical system",
+        "there is no observer-independent fact about which outcome occurred"
+      ]
+    },
+    {
+      "label": "preparation-independence",
+      "kind": "property",
+      "definition": "independently prepared systems have independent ontic states",
+      "sourceForms": [
+        "independently prepared systems have independent ontic states",
+        "preparation independence"
+      ]
+    },
+    {
+      "label": "qbism",
+      "kind": "entity",
+      "definition": "the QBist interpretation of quantum mechanics",
+      "sourceForms": [
+        "QBism",
+        "QBist position"
+      ]
+    },
+    {
+      "label": "quantum-classical-cut",
+      "kind": "property",
+      "definition": "there is a cut between quantum system and classical apparatus",
+      "sourceForms": [
+        "draws a cut between quantum system and classical apparatus",
+        "refusing to put the observer inside the theory"
+      ]
+    },
+    {
+      "label": "relational-qm",
+      "kind": "entity",
+      "definition": "the Relational QM interpretation of quantum mechanics",
+      "sourceForms": [
+        "Relational QM",
+        "relational position"
+      ]
+    },
+    {
+      "label": "retrocausal-influence",
+      "kind": "property",
+      "definition": "influence propagates backward in time",
+      "sourceForms": [
+        "retrocausal influence"
+      ]
+    },
+    {
+      "label": "self-consistency",
+      "kind": "property",
+      "definition": "the conclusions different agents reach are self-consistent",
+      "sourceForms": [
+        "C",
+        "self-consistency of the conclusions different agents reach"
+      ]
+    },
+    {
+      "label": "superdeterminism",
+      "kind": "entity",
+      "definition": "the Superdeterministic interpretation of quantum mechanics",
+      "sourceForms": [
+        "Superdeterminism",
+        "superdeterministic position"
+      ]
+    },
+    {
+      "label": "transactional",
+      "kind": "entity",
+      "definition": "the Transactional interpretation of quantum mechanics",
+      "sourceForms": [
+        "Transactional",
+        "transactional position"
+      ]
+    },
+    {
+      "label": "universal-applicability",
+      "kind": "property",
+      "definition": "quantum theory is universally applicable including to agents who themselves use it",
+      "sourceForms": [
+        "Q",
+        "universal applicability of quantum theory including to agents who themselves use it"
+      ]
+    },
+    {
+      "label": "value-definiteness",
+      "kind": "property",
+      "definition": "all observables have definite values",
+      "sourceForms": [
+        "value-definiteness for all observables"
+      ]
+    },
+    {
+      "label": "corpus-narrator",
+      "kind": "entity",
+      "definition": "the corpus speaking in its own voice — the author's observations, framing and analytical apparatus, as distinct from any position the corpus reports",
+      "sourceForms": [
+        "the corpus",
+        "this paper",
+        "we",
+        "the author"
+      ]
+    }
+  ],
+  "createdAt": "2026-07-31T20:57:02.881Z",
+  "extendedTimes": 0
+}
