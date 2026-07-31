@@ -160,6 +160,8 @@ export interface ExtractionReport {
   glossaryFailure?: string;
   /** True when pass one's JSON needed syntactic repair to be usable. */
   glossaryRepaired?: boolean;
+  /** Entries pass one produced that failed validation and were left out. */
+  glossaryDropped?: Array<{ label: string; why: string }>;
   /**
    * The one vocabulary-extension round, when claims arrived that the first
    * glossary could not express. Reported in full: what was asked for, what was
@@ -319,6 +321,78 @@ const PRONOUN_LABELS = new Set([
 ]);
 
 /** Strictly parse pass one's auditable, immutable vocabulary. */
+/**
+ * Parse a glossary, keeping the entries that are valid and NAMING the rest.
+ *
+ * `parseClosedGlossary` is all-or-nothing: any malformed entry returns null.
+ * On a forty-entry vocabulary that means one bad definition discards
+ * thirty-nine good ones and the run ends with no vocabulary at all. Observed
+ * live (2026-07-31T06-00-34): 118 seconds of generation, `schema-invalid`,
+ * glossary size 0, on a corpus that had extracted cleanly four runs running.
+ *
+ * Why partial acceptance is honest here, when repairing a TRUNCATED glossary
+ * was not: a truncated response never generated its missing entries, so the
+ * shortfall is unknowable and silent. A schema-invalid entry exists, is
+ * visible, and can be named — "dropped `x` because it has no definition". A
+ * vocabulary that is visibly shorter for stated reasons is a different thing
+ * from one that is silently shorter.
+ *
+ * It also self-corrects: pass two will report the dropped concepts as
+ * unmappable or mint them as out-of-glossary labels, and both now feed the
+ * extension round, which can re-add them properly formed.
+ *
+ * Implemented by feeding the STRICT parser incrementally rather than
+ * duplicating its rules, so partial acceptance can never diverge from strict
+ * semantics. The retry loop exists because entry order matters — an axis whose
+ * values appear later in the array is invalid until they arrive.
+ */
+export function parseClosedGlossaryPartial(value: unknown): {
+  entries: ClosedGlossaryEntry[];
+  dropped: Array<{ label: string; why: string }>;
+} {
+  const strict = parseClosedGlossary(value);
+  if (strict) return { entries: strict, dropped: [] };
+
+  const raw = (value as { glossary?: unknown })?.glossary;
+  if (!Array.isArray(raw)) return { entries: [], dropped: [] };
+
+  const accepted: unknown[] = [];
+  let pending = [...raw];
+  const dropped: Array<{ label: string; why: string }> = [];
+
+  // Keep sweeping while any entry newly becomes admissible. An axis rejected
+  // on pass one because its values had not appeared yet is accepted on pass
+  // two once they have.
+  let progressed = true;
+  while (progressed && pending.length > 0) {
+    progressed = false;
+    const stillPending: unknown[] = [];
+    for (const candidate of pending) {
+      if (parseClosedGlossary({ glossary: [...accepted, candidate] })) {
+        accepted.push(candidate);
+        progressed = true;
+      } else {
+        stillPending.push(candidate);
+      }
+    }
+    pending = stillPending;
+  }
+
+  for (const reject of pending) {
+    const label = String(
+      (reject as { label?: unknown })?.label ?? "(unlabelled entry)",
+    );
+    dropped.push({
+      label,
+      why: "entry is missing a required field, uses an unknown kind, duplicates another label, or references an axis/value that is not present",
+    });
+  }
+  return {
+    entries: parseClosedGlossary({ glossary: accepted }) ?? [],
+    dropped,
+  };
+}
+
 export function parseClosedGlossary(value: unknown): ClosedGlossaryEntry[] | null {
   if (!value || typeof value !== "object") return null;
   const raw = (value as { glossary?: unknown }).glossary;
@@ -1308,6 +1382,12 @@ export interface GlossaryAttempt {
   detail?: string;
   /** Whether a JSON repair was applied to get here. */
   repaired?: boolean;
+  /**
+   * Entries the glossary pass produced that failed validation and were left
+   * out. A vocabulary that is shorter than the model intended must say which
+   * concepts it is missing, or the omission is silent.
+   */
+  droppedEntries?: Array<{ label: string; why: string }>;
 }
 
 /** Pass one: propose the only labels pass two will be allowed to emit. */
@@ -1424,14 +1504,20 @@ export async function attemptClosedGlossary(
     repaired = true;
   }
   try {
-    const glossary = parseClosedGlossary(parsed);
-    if (!glossary) {
+    /*
+     * Keep what is valid, name what is not. One malformed entry used to
+     * discard the entire vocabulary and end the run with nothing.
+     */
+    const { entries: glossary, dropped } = parseClosedGlossaryPartial(parsed);
+    if (glossary.length === 0) {
       return {
         glossary: null,
         failure: "schema-invalid",
         repaired,
         detail:
-          "pass one returned parseable JSON that is not a valid closed glossary — entries are missing required fields or use an unknown entry kind.",
+          `pass one returned parseable JSON but NO entry survived validation (${dropped.length} rejected). ` +
+          "Every entry is missing a required field, uses an unknown kind, or references an axis that is absent.",
+        droppedEntries: dropped,
       };
     }
     const audited = new Map(
@@ -1446,7 +1532,7 @@ export async function attemptClosedGlossary(
       return !requiredCanonical || requiredCanonical === labelSymbol;
     });
     return respectsOntology
-      ? { glossary, repaired }
+      ? { glossary, repaired, droppedEntries: dropped }
       : {
           glossary: null,
           failure: "ontology-conflict",
@@ -1931,6 +2017,12 @@ export async function extractIntoStore(
         if (attempt.repaired) {
           // A salvaged response is usable but must not look pristine.
           report.glossaryRepaired = true;
+        }
+        if (attempt.droppedEntries?.length) {
+          // The concepts this vocabulary is knowingly missing. Pass two will
+          // surface them again as gaps, and the extension round can re-mint
+          // them properly formed.
+          report.glossaryDropped = attempt.droppedEntries;
         }
       }
     } catch (error) {

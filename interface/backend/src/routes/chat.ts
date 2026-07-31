@@ -2030,6 +2030,7 @@ ${skillContent}`,
                    * that cannot be trusted.
                    */
                   glossaryRepaired: extraction.glossaryRepaired,
+                  glossaryDropped: extraction.glossaryDropped,
                   glossaryExtension: extraction.glossaryExtension,
                   unmappableClaims: extraction.unmappableClaims.length,
                   ...extraction.telemetry,
