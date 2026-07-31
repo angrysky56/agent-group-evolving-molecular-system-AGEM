@@ -169,9 +169,27 @@ export const DEFAULT_RECOVERY_CONFIG: RecoveryConfig = {
 const AUTH_RE =
   /\b(401|403)\b|unauthor|forbidden|invalid[_ -]?(api[_ -]?)?key|authentication fail|permission denied|not permitted/i;
 
-/** Retryable: the call may plausibly succeed if repeated unchanged. */
+/**
+ * Retryable: the call may plausibly succeed if repeated unchanged.
+ *
+ * The provider-infrastructure clauses at the end were added after a live run
+ * lost a complete 16-section ingestion to this, verbatim:
+ *
+ *   "OpenRouter stream error: Upstream error from Ambient: EngineCore
+ *    encountered an issue."
+ *
+ * That classified as `structural` — "do not retry, escalate now" — because the
+ * pattern only recognised a transport failure phrased as a status code or a
+ * socket error. A gateway relaying its own upstream's failure says neither. It
+ * is the most retryable class of error there is, and it was the one class
+ * treated as permanent.
+ *
+ * These stay narrow on purpose: they name the MESSENGER failing (upstream,
+ * stream, gateway, engine), never the content. Auth is still checked first, so
+ * a 401 phrased as an upstream error remains structural.
+ */
 const TRANSIENT_RE =
-  /\b(429|500|502|503|504)\b|etimedout|econnreset|econnrefused|econnaborted|enotfound|eai_again|epipe|socket hang up|network (error|failure)|fetch failed|timed? ?out|temporarily|try again|rate.?limit|too many requests|overloaded|server error|bad gateway|service unavailable|gateway timeout|stream (ended|closed) unexpectedly/i;
+  /\b(429|500|502|503|504)\b|etimedout|econnreset|econnrefused|econnaborted|enotfound|eai_again|epipe|socket hang up|network (error|failure)|fetch failed|timed? ?out|temporarily|try again|rate.?limit|too many requests|overloaded|server error|bad gateway|service unavailable|gateway timeout|stream (ended|closed) unexpectedly|upstream (error|failure)|stream error|provider (error|unavailable)|engine ?core|internal error|unexpected end of (json|stream|input)|connection (closed|reset|aborted)/i;
 
 /** Repairable: the call shape is wrong but the intent is recoverable. */
 const SCHEMA_RE =

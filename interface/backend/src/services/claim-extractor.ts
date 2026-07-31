@@ -27,6 +27,7 @@
 
 import { getActiveProvider } from "./llm.js";
 import { convertSingleQuotedStrings } from "#agem/lcm/jsonRepair.js";
+import { classifyError } from "./recovery-protocol.js";
 import { claimStore } from "./typedb-claims.js";
 import { settings } from "../config.js";
 import { isOkResponse } from "@typedb/driver-http";
@@ -1153,19 +1154,51 @@ export async function attemptClosedGlossary(
 ): Promise<GlossaryAttempt> {
   signal?.throwIfAborted();
   const provider = getActiveProvider();
-  const res = await provider.chat({
-    messages: [
-      {
-        role: "user",
-        content: buildCorpusGlossaryPrompt(segments, ontology),
-      },
-    ],
-    maxTokens: BATCH_MAX_TOKENS,
-    reasoning: { enabled: false },
-    responseFormat: { type: "json_object" },
-    temperature: 0,
-    signal,
-  });
+  const prompt = buildCorpusGlossaryPrompt(segments, ontology);
+
+  /*
+   * Bounded retry, TRANSIENT ONLY.
+   *
+   * One provider hiccup used to end the run: a live analysis ingested 16
+   * sections into a 296-node graph and then lost the whole formal path to
+   * "OpenRouter stream error: Upstream error from Ambient". The corpus was
+   * fine, the prompt was fine, the model was fine.
+   *
+   * Deterministic failures are deliberately NOT retried. This call runs at
+   * temperature 0, so a truncation or a malformed response reproduces exactly
+   * on a second attempt — retrying would double the latency to reach the same
+   * answer. Only a failure of the transport is worth repeating, which is the
+   * same rule `isRetrySafe` applies to tool calls.
+   */
+  const attempts = 3;
+  let res: Awaited<ReturnType<typeof provider.chat>> | undefined;
+  let lastTransient: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      res = await provider.chat({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: BATCH_MAX_TOKENS,
+        reasoning: { enabled: false },
+        responseFormat: { type: "json_object" },
+        temperature: 0,
+        signal,
+      });
+      lastTransient = undefined;
+      break;
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (classifyError(error) !== "transient" || attempt === attempts - 1) {
+        throw error;
+      }
+      lastTransient = error;
+      // Linear backoff. The upstream is being asked to recover, not raced.
+      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+  if (!res) {
+    throw lastTransient ?? new Error("glossary pass produced no response");
+  }
   if (res.finishReason === "length") {
     /*
      * Not repairable here. The model ran out of tokens mid-glossary, so the
