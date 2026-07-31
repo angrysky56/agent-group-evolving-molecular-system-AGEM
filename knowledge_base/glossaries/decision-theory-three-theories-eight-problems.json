@@ -1,0 +1,423 @@
+{
+  "corpusId": "decision-theory-three-theories-eight-problems",
+  "corpusHash": "58aac9f2fa363a6ff3e86a6c022b21f046f978a39112d61be75abd45b8938dcb",
+  "entries": [
+    {
+      "label": "act",
+      "kind": "entity",
+      "definition": "an action evaluated by a decision theory",
+      "sourceForms": [
+        "act",
+        "act A",
+        "act itself"
+      ]
+    },
+    {
+      "label": "act-conditional-evaluation",
+      "kind": "property",
+      "definition": "evaluating an act by what it is evidence for",
+      "sourceForms": [
+        "act-conditional evaluation",
+        "holding act-conditional evaluation"
+      ]
+    },
+    {
+      "label": "causal-decision-theory",
+      "kind": "entity",
+      "definition": "a decision theory that evaluates an act by the utility it causes",
+      "sourceForms": [
+        "CDT",
+        "Causal Decision Theory (CDT)"
+      ]
+    },
+    {
+      "label": "cooperating",
+      "kind": "entity",
+      "definition": "the act of cooperating in the twin prisoner's dilemma",
+      "sourceForms": [
+        "cooperates"
+      ]
+    },
+    {
+      "label": "counterfactual-mugging",
+      "kind": "entity",
+      "definition": "a decision problem where a predictor flips a coin and demands payment on heads",
+      "sourceForms": [
+        "Counterfactual mugging"
+      ]
+    },
+    {
+      "label": "death-in-damascus",
+      "kind": "entity",
+      "definition": "a decision problem where staying and fleeing are both not ratifiable",
+      "sourceForms": [
+        "Death in Damascus"
+      ]
+    },
+    {
+      "label": "defecting",
+      "kind": "entity",
+      "definition": "the act of defecting in the twin prisoner's dilemma",
+      "sourceForms": [
+        "defects"
+      ]
+    },
+    {
+      "label": "dominance",
+      "kind": "property",
+      "definition": "a decision rule preferring an act better in every causally independent state",
+      "sourceForms": [
+        "dominance",
+        "dominance principle",
+        "theory holding dominance"
+      ]
+    },
+    {
+      "label": "egan-counterexamples",
+      "kind": "entity",
+      "definition": "cases where CDT's verdicts diverge from intuition, such as the Psycho Button",
+      "sourceForms": [
+        "Egan's counterexamples",
+        "Psycho Button"
+      ]
+    },
+    {
+      "label": "evidential-decision-theory",
+      "kind": "entity",
+      "definition": "a decision theory that evaluates an act by the utility it is evidence for",
+      "sourceForms": [
+        "EDT",
+        "Evidential Decision Theory (EDT)"
+      ]
+    },
+    {
+      "label": "evidential-responsiveness",
+      "kind": "property",
+      "definition": "a decision rule that counts strong evidence for a better outcome in favour of an act",
+      "sourceForms": [
+        "evidential responsiveness",
+        "theory holding evidential responsiveness"
+      ]
+    },
+    {
+      "label": "fleeing",
+      "kind": "entity",
+      "definition": "the act of fleeing to Aleppo",
+      "sourceForms": [
+        "fleeing"
+      ]
+    },
+    {
+      "label": "functional-decision-theory",
+      "kind": "entity",
+      "definition": "a decision theory that evaluates the decision procedure rather than the act",
+      "sourceForms": [
+        "FDT",
+        "Functional Decision Theory (FDT)"
+      ]
+    },
+    {
+      "label": "lesion-adequacy",
+      "kind": "property",
+      "definition": "the property of recommending smoking in the smoking lesion problem",
+      "sourceForms": [
+        "lesion-adequacy"
+      ]
+    },
+    {
+      "label": "newcomb-adequacy",
+      "kind": "property",
+      "definition": "the property of recommending the act that reliably makes agents richer in Newcomb's problem",
+      "sourceForms": [
+        "Newcomb-adequacy"
+      ]
+    },
+    {
+      "label": "newcomb-problem",
+      "kind": "entity",
+      "definition": "a decision problem with an accurate predictor and two boxes",
+      "sourceForms": [
+        "Newcomb",
+        "Newcomb's problem"
+      ]
+    },
+    {
+      "label": "one-boxing",
+      "kind": "entity",
+      "definition": "the act of taking only box B in Newcomb's problem",
+      "sourceForms": [
+        "one-boxers",
+        "one-boxing"
+      ]
+    },
+    {
+      "label": "parfits-hitchhiker",
+      "kind": "entity",
+      "definition": "a decision problem where a driver rescues you only if he predicts you will pay",
+      "sourceForms": [
+        "Parfit's hitchhiker"
+      ]
+    },
+    {
+      "label": "paying",
+      "kind": "entity",
+      "definition": "the act of paying in Parfit's hitchhiker or XOR blackmail",
+      "sourceForms": [
+        "pay",
+        "paying"
+      ]
+    },
+    {
+      "label": "policy",
+      "kind": "entity",
+      "definition": "a decision procedure or algorithm output that governs acts",
+      "sourceForms": [
+        "policies",
+        "policy"
+      ]
+    },
+    {
+      "label": "psychological-twin-prisoners-dilemma",
+      "kind": "entity",
+      "definition": "a prisoner's dilemma where the opponent is an exact copy running the same decision procedure",
+      "sourceForms": [
+        "Psychological twin prisoner's dilemma"
+      ]
+    },
+    {
+      "label": "ratifiable",
+      "kind": "property",
+      "definition": "an act is ratifiable if conditional on having decided to perform it, it remains the recommended act",
+      "sourceForms": [
+        "not ratifiable",
+        "ratifiable",
+        "unratifiable"
+      ]
+    },
+    {
+      "label": "refraining",
+      "kind": "entity",
+      "definition": "the act of not smoking in the smoking lesion problem",
+      "sourceForms": [
+        "refraining"
+      ]
+    },
+    {
+      "label": "smoking",
+      "kind": "entity",
+      "definition": "the act of smoking in the smoking lesion problem",
+      "sourceForms": [
+        "smoking"
+      ]
+    },
+    {
+      "label": "smoking-lesion-problem",
+      "kind": "entity",
+      "definition": "a decision problem where a genetic lesion causes both a desire to smoke and cancer",
+      "sourceForms": [
+        "smoking lesion",
+        "smoking lesion problem"
+      ]
+    },
+    {
+      "label": "staying",
+      "kind": "entity",
+      "definition": "the act of staying in Damascus",
+      "sourceForms": [
+        "staying"
+      ]
+    },
+    {
+      "label": "total-over-well-posed-problems",
+      "kind": "property",
+      "definition": "a theory returns a recommendation for every well-posed decision problem",
+      "sourceForms": [
+        "not total over well-posed problems",
+        "total over well-posed problems"
+      ]
+    },
+    {
+      "label": "transparent-newcomb",
+      "kind": "entity",
+      "definition": "a variant of Newcomb's problem where box B is transparent",
+      "sourceForms": [
+        "Transparent Newcomb"
+      ]
+    },
+    {
+      "label": "two-boxing",
+      "kind": "entity",
+      "definition": "the act of taking both boxes in Newcomb's problem",
+      "sourceForms": [
+        "two-boxers",
+        "two-boxing"
+      ]
+    },
+    {
+      "label": "xor-blackmail",
+      "kind": "entity",
+      "definition": "a decision problem involving a letter sent if exactly one of termites or payment is true",
+      "sourceForms": [
+        "XOR blackmail"
+      ]
+    },
+    {
+      "label": "corpus-narrator",
+      "kind": "entity",
+      "definition": "the corpus speaking in its own voice — the author's observations, framing and analytical apparatus, as distinct from any position the corpus reports",
+      "sourceForms": [
+        "the corpus",
+        "this paper",
+        "we",
+        "the author"
+      ]
+    },
+    {
+      "label": "cancer",
+      "kind": "entity",
+      "definition": "a disease correlated with smoking in the smoking lesion problem",
+      "sourceForms": [
+        "cancer"
+      ]
+    },
+    {
+      "label": "causation",
+      "kind": "entity",
+      "definition": "a direct causal relationship between events or states",
+      "sourceForms": [
+        "causation"
+      ]
+    },
+    {
+      "label": "cdt-home-territory",
+      "kind": "entity",
+      "definition": "decision problems where states are causally independent of the act, as in CDT's standard domain",
+      "sourceForms": [
+        "CDT's home territory"
+      ]
+    },
+    {
+      "label": "correlation",
+      "kind": "entity",
+      "definition": "a statistical association between events or states",
+      "sourceForms": [
+        "correlation"
+      ]
+    },
+    {
+      "label": "declining",
+      "kind": "entity",
+      "definition": "the act of refusing to pay in counterfactual mugging",
+      "sourceForms": [
+        "decline"
+      ]
+    },
+    {
+      "label": "desire-to-smoke",
+      "kind": "entity",
+      "definition": "a psychological state caused by a genetic lesion in the smoking lesion problem",
+      "sourceForms": [
+        "desire to smoke"
+      ]
+    },
+    {
+      "label": "disposition",
+      "kind": "entity",
+      "definition": "an agent's stable decision-making tendency or policy",
+      "sourceForms": [
+        "disposition"
+      ]
+    },
+    {
+      "label": "dominance-as-desideratum",
+      "kind": "entity",
+      "definition": "the use of dominance as a normative criterion for decision theories",
+      "sourceForms": [
+        "dominance as a desideratum"
+      ]
+    },
+    {
+      "label": "evidential-responsiveness-holding",
+      "kind": "entity",
+      "definition": "the property of a theory that it holds evidential responsiveness as a decision rule",
+      "sourceForms": [
+        "holding evidential responsiveness",
+        "holds evidential responsiveness"
+      ]
+    },
+    {
+      "label": "genetic-lesion",
+      "kind": "entity",
+      "definition": "a biological factor that causes both desire to smoke and cancer in the smoking lesion problem",
+      "sourceForms": [
+        "genetic lesion"
+      ]
+    },
+    {
+      "label": "genuine-trilemma",
+      "kind": "entity",
+      "definition": "a situation where three desiderata cannot all be satisfied simultaneously",
+      "sourceForms": [
+        "genuine trilemma"
+      ]
+    },
+    {
+      "label": "influence",
+      "kind": "entity",
+      "definition": "the ability to causally affect an outcome",
+      "sourceForms": [
+        "influence"
+      ]
+    },
+    {
+      "label": "intuitively-safe",
+      "kind": "property",
+      "definition": "the property of a decision rule that it yields intuitively correct verdicts",
+      "sourceForms": [
+        "intuitively safe"
+      ]
+    },
+    {
+      "label": "letter",
+      "kind": "entity",
+      "definition": "the letter sent in XOR blackmail",
+      "sourceForms": [
+        "letter"
+      ]
+    },
+    {
+      "label": "policy-dominance",
+      "kind": "entity",
+      "definition": "a decision rule preferring a policy that dominates in terms of outcomes across all possible outputs of the same algorithm",
+      "sourceForms": [
+        "policy-dominance"
+      ]
+    },
+    {
+      "label": "ratifiability-requiring",
+      "kind": "entity",
+      "definition": "the property of a theory that requires every recommendation to be ratifiable",
+      "sourceForms": [
+        "requires every recommendation to be ratifiable"
+      ]
+    },
+    {
+      "label": "recommending-smoking",
+      "kind": "entity",
+      "definition": "the property of a theory that it recommends the act of smoking",
+      "sourceForms": [
+        "recommending smoking"
+      ]
+    },
+    {
+      "label": "ride",
+      "kind": "entity",
+      "definition": "the rescue ride in Parfit's hitchhiker problem",
+      "sourceForms": [
+        "ride"
+      ]
+    }
+  ],
+  "createdAt": "2026-07-31T20:21:16.856Z",
+  "extendedTimes": 1
+}

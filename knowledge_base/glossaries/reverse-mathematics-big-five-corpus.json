@@ -1,0 +1,307 @@
+{
+  "corpusId": "reverse-mathematics-big-five-corpus",
+  "corpusHash": "5f8e45ea5a5f888500d70815a57cbaaf898ed9f10708ce5c40d94af4d4859208",
+  "entries": [
+    {
+      "label": "aca0",
+      "kind": "entity",
+      "definition": "arithmetical comprehension, equivalent in strength to Peano arithmetic",
+      "sourceForms": [
+        "ACA₀"
+      ]
+    },
+    {
+      "label": "atr0",
+      "kind": "entity",
+      "definition": "arithmetical transfinite recursion, captures comparability of well-orderings",
+      "sourceForms": [
+        "ATR₀"
+      ]
+    },
+    {
+      "label": "big-five",
+      "kind": "entity",
+      "definition": "the five subsystems RCA₀, WKL₀, ACA₀, ATR₀, Π¹₁-CA₀",
+      "sourceForms": [
+        "Big Five"
+      ]
+    },
+    {
+      "label": "bolzano-weierstrass-theorem",
+      "kind": "entity",
+      "definition": "the Bolzano–Weierstrass theorem",
+      "sourceForms": [
+        "Bolzano–Weierstrass theorem"
+      ]
+    },
+    {
+      "label": "brouwer-fixed-point-theorem",
+      "kind": "entity",
+      "definition": "the Brouwer fixed point theorem",
+      "sourceForms": [
+        "Brouwer fixed point theorem"
+      ]
+    },
+    {
+      "label": "cantor-bendixson-theorem",
+      "kind": "entity",
+      "definition": "the Cantor–Bendixson theorem",
+      "sourceForms": [
+        "Cantor–Bendixson theorem"
+      ]
+    },
+    {
+      "label": "comparability-countable-well-orderings",
+      "kind": "entity",
+      "definition": "comparability of countable well-orderings",
+      "sourceForms": [
+        "comparability of countable well-orderings"
+      ]
+    },
+    {
+      "label": "counterexample-to-big-five-phenomenon",
+      "kind": "property",
+      "definition": "a theorem that is a counterexample to the Big Five phenomenon",
+      "sourceForms": [
+        "counterexample to the Big Five phenomenon"
+      ]
+    },
+    {
+      "label": "empirical-phenomenon",
+      "kind": "property",
+      "definition": "the Big Five phenomenon is described as empirical rather than theorematic",
+      "sourceForms": [
+        "empirical rather than theorematic"
+      ]
+    },
+    {
+      "label": "equivalent-over-rca0",
+      "kind": "relation",
+      "definition": "two statements are equivalent over RCA₀",
+      "sourceForms": [
+        "equivalent over RCA₀"
+      ]
+    },
+    {
+      "label": "extreme-value-theorem",
+      "kind": "entity",
+      "definition": "the extreme value theorem for continuous functions on [0,1]",
+      "sourceForms": [
+        "extreme value theorem for continuous functions on [0,1]"
+      ]
+    },
+    {
+      "label": "godel-completeness-theorem",
+      "kind": "entity",
+      "definition": "the Gödel completeness theorem for countable languages",
+      "sourceForms": [
+        "Gödel completeness theorem for countable languages"
+      ]
+    },
+    {
+      "label": "heine-borel-covering-lemma",
+      "kind": "entity",
+      "definition": "the Heine–Borel covering lemma for the closed unit interval",
+      "sourceForms": [
+        "Heine–Borel covering lemma for the closed unit interval"
+      ]
+    },
+    {
+      "label": "implies",
+      "kind": "relation",
+      "definition": "one statement implies another over RCA₀",
+      "sourceForms": [
+        "implies"
+      ]
+    },
+    {
+      "label": "incomparable",
+      "kind": "relation",
+      "definition": "neither statement implies the other over RCA₀",
+      "sourceForms": [
+        "incomparable"
+      ]
+    },
+    {
+      "label": "konig-lemma-finitely-branching",
+      "kind": "entity",
+      "definition": "König's lemma for arbitrary finitely-branching trees",
+      "sourceForms": [
+        "König's lemma for arbitrary finitely-branching trees"
+      ]
+    },
+    {
+      "label": "maximal-ideal-countable-commutative-ring",
+      "kind": "entity",
+      "definition": "the existence of a maximal ideal in a countable commutative ring",
+      "sourceForms": [
+        "existence of a maximal ideal in a countable commutative ring"
+      ]
+    },
+    {
+      "label": "not-equivalent-to-any-big-five",
+      "kind": "property",
+      "definition": "a theorem is not equivalent to any of the Big Five",
+      "sourceForms": [
+        "not equivalent to any of the Big Five"
+      ]
+    },
+    {
+      "label": "open-sigma01-determinacy",
+      "kind": "entity",
+      "definition": "open (Σ⁰₁) determinacy",
+      "sourceForms": [
+        "open (Σ⁰₁) determinacy"
+      ]
+    },
+    {
+      "label": "perfect-set-theorem",
+      "kind": "entity",
+      "definition": "the perfect set theorem",
+      "sourceForms": [
+        "perfect set theorem"
+      ]
+    },
+    {
+      "label": "pi11-ca0",
+      "kind": "entity",
+      "definition": "Π¹₁ comprehension, the strongest of the Big Five",
+      "sourceForms": [
+        "Π¹₁-CA₀"
+      ]
+    },
+    {
+      "label": "prime-ideals-countable-commutative-rings",
+      "kind": "entity",
+      "definition": "the existence of prime ideals in countable commutative rings",
+      "sourceForms": [
+        "existence of prime ideals in countable commutative rings"
+      ]
+    },
+    {
+      "label": "ramsey-theorem-exponent-n-ge-3",
+      "kind": "entity",
+      "definition": "Ramsey's theorem for exponent n whenever n ≥ 3",
+      "sourceForms": [
+        "Ramsey's theorem for exponent n whenever n ≥ 3"
+      ]
+    },
+    {
+      "label": "range-of-function",
+      "kind": "entity",
+      "definition": "the existence of the range of any function from ℕ to ℕ",
+      "sourceForms": [
+        "existence of the range of any function from ℕ to ℕ"
+      ]
+    },
+    {
+      "label": "rca0",
+      "kind": "entity",
+      "definition": "recursive comprehension axiom, the base theory of reverse mathematics",
+      "sourceForms": [
+        "RCA₀"
+      ]
+    },
+    {
+      "label": "rt22",
+      "kind": "entity",
+      "definition": "Ramsey's theorem for pairs and two colours",
+      "sourceForms": [
+        "RT²₂"
+      ]
+    },
+    {
+      "label": "separable-hahn-banach-theorem",
+      "kind": "entity",
+      "definition": "the separable Hahn–Banach theorem",
+      "sourceForms": [
+        "separable Hahn–Banach theorem"
+      ]
+    },
+    {
+      "label": "sequential-completeness-reals",
+      "kind": "entity",
+      "definition": "sequential completeness of the reals",
+      "sourceForms": [
+        "sequential completeness of the reals"
+      ]
+    },
+    {
+      "label": "sigma01-pi01-determinacy",
+      "kind": "entity",
+      "definition": "Σ⁰₁ ∧ Π⁰₁ determinacy",
+      "sourceForms": [
+        "Σ⁰₁ ∧ Π⁰₁ determinacy"
+      ]
+    },
+    {
+      "label": "sigma11-separation",
+      "kind": "entity",
+      "definition": "Σ¹₁ separation",
+      "sourceForms": [
+        "Σ¹₁ separation"
+      ]
+    },
+    {
+      "label": "strict-linear-hierarchy",
+      "kind": "relation",
+      "definition": "the Big Five form a strict linear hierarchy by strength",
+      "sourceForms": [
+        "strict linear hierarchy"
+      ]
+    },
+    {
+      "label": "strictly-above",
+      "kind": "relation",
+      "definition": "one statement is strictly above another in the hierarchy",
+      "sourceForms": [
+        "strictly above"
+      ]
+    },
+    {
+      "label": "strictly-below",
+      "kind": "relation",
+      "definition": "one statement is strictly below another in the hierarchy",
+      "sourceForms": [
+        "strictly below"
+      ]
+    },
+    {
+      "label": "tree-has-perfect-kernel",
+      "kind": "entity",
+      "definition": "the statement that every tree has a perfect kernel",
+      "sourceForms": [
+        "every tree has a perfect kernel"
+      ]
+    },
+    {
+      "label": "uniformly-equivalent-to-aca0",
+      "kind": "property",
+      "definition": "Ramsey's theorem is uniformly equivalent to ACA₀ across exponents",
+      "sourceForms": [
+        "uniformly equivalent to ACA₀ across exponents"
+      ]
+    },
+    {
+      "label": "wkl0",
+      "kind": "entity",
+      "definition": "weak König's lemma, a subsystem strictly stronger than RCA₀",
+      "sourceForms": [
+        "WKL₀"
+      ]
+    },
+    {
+      "label": "corpus-narrator",
+      "kind": "entity",
+      "definition": "the corpus speaking in its own voice — the author's observations, framing and analytical apparatus, as distinct from any position the corpus reports",
+      "sourceForms": [
+        "the corpus",
+        "this paper",
+        "we",
+        "the author"
+      ]
+    }
+  ],
+  "createdAt": "2026-07-31T20:24:14.950Z",
+  "extendedTimes": 0
+}

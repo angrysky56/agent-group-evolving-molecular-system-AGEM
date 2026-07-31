@@ -50,6 +50,7 @@ import {
   assessmentBriefing,
 } from "../services/material-assessment.js";
 import { anomalyBlock, censusAnomalies } from "../services/anomaly-census.js";
+import { loadCorpusOntology } from "../services/glossary-store.js";
 import {
   executeAbductiveLeap,
   hypothesisId,
@@ -2001,13 +2002,32 @@ ${skillContent}`,
                   !Array.isArray(args.ontology)
                     ? (args.ontology as Record<string, unknown>)
                     : {};
-                const ontology = Object.fromEntries(
+                const suppliedOntology = Object.fromEntries(
                   Object.entries(rawOntology).flatMap(([alias, canonical]) =>
                     typeof canonical === "string" && canonical.trim()
                       ? [[alias, canonical]]
                       : [],
                   ),
                 );
+                /*
+                 * Use the audited ontology that ships beside the corpus.
+                 *
+                 * Every corpus in `corpora/` carries an `ontology.json` — a
+                 * reviewed alias map, with reverse-math's holding an explicit
+                 * `_DO_NOT_MERGE` block "listed here so an embedding pass that
+                 * proposes the merge gets refused by a human reading this
+                 * file". Those files existed all along and nothing loaded
+                 * them: every run recast the vocabulary from nothing while the
+                 * agreed names sat unread next to the text.
+                 *
+                 * Resolved here rather than left to the caller so it holds for
+                 * every run, not only the ones that remember to pass it. An
+                 * explicitly supplied ontology still wins — the caller may know
+                 * something the file does not.
+                 */
+                const ontology = Object.keys(suppliedOntology).length > 0
+                  ? suppliedOntology
+                  : await loadCorpusOntology(corpusId);
                 const extraction = await extractIntoStore(segs, corpusId, {
                   signal: requestDeadline.signal,
                   ontology,

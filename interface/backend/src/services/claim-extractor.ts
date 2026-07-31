@@ -28,6 +28,10 @@
 import { getActiveProvider } from "./llm.js";
 import { convertSingleQuotedStrings } from "#agem/lcm/jsonRepair.js";
 import { classifyError } from "./recovery-protocol.js";
+import {
+  loadPersistedGlossary,
+  persistGlossary,
+} from "./glossary-store.js";
 import { claimStore } from "./typedb-claims.js";
 import { settings } from "../config.js";
 import { isOkResponse } from "@typedb/driver-http";
@@ -162,6 +166,20 @@ export interface ExtractionReport {
   glossaryRepaired?: boolean;
   /** Entries pass one produced that failed validation and were left out. */
   glossaryDropped?: Array<{ label: string; why: string }>;
+  /**
+   * Set when the vocabulary was reused rather than recast.
+   *
+   * Reported because a reused sieve changes what the run means: the same
+   * corpus measured twice with the same instrument is a repeat measurement,
+   * whereas two fresh castings are two different instruments and their
+   * disagreement says nothing about the material.
+   */
+  glossaryReused?: {
+    corpusHash: string;
+    entries: number;
+    firstCastAt: string;
+    extendedTimes: number;
+  };
   /**
    * The one vocabulary-extension round, when claims arrived that the first
    * glossary could not express. Reported in full: what was asked for, what was
@@ -1686,12 +1704,42 @@ export async function extendClosedGlossary(
   const allText = needs.map((need) => need.text).join("\n").toLocaleLowerCase();
   const additions: ClosedGlossaryEntry[] = [];
 
+  /*
+   * Every alias the audited ontology knows about, as normalised symbols.
+   *
+   * An alias is a string the ontology has already ruled on: it means the
+   * canonical it points at, not a concept of its own. Minting it as a NEW
+   * label re-splits something a human deliberately unified — or, in the
+   * direction reverse-math warns about, invents a near-twin of an existing
+   * concept whose merge would destroy the corpus:
+   *
+   *   "rt22 and rt_n_k are DIFFERENT statements with different strengths. Any
+   *    alias between them destroys the corpus."   — corpora/reverse-math/ontology.json
+   */
+  const auditedAliases = new Set(
+    Object.keys(ontology).map((alias) => formalSymbol(alias)),
+  );
+
   for (const entry of proposed) {
     const audited = ontology[entry.label];
     if (audited && formalSymbol(audited) !== formalSymbol(entry.label)) {
       rejected.push({
         label: entry.label,
         why: "the audited ontology maps this label to a different canonical symbol",
+      });
+      continue;
+    }
+    if (!audited && auditedAliases.has(formalSymbol(entry.label))) {
+      rejected.push({
+        label: entry.label,
+        why: "the audited ontology already rules on this string as an alias of another concept; minting it as a new label would re-split what the ontology unified",
+      });
+      continue;
+    }
+    if (looksLikeDocumentStructure(entry.label)) {
+      rejected.push({
+        label: entry.label,
+        why: "the label names a piece of the document's structure rather than a concept in it",
       });
       continue;
     }
@@ -1710,6 +1758,24 @@ export async function extendClosedGlossary(
     existingLabels.add(entry.label);
   }
   return { additions, rejected };
+}
+
+/**
+ * Does this label name a piece of the document rather than a concept in it?
+ *
+ * The extension round minted `section-4-impossibility` on the decision-theory
+ * baseline — a heading promoted to a claim role. That is the same class of
+ * defect the closed vocabulary was built to stop (`this(x)` from a pronoun,
+ * `causes_makes_the_comparison_quantitative(x)` from a verb phrase), arriving
+ * through the door I opened.
+ *
+ * A predicate over `section_4_impossibility(x)` says nothing about decision
+ * theory. It says something about where the sentence sat on the page.
+ */
+export function looksLikeDocumentStructure(label: string): boolean {
+  return /^(section|chapter|part|figure|table|appendix|paragraph|page|step|item|note|footnote)[-_]?\d*([-_]|$)/i.test(
+    label,
+  );
 }
 
 export function buildGlossaryExtensionPrompt(
@@ -1989,12 +2055,35 @@ export async function extractIntoStore(
   if (segments.length > 0) {
     const glossaryStartedAt = performance.now();
     report.telemetry.glossaryCalls++;
+    /*
+     * Reuse the sieve this corpus was already measured with.
+     *
+     * Keyed on the corpus hash, so changed text always recasts. Reuse skips
+     * pass one entirely — which is also where the 118-second generations and
+     * the intermittent schema-invalid failures live, so a settled vocabulary
+     * removes the run's least reliable step as well as its least stable one.
+     */
+    // The same hash the replay manifest records — one source of truth.
+    const hash = corpusHash;
+    const persisted = await loadPersistedGlossary(corpusId, hash);
+    if (persisted) {
+      report.glossary = persisted.entries;
+      report.glossaryReused = {
+        corpusHash: hash,
+        entries: persisted.entries.length,
+        firstCastAt: persisted.createdAt,
+        extendedTimes: persisted.extendedTimes,
+      };
+      report.telemetry.glossaryMs = performance.now() - glossaryStartedAt;
+    }
     try {
-      const attempt = await attemptClosedGlossary(
-        segments,
-        options.ontology,
-        options.signal,
-      );
+      const attempt = persisted
+        ? { glossary: persisted.entries }
+        : await attemptClosedGlossary(
+            segments,
+            options.ontology,
+            options.signal,
+          );
       if (!attempt.glossary) {
         // Name the failure and what to do about it. "Invalid or truncated"
         // described two opposite problems and pointed at neither.
@@ -2211,6 +2300,27 @@ export async function extractIntoStore(
           },
         ],
       };
+    }
+  }
+  /*
+   * Settle the vocabulary for next time.
+   *
+   * Written after the extension round so the stored sieve is the one the run
+   * actually reckoned with, extensions included. Keyed on the corpus hash, so
+   * this can only ever be reused for the same text.
+   */
+  if (report.glossary.length > 0 && !report.glossaryFailure) {
+    try {
+      await persistGlossary(
+        corpusId,
+        corpusHash,
+        report.glossary,
+        (report.glossaryReused?.extendedTimes ?? 0) +
+          (report.glossaryExtension?.additions.length ? 1 : 0),
+      );
+    } catch {
+      // A vocabulary that cannot be cached is still a usable vocabulary.
+      // Never fail a run over its own memoisation.
     }
   }
   report.telemetry.proposalMs = performance.now() - proposalStartedAt;

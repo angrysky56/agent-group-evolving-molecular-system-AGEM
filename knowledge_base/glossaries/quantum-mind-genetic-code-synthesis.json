@@ -1,0 +1,215 @@
+{
+  "corpusId": "quantum-mind-genetic-code-synthesis",
+  "corpusHash": "2f59b3c28dc1a50c2b943079b324ac33e55f57ef88fb586d9fcf62303e96c456",
+  "entries": [
+    {
+      "label": "church-turing-adequacy",
+      "kind": "property",
+      "definition": "any physically realizable process is computable — simulable to arbitrary accuracy by a Turing machine",
+      "sourceForms": [
+        "Church–Turing-adequacy position",
+        "any physically realizable process **is computable** — simulable to arbitrary accuracy by a Turing machine"
+      ]
+    },
+    {
+      "label": "classical-sufficiency-position",
+      "kind": "axis-value",
+      "definition": "neural computation is adequately described classically, quantum effects are thermal noise, and consciousness supervenes on classically-describable neural dynamics",
+      "sourceForms": [
+        "The classical-sufficiency position"
+      ],
+      "axis": "consciousness-quantum-constitution"
+    },
+    {
+      "label": "coevolution-position",
+      "kind": "axis-value",
+      "definition": "the code expanded alongside amino acid biosynthetic pathways, pattern reflects metabolic history rather than optimization",
+      "sourceForms": [
+        "The coevolution position"
+      ],
+      "axis": "genetic-code-optimization"
+    },
+    {
+      "label": "computable",
+      "kind": "property",
+      "definition": "simulable to arbitrary accuracy by a Turing machine",
+      "sourceForms": [
+        "computable",
+        "is computable"
+      ]
+    },
+    {
+      "label": "consciousness-quantum-constitution",
+      "kind": "axis",
+      "definition": "the axis classifying positions on whether consciousness is quantum-mechanically constituted",
+      "sourceForms": [
+        "is consciousness quantum-mechanically constituted"
+      ],
+      "axisEncoding": "categorical",
+      "values": [
+        "orch-or-position",
+        "decoherence-objection",
+        "classical-sufficiency-position"
+      ]
+    },
+    {
+      "label": "decoherence-objection",
+      "kind": "axis-value",
+      "definition": "decoherence times for microtubule-scale superpositions in a warm, wet, ionic brain are too short for any neurally relevant process",
+      "sourceForms": [
+        "The decoherence objection"
+      ],
+      "axis": "consciousness-quantum-constitution"
+    },
+    {
+      "label": "enabling-bridge",
+      "kind": "property",
+      "definition": "the code was optimized for error-robustness, which permits open-ended complexity, and consciousness is a downstream consequence",
+      "sourceForms": [
+        "Enabling bridge",
+        "The weak synthesis asserts only that the code was optimized for error-robustness, that error-robustness permits open-ended complexity, and that consciousness is a downstream consequence of that complexity"
+      ]
+    },
+    {
+      "label": "error-minimization-position",
+      "kind": "axis-value",
+      "definition": "the standard genetic code is extraordinarily good at minimizing phenotypic impact of point mutations and mistranslations, evidence of selection for robustness",
+      "sourceForms": [
+        "The error-minimization position"
+      ],
+      "axis": "genetic-code-optimization"
+    },
+    {
+      "label": "established-effects-position",
+      "kind": "axis-value",
+      "definition": "non-trivial quantum effects are demonstrated in biology: radical-pair magnetoreception and enzymatic hydrogen tunnelling",
+      "sourceForms": [
+        "The established-effects position"
+      ],
+      "axis": "quantum-biology-reality"
+    },
+    {
+      "label": "frozen-accident-position",
+      "kind": "axis-value",
+      "definition": "assignments were largely arbitrary and became fixed because any change would be catastrophically disruptive",
+      "sourceForms": [
+        "The frozen-accident position"
+      ],
+      "axis": "genetic-code-optimization"
+    },
+    {
+      "label": "genetic-code-optimization",
+      "kind": "axis",
+      "definition": "the axis classifying positions on what the genetic code was optimized for",
+      "sourceForms": [
+        "what was the genetic code optimized for"
+      ],
+      "axisEncoding": "categorical",
+      "values": [
+        "error-minimization-position",
+        "stereochemical-position",
+        "coevolution-position",
+        "frozen-accident-position"
+      ]
+    },
+    {
+      "label": "not-computable",
+      "kind": "property",
+      "definition": "not simulable to arbitrary accuracy by a Turing machine",
+      "sourceForms": [
+        "is not computable",
+        "not computable"
+      ]
+    },
+    {
+      "label": "orch-or-position",
+      "kind": "axis-value",
+      "definition": "consciousness arises from orchestrated objective reduction of quantum states in microtubules, requires sustained quantum coherence, and is not computable by a Turing machine",
+      "sourceForms": [
+        "The Orch-OR position"
+      ],
+      "axis": "consciousness-quantum-constitution"
+    },
+    {
+      "label": "photosynthesis-retraction-position",
+      "kind": "axis-value",
+      "definition": "long-lived electronic coherence in photosynthetic complexes is now attributed to vibrational rather than electronic coherence, and functional role is contested",
+      "sourceForms": [
+        "The photosynthesis-retraction position"
+      ],
+      "axis": "quantum-biology-reality"
+    },
+    {
+      "label": "quantum-biology-reality",
+      "kind": "axis",
+      "definition": "the axis classifying positions on whether quantum biology is real",
+      "sourceForms": [
+        "is quantum biology real"
+      ],
+      "axisEncoding": "categorical",
+      "values": [
+        "established-effects-position",
+        "photosynthesis-retraction-position"
+      ]
+    },
+    {
+      "label": "selection-for",
+      "kind": "property",
+      "definition": "a trait is selected for only if it is causally responsible for differential reproductive success at the time of selection",
+      "sourceForms": [
+        "Selection-for versus selection-of",
+        "a trait is selected *for* only if it is causally responsible for differential reproductive success at the time of selection"
+      ]
+    },
+    {
+      "label": "stereochemical-position",
+      "kind": "axis-value",
+      "definition": "codon–amino-acid assignments reflect direct physicochemical affinity between triplets and residues",
+      "sourceForms": [
+        "The stereochemical position"
+      ],
+      "axis": "genetic-code-optimization"
+    },
+    {
+      "label": "substrate-bridge",
+      "kind": "property",
+      "definition": "consciousness depends on the specific quantum-mechanical substrate that biological molecules instantiate",
+      "sourceForms": [
+        "Substrate bridge",
+        "consciousness depends on the specific quantum-mechanical substrate that biological molecules instantiate"
+      ]
+    },
+    {
+      "label": "substrate-independence",
+      "kind": "property",
+      "definition": "a mental kind can be realized in physically heterogeneous substrates",
+      "sourceForms": [
+        "Substrate independence",
+        "The multiple-realizability position",
+        "a mental kind can be realized in physically heterogeneous substrates"
+      ]
+    },
+    {
+      "label": "teleological-bridge",
+      "kind": "property",
+      "definition": "the genetic code was optimized for consciousness",
+      "sourceForms": [
+        "Teleological bridge",
+        "The strong synthesis asserts that the genetic code was optimized *for* consciousness"
+      ]
+    },
+    {
+      "label": "corpus-narrator",
+      "kind": "entity",
+      "definition": "the corpus speaking in its own voice — the author's observations, framing and analytical apparatus, as distinct from any position the corpus reports",
+      "sourceForms": [
+        "the corpus",
+        "this paper",
+        "we",
+        "the author"
+      ]
+    }
+  ],
+  "createdAt": "2026-07-31T20:12:35.244Z",
+  "extendedTimes": 0
+}
