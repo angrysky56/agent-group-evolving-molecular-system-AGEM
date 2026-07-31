@@ -3511,6 +3511,15 @@ ${skillContent}`,
            * such and still fails the verify/derive contract items.
            */
           evidentialPathGranted = true;
+          /*
+           * Tell the contract the formal path is off the table for THIS
+           * material, or it will keep demanding it and re-enable the very
+           * tools this grant forbids — which is what turned run
+           * 2026-07-31T03-12-27 into two turns of contradictory instructions.
+           */
+          workflowContract.markFormalPathUnavailable(
+            "extraction aborted on a structural mismatch: the corpus's claims are not expressible in a closed first-order vocabulary, so retrying the formal path cannot produce a verdict",
+          );
           tools = tools.filter((tool: any) =>
             ["search_context", "build_defensible_claim"].includes(
               tool?.function?.name,

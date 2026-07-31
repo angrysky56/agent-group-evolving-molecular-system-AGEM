@@ -156,6 +156,44 @@ describe("workflow contract boundary", () => {
     expect(contract.evaluate().unmet.map((item) => item.id)).toContain("verify");
   });
 
+  it("stops demanding verification once the material cannot carry it", () => {
+    /*
+     * Run 2026-07-31T03-12-27: the evidential grant narrowed tools to
+     * [search_context, build_defensible_claim] and forbade
+     * extract_and_verify_claims. Ninety seconds later the contract nudged
+     * "verify, derive" and re-enabled exactly those two forbidden tools. The
+     * model spent its final turns being pulled both ways and the run died
+     * contract-unmet.
+     */
+    const contract = contested();
+    contract.record("run_agem_cycle");
+    contract.record("get_graph_topology");
+    contract.markFormalPathUnavailable("structural mismatch");
+    const evaluation = contract.evaluate();
+    expect(evaluation.unmet.map((i) => i.id)).not.toContain("verify");
+    expect(evaluation.unmet.map((i) => i.id)).not.toContain("derive");
+    expect(evaluation.satisfied).toBe(true);
+    expect(contract.nudge()).toBeNull();
+  });
+
+  it("says WHY it stopped asking, so 'satisfied' stays readable", () => {
+    const contract = contested();
+    contract.record("run_agem_cycle");
+    contract.markFormalPathUnavailable("structural mismatch: not formalizable");
+    expect(contract.summary().formalPathUnavailable).toMatch(
+      /not formalizable/,
+    );
+  });
+
+  it("keeps demanding verification on a corpus that CAN carry it", () => {
+    // The guard against this becoming a way out of verification.
+    const contract = contested();
+    contract.record("run_agem_cycle");
+    contract.record("get_graph_topology");
+    expect(contract.evaluate().unmet.map((i) => i.id)).toContain("verify");
+    expect(contract.summary().formalPathUnavailable).toBeUndefined();
+  });
+
   it("still counts them as analysis, so the contract activates", () => {
     const contract = createWorkflowContract({
       isContested: () => true,

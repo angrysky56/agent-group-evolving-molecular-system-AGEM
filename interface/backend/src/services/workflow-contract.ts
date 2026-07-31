@@ -210,6 +210,38 @@ export class WorkflowContract {
   #nudgeCount = 0;
   #validatedLogicRuns = 0;
   #validatedTypedClaimRuns = 0;
+  #formalPathUnavailable: string | null = null;
+
+  /**
+   * Record that the formal path cannot work on THIS material.
+   *
+   * Set when extraction aborts on a structural mismatch — the corpus's claims
+   * are not expressible in a closed first-order vocabulary, so no number of
+   * retries produces a verdict.
+   *
+   * Without this the contract kept demanding `verify` and `derive` after the
+   * run had already been redirected to the evidential path, and the nudge
+   * re-enabled the two tools the redirect had just forbidden. Observed live
+   * (2026-07-31T03-12-27): `evidential_path_granted` allowed
+   * [search_context, build_defensible_claim]; ninety seconds later
+   * `contract_tool_surface` allowed [evaluate_logical_consistency,
+   * extract_and_verify_claims] and told the model it had verified with
+   * hand-authored propositions, which it had not. The run spent its last two
+   * turns being pulled in both directions and ended contract-unmet.
+   *
+   * This does NOT make the evidential path count as verification. It records
+   * that verification was impossible for this material, which is a different
+   * statement and is reported as such — the same rule
+   * `isClaimStoreAvailable` already applies: never manufacture a demand the
+   * model cannot satisfy.
+   */
+  markFormalPathUnavailable(reason: string): void {
+    this.#formalPathUnavailable ??= reason;
+  }
+
+  get formalPathUnavailable(): string | null {
+    return this.#formalPathUnavailable;
+  }
 
   constructor(options: WorkflowContractOptions) {
     this.#options = {
@@ -317,7 +349,10 @@ export class WorkflowContract {
           "Logical consistency verified for a multi-position corpus",
         hint: "The graph resolved into two or more concept communities, so this corpus is multi-position. Verify the relations between those blocks formally — extract_and_verify_claims is the preferred path — before making any claim about consistency or contradiction.",
         satisfied: this.#validatedLogicRuns > 0,
-        applicable: contested,
+        // Not demanded once the material has been shown incapable of carrying
+        // a formal verdict. The run still reports the formal result as
+        // INCONCLUSIVE; it simply stops being asked to retry the impossible.
+        applicable: contested && !this.#formalPathUnavailable,
       },
       {
         /*
@@ -333,7 +368,8 @@ export class WorkflowContract {
         hint:
           "You verified with hand-authored propositions. On a multi-position corpus those are the model's paraphrase, not the corpus's claims — a contradiction between them can be an artifact of your own encoding. Run extract_and_verify_claims on the corpus TEXT so the formulas are derived from typed claims with provenance, and reconcile the two results. If the claim store is unavailable, say so explicitly and label the hand-authored verdict as encoding-dependent.",
         satisfied: this.#validatedTypedClaimRuns > 0,
-        applicable: contested && typedClaimsPossible,
+        applicable:
+          contested && typedClaimsPossible && !this.#formalPathUnavailable,
       },
     ];
 
@@ -411,6 +447,11 @@ export class WorkflowContract {
       toolCounts: Object.fromEntries(this.#counts),
       validatedLogicRuns: this.#validatedLogicRuns,
       validatedTypedClaimRuns: this.#validatedTypedClaimRuns,
+      // Present only when verification was dropped as impossible. A contract
+      // that stops asking must say why, or "satisfied" becomes unreadable.
+      ...(this.#formalPathUnavailable
+        ? { formalPathUnavailable: this.#formalPathUnavailable }
+        : {}),
     };
   }
 }
