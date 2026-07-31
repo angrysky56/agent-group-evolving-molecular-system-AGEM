@@ -503,6 +503,37 @@ export function normalizeClaimExtras(claim: ExtractedClaim): ExtractedClaim {
     else delete (normalized as unknown as Record<string, unknown>).scope;
     if (scopedPosition && !normalized.positionId) normalized.positionId = scopedPosition;
   }
+  /*
+   * A taxonomic claim with no holder is corpus-scoped. Supply it.
+   *
+   * `distinction` and `dissociation` state that two things differ in kind or
+   * come apart. That is the corpus's own analytical framework, not something a
+   * named position asserts — which is why `claimAttributionIssue` already
+   * EXEMPTS both kinds from the attribution-flattening guard. The schema has
+   * therefore always treated them as corpus-level; it just refused to say so
+   * unless the model spelled it out.
+   *
+   * Observed on the QM-interpretations run (2026-07-31T01-06-27): the model
+   * emitted fourteen structurally identical distinctions over the corpus's
+   * stance axes, wrote `"scope":"corpus"` on one, and omitted it on thirteen.
+   * The thirteen were perfect — `deterministic`/`stochastic`,
+   * `hidden-variables`/`psi-complete` — and all thirteen were rejected for a
+   * field with exactly one legal value given the kind and the absence of a
+   * positionId.
+   *
+   * Narrow on purpose. Only these two kinds, and only when the model named no
+   * holder: if a positionId is present the claim is attributed and must stay
+   * that way. Every other kind still has to declare its scope, because for
+   * them "corpus" is a real choice with real consequences, and defaulting it
+   * would be the attribution flattening the guard exists to catch.
+   */
+  if (
+    normalized.scope === undefined &&
+    !normalized.positionId &&
+    (normalized.kind === "distinction" || normalized.kind === "dissociation")
+  ) {
+    normalized.scope = "corpus";
+  }
   const ownsPolarity =
     normalized.kind === "causal-claim" ||
     normalized.kind === "property-assertion" ||
@@ -702,6 +733,42 @@ export function claimSchemaIssue(claim: ExtractedClaim): string | null {
         ? distinctCount >= requiredCount
         : values.length === 1 && distinctCount === 1;
     if (!cardinalityValid) {
+      /*
+       * Name the real cause when the same label was repeated.
+       *
+       * Observed live (2026-07-31T01-06-27): `{"distinguished":["collapse",
+       * "collapse"]}` and the same for `locality`. Reported as "requires at
+       * least 2 distinct values; found 1", which reads as a careless model.
+       *
+       * It is not. A signed-property axis carries exactly ONE label by design
+       * — see ClosedGlossaryEntry.axisEncoding, "signed axes assert/deny one
+       * property". Asked to express "collapse vs no collapse" from a closed
+       * vocabulary containing only `collapse`, the model has no second label
+       * to reach for, and duplicating the one it has is the only move
+       * available. The vocabulary cannot express the claim; blaming the
+       * cardinality points at the symptom.
+       */
+      /*
+       * Only the axis-shaped kinds. A repeated member in a
+       * joint-incompatibility is a different mistake with a different cause —
+       * that role is a set of co-asserted commitments, not two poles of an
+       * axis — so the vocabulary diagnosis would misdirect there.
+       */
+      const repeated =
+        (claim.kind === "distinction" || claim.kind === "dissociation") &&
+        requiredCount > 1 &&
+        distinctCount === 1 &&
+        values.length > 1;
+      if (repeated) {
+        return (
+          `schema cardinality: ${claim.kind} role '${role}' repeated the single label ` +
+          `'${values[0]}' ${values.length} times. A two-way distinction cannot be built from ` +
+          `one label — this usually means the closed vocabulary holds only one pole of the axis ` +
+          `(a signed-property axis carries one label and expresses the other side through ` +
+          `polarity). Either state it as a property-assertion with polarity asserts/denies, or ` +
+          `mint both poles as axis-values in a reviewed glossary.`
+        );
+      }
       return (
         `schema cardinality: ${claim.kind} role '${role}' requires ` +
         `${requiredCount > 1 ? `at least ${requiredCount} distinct values` : "exactly 1 value"}; ` +

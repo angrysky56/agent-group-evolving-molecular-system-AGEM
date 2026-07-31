@@ -179,7 +179,10 @@ describe("claim identity for finding evidence", () => {
         roles: { distinguished: ["same", "same"] },
         scope: "corpus",
       }),
-    ).toMatch(/at least 2 distinct values.*found 1/i);
+      // Still rejected. The message now names the likely cause — a closed
+      // vocabulary holding only one pole of the axis — instead of reporting
+      // the cardinality symptom.
+    ).toMatch(/repeated the single label 'same'/i);
     expect(
       claimSchemaIssue({
         kind: "entailment",
@@ -251,7 +254,11 @@ describe("claim identity for finding evidence", () => {
       "wavefunction-status",
       "wavefunction-status",
     ]);
-    expect(claimSchemaIssue(normalized)).toMatch(/found 1/);
+    // The lift still happens and the collapsed pair is still rejected; the
+    // diagnostic now points at the vocabulary rather than the count.
+    expect(claimSchemaIssue(normalized)).toMatch(
+      /repeated the single label 'wavefunction-status'/,
+    );
   });
 
   it("mechanically lifts nominalized no-negation into structural polarity", () => {
